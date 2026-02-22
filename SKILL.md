@@ -1,8 +1,8 @@
 ---
 name: vibe-marketing
-description: When the user wants to create, optimize, or scale marketing systems using the Vibe Marketing methodology. Use for brand strategy, positioning, landing pages, email sequences, content strategy, SEO, paid ads, and creative assets. Also use when the user mentions "research first marketing," "compound growth," "methodology over prompts," "brand voice," "positioning," or "multi-channel marketing." This is the primary orchestrator skill that routes to specialized workflows.
+description: When the user wants to create, optimize, or scale marketing systems using the Vibe Marketing methodology. Use for brand strategy, positioning, landing pages, email sequences, content strategy, SEO, paid ads, creative assets, analytics tracking, conversion rate optimization (CRO), pricing strategy, and churn/retention flows. Also use when the user mentions "research first marketing," "compound growth," "methodology over prompts," "brand voice," "positioning," "multi-channel marketing," "GA4," "tracking plan," "ROAS/CPA," "signup dropoff," "paywall," or "churn."
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   author: Jhonatan
   license: MIT
   compatible_ide: [Claude Code, Kimi Code, Codex, Antigravity, Cursor]
@@ -95,54 +95,69 @@ Aplicar frameworks validados — não inventar do zero.
 | Conversion | Landing Copy → Email Sequence → Lead Magnet | `@vm-stack-conversion` |
 | Traffic | SEO Content → Content Atomizer → Social Distribution | `@vm-stack-traffic` |
 | Nurture | Welcome Sequence → Newsletter → Content Calendar | `@vm-stack-nurture` |
+| Growth Ops | Tracking → CRO → Paid Ads → Pricing → Retention | `@vm-stack-growth-ops` |
+
+---
+
+## Execução Híbrida por Thread (Foundation V1)
+
+No `@vm-stack-foundation`, a execução agora suporta automação por projeto/thread:
+- `research` inicia automaticamente;
+- `brand-voice`, `positioning` e `keywords` exigem aprovação manual;
+- estado é persistido por `project_id` e `thread_id`;
+- artefatos e auditoria são registrados por execução.
+
+### Comandos de Controle
+
+- `@vm-approve <stage>`: aprova e executa a próxima etapa manual.
+- `@vm-status`: retorna estado atual da execução por thread.
+- `@vm-retry <stage>`: reexecuta uma etapa e incrementa tentativa.
+
+### Política de Providers
+
+- **Premium-first:** Perplexity + Firecrawl.
+- **Fallback em erro:** DuckDuckGo + scraping gratuito.
+- Chaves esperadas: `PERPLEXITY_API_KEY` e `FIRECRAWL_API_KEY`.
 
 ---
 
 ## Skills Disponíveis
 
-### 03-strategy/ — Fundação & Estratégia
+### 03-strategy/
 - `brand-voice/skill.md` — Perfil de voz da marca
 - `positioning-angles/skill.md` — Ângulos de posicionamento
 - `keyword-research/skill.md` — Pesquisa de keywords
 - `lead-magnet/skill.md` — Design de lead magnets
-- `marketing-psychology/skill.md` — 70+ modelos mentais aplicados (anchoring, loss aversion, IKEA effect)
-- `pricing-strategy/skill.md` — Van Westendorp, value metrics, tier structure
-- `launch-strategy/skill.md` — Go-to-market, Product Hunt, waitlists
-- `content-strategy/skill.md` — Estratégia de conteúdo pillar/cluster
-- `churn-prevention/skill.md` — Cancel flows, save offers, win-back
-- `seo-audit/skill.md` — Auditoria técnica SEO
-- `ai-seo/skill.md` — AEO/GEO/LLMO — SEO para motores de IA
-- `page-cro/skill.md` — CRO em 7 dimensões (value prop, headline, CTA, trust, objections)
 
-### 04-copy/ — Copy & Conteúdo
+### 04-copy/
 - `direct-response/skill.md` — Copy de resposta direta
 - `email-sequences/skill.md` — Sequências de email
 - `newsletter/skill.md` — Newsletters
 - `seo-content/skill.md` — Conteúdo SEO
 - `content-atomizer/skill.md` — Atomização de conteúdo
-- `paid-ads/skill.md` — Google Ads, Meta, LinkedIn, retargeting
-- `social-content/skill.md` — Conteúdo por plataforma (LinkedIn, Instagram, X, TikTok)
 
-### 05-creative/ — Criativo
+### 05-creative/
 - `creative-strategist/skill.md` — Estratégia criativa
 - `product-photo/skill.md` — Fotos de produto
 - `product-video/skill.md` — Vídeos
 - `social-graphics/skill.md` — Gráficos sociais
 - `talking-head/skill.md` — Vídeos talking head
-- `ad-creative/skill.md` — Geração de criativos em lote para ads
 
-### 07-sequences/ — Sequências & Frameworks
-- `5-stage-build.md` — Sequência Research → Iteration
-- `expert-review.md` — Revisão + multi-agent framework
-- `quality-gates.md` — Gates de qualidade
-- `channel-playbooks.md` — Playbooks por canal
-- `ab-test-setup.md` — Framework de hipótese → teste → análise
+### 09-tools/ (Executor & Automação)
+- `pipeline_runner.py` — CLI de execução (`run`, `approve`, `status`, `retry`)
+- `executor.py` — Orquestração de estágios e gates manuais
+- `state_store.py` — Persistência de estado por projeto/thread
+- `artifact_store.py` — Audit log e artefatos por execução
+- `providers/perplexity_client.py` — Research premium
+- `providers/firecrawl_client.py` — Scraping premium
+- `providers/free_fallback.py` — Fallback gratuito
 
-### 09-tools/ — Ferramentas
-- `research_tools.py` — Pesquisa de mercado
-- `bootstrap.py` — Setup de workspace
-- `quality_check.py` — Quality gates automatizados
-- `analytics-tracking.md` — UTM, eventos, dashboards
+### 11-growth-ops/
+- `analytics-tracking.md` — Plano de tracking, eventos e UTMs
+- `page-cro.md` — Auditoria de página e backlog de testes
+- `paid-ads.md` — Estratégia de mídia paga e estrutura de campanha
+- `pricing-strategy.md` — Estratégia de preço, pacotes e ancoragem
+- `churn-retention.md` — Prevenção de churn e recuperação de receita
 
 ---
 
@@ -169,7 +184,9 @@ Antes de finalizar:
 - Copy não é genérica nem hype
 - Consistência de voz entre ativos
 - CTA path claro
+- Métricas e tracking definidos para validar resultado
 - Plano de próxima iteração
+- Fallback e auditoria registrados quando houver falha premium
 
 ```bash
 python3 09-tools/quality_check.py --workspace <project-path>
@@ -189,3 +206,5 @@ python3 09-tools/quality_check.py --workspace <project-path>
 | Multi-IDE setup | `.skill/config/cross-ide-setup.md` |
 | Audit benchmark | `07-sequences/audit-findings.md` |
 | Guardrails | `00-orchestrator/guardrails.md` |
+| Growth Ops (CRO + Tracking + Pricing + Retention) | `11-growth-ops/` |
+| Foundation executor (threaded) | `06-stacks/foundation-stack/stack.yaml` e `09-tools/` |
