@@ -8,6 +8,11 @@ version: 1.0.0
 category: strategy
 estimated_time: 45-60 minutos
 
+# Modo de execução do pipeline
+execution:
+  mode: threaded
+  auto_start_stage: research
+
 # Sequência de execução
 sequence:
   - id: research
@@ -16,6 +21,7 @@ sequence:
     description: Análise completa de mercado, concorrência e público
     estimated_time: 15-20 min
     output: research-report
+    approval_required: false
     
   - id: brand-voice
     name: Brand Voice
@@ -24,6 +30,7 @@ sequence:
     estimated_time: 15-20 min
     output: brand-voice-guide
     depends_on: research
+    approval_required: true
     
   - id: positioning
     name: Positioning Angles
@@ -32,6 +39,7 @@ sequence:
     estimated_time: 10-15 min
     output: positioning-strategy
     depends_on: brand-voice
+    approval_required: true
     
   - id: keywords
     name: Keyword Research
@@ -40,6 +48,7 @@ sequence:
     estimated_time: 10-15 min
     output: keyword-map
     depends_on: positioning
+    approval_required: true
 
 # Output consolidado
 output:
