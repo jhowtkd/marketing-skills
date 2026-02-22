@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
+from artifact_store import write_artifact_file, write_log_event
 from pipeline_models import build_initial_state
 from providers.free_fallback import run_research_with_fallback
 from providers.perplexity_client import run_perplexity_research
@@ -42,7 +43,9 @@ def run_until_gate(
     thread_id: str,
     stack_path: str,
     query: str,
+    output_root: Path = Path("08-output"),
 ) -> dict:
+    output_root = Path(output_root)
     stack = load_stack(stack_path)
     sequence = stack["sequence"]
     stage_ids = [stage["id"] for stage in sequence]
@@ -66,6 +69,30 @@ def run_until_gate(
     state["provider_used"][auto_stage] = data.get("provider", "unknown")
     state["fallback_used"][auto_stage] = bool(data.get("fallback_used", False))
     state["artifacts"].append("research/research-report.md")
+    write_artifact_file(
+        output_root=output_root,
+        project_id=project_id,
+        thread_id=thread_id,
+        relative_path="research/research-report.md",
+        content=(
+            "# Research Report\n\n"
+            f"- Query: {query}\n"
+            f"- Provider: {state['provider_used'][auto_stage]}\n"
+            f"- Fallback: {state['fallback_used'][auto_stage]}\n"
+        ),
+    )
+    write_log_event(
+        output_root=output_root,
+        project_id=project_id,
+        thread_id=thread_id,
+        event={
+            "stage": auto_stage,
+            "status": "completed",
+            "provider": state["provider_used"][auto_stage],
+            "fallback_used": state["fallback_used"][auto_stage],
+            "timestamp": _now_iso(),
+        },
+    )
 
     next_stage_id = _next_stage_id(sequence, auto_stage)
     state["current_stage"] = next_stage_id
@@ -101,6 +128,7 @@ def _load_stack_from_state(state: dict) -> dict:
 
 
 def approve_stage(runtime_root: Path, project_id: str, thread_id: str, stage_id: str) -> dict:
+    output_root = Path("08-output")
     state = load_state(Path(runtime_root), project_id, thread_id)
     stack = _load_stack_from_state(state)
     sequence = stack["sequence"]
@@ -120,6 +148,13 @@ def approve_stage(runtime_root: Path, project_id: str, thread_id: str, stage_id:
     artifact = _artifact_for_stage(stage_id)
     if artifact not in state["artifacts"]:
         state["artifacts"].append(artifact)
+    write_artifact_file(
+        output_root=output_root,
+        project_id=project_id,
+        thread_id=thread_id,
+        relative_path=artifact,
+        content=f"# {stage_id}\n\nStatus: completed\n",
+    )
 
     next_stage_id = _next_stage_id(sequence, stage_id)
     state["current_stage"] = next_stage_id
@@ -127,11 +162,30 @@ def approve_stage(runtime_root: Path, project_id: str, thread_id: str, stage_id:
         state["status"] = "completed"
         if "final/foundation-brief.md" not in state["artifacts"]:
             state["artifacts"].append("final/foundation-brief.md")
+        write_artifact_file(
+            output_root=output_root,
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="final/foundation-brief.md",
+            content="# Foundation Brief\n\nPipeline completed.\n",
+        )
     else:
         next_stage = next(stage for stage in sequence if stage["id"] == next_stage_id)
         state["status"] = "waiting_approval" if next_stage.get("approval_required", False) else "running"
 
     state["updated_at"] = _now_iso()
+    write_log_event(
+        output_root=output_root,
+        project_id=project_id,
+        thread_id=thread_id,
+        event={
+            "stage": stage_id,
+            "status": "completed",
+            "next_stage": next_stage_id,
+            "pipeline_status": state["status"],
+            "timestamp": state["updated_at"],
+        },
+    )
     save_state(Path(runtime_root), project_id, thread_id, state)
     return state
 
@@ -141,6 +195,7 @@ def get_status(runtime_root: Path, project_id: str, thread_id: str) -> dict:
 
 
 def retry_stage(runtime_root: Path, project_id: str, thread_id: str, stage_id: str) -> dict:
+    output_root = Path("08-output")
     state = load_state(Path(runtime_root), project_id, thread_id)
     if stage_id not in state["stages"]:
         raise ValueError(f"Unknown stage: {stage_id}")
@@ -159,6 +214,17 @@ def retry_stage(runtime_root: Path, project_id: str, thread_id: str, stage_id: s
         state.setdefault("fallback_used", {})[stage_id] = bool(data.get("fallback_used", False))
     stage_state["status"] = "completed"
     state["updated_at"] = _now_iso()
+    write_log_event(
+        output_root=output_root,
+        project_id=project_id,
+        thread_id=thread_id,
+        event={
+            "stage": stage_id,
+            "status": "retried",
+            "attempt": stage_state["attempts"],
+            "timestamp": state["updated_at"],
+        },
+    )
 
     save_state(Path(runtime_root), project_id, thread_id, state)
     return state
