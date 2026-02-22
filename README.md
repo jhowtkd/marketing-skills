@@ -91,3 +91,38 @@ Leia `00-orchestrator/guardrails.md` antes de qualquer execução.
 | CRO | `@vm-page-cro` `@vm-seo-audit` `@vm-ab-test` `@vm-analytics` |
 | Review | `@vm-review-copy` `@vm-review-strategy` `@vm-review-all` |
 | Stacks | `@vm-stack-foundation` `@vm-stack-conversion` `@vm-stack-traffic` `@vm-stack-nurture` |
+
+## Threaded Foundation Executor (V1)
+
+O stack `@vm-stack-foundation` agora suporta execução híbrida por projeto/thread:
+- `research` inicia automaticamente;
+- `brand-voice`, `positioning` e `keywords` exigem aprovação manual;
+- estado é persistido por `project_id` e `thread_id`;
+- logs e artefatos são salvos em `08-output/<date>/<project>/<thread>/`.
+
+### Comandos na thread
+
+- `@vm-stack-foundation` inicia execução até o primeiro gate manual.
+- `@vm-approve <stage>` aprova e executa uma etapa manual.
+- `@vm-status` retorna estado atual e artefatos.
+- `@vm-retry <stage>` reexecuta uma etapa.
+
+### Comandos CLI equivalentes
+
+```bash
+python3 09-tools/pipeline_runner.py run \
+  --project-id acme \
+  --thread-id th-001 \
+  --stack-path 06-stacks/foundation-stack/stack.yaml \
+  --query "crm para clínicas"
+
+python3 09-tools/pipeline_runner.py approve --project-id acme --thread-id th-001 --stage brand-voice
+python3 09-tools/pipeline_runner.py status --project-id acme --thread-id th-001
+python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 --stage research
+```
+
+### Providers (premium-first com fallback)
+
+- Primário: Perplexity + Firecrawl.
+- Fallback em erro: DuckDuckGo + scraping gratuito.
+- Configure: `PERPLEXITY_API_KEY` e `FIRECRAWL_API_KEY`.

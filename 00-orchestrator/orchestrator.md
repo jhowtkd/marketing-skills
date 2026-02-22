@@ -111,6 +111,16 @@ O orchestrator vai:
 | `@vm-context-load` | Carrega contexto salvo |
 | `@vm-continue` | Continua de checkpoint |
 
+### Execução por Thread (V1)
+
+| Comando | Descrição |
+|---------|-----------|
+| `@vm-approve <stage>` | Aprova e executa etapa manual (`brand-voice`, `positioning`, `keywords`) |
+| `@vm-status` | Retorna estado da execução por projeto/thread |
+| `@vm-retry <stage>` | Reexecuta uma etapa e registra nova tentativa |
+
+No `@vm-stack-foundation`, o `research` roda automaticamente e o restante depende de aprovação manual.
+
 ---
 
 ## 🔍 Sistema de Roteamento
@@ -135,6 +145,9 @@ Entrada do Usuário
 │ • seo → @vm-seo-content             │
 │ • atomize → @vm-atomize             │
 │ • stack:X → @vm-stack-X             │
+│ • approve:X → @vm-approve X         │
+│ • status → @vm-status               │
+│ • retry:X → @vm-retry X             │
 │ • review:X → @vm-review-X           │
 └─────────────────────────────────────┘
        │
@@ -184,6 +197,10 @@ Todas as ferramentas são **gratuitas** por padrão:
 | Creative | Pollinations | Imagens |
 | QA | quality_check.py | Quality gates |
 | Bootstrap | bootstrap.py | Setup de workspace |
+
+Para o executor de threads do foundation stack:
+- premium-first: Perplexity + Firecrawl;
+- fallback automático: DuckDuckGo + scraping gratuito quando premium falhar.
 
 ---
 

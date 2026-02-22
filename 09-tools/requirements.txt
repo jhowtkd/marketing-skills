@@ -15,6 +15,7 @@ openpyxl>=3.0.10
 
 # Utilities
 python-dotenv>=0.21.0
+# Pipeline runner / stack parsing
 pyyaml>=6.0
 
 # Markdown processing
