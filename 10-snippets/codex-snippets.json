@@ -1,0 +1,103 @@
+{
+  "name": "Vibe Marketing - Codex Snippets",
+  "version": "1.0.0",
+  "snippets": {
+    "vibe-research": {
+      "prefix": "@vm-research",
+      "description": "Inicia pesquisa de mercado",
+      "body": [
+        "@vm-research",
+        "Mercado: ${1:descreva o mercado}",
+        "Região: ${2:localização geográfica}",
+        "Concorrentes: ${3:liste 3-5 concorrentes}"
+      ]
+    },
+    "vibe-landing": {
+      "prefix": "@vm-landing",
+      "description": "Cria landing page completa",
+      "body": [
+        "@vm-landing",
+        "Produto: ${1:nome do produto}",
+        "Preço: R$ ${2:valor}",
+        "Público: ${3:descrição do público}",
+        "Diferencial: ${4:o que torna único}"
+      ]
+    },
+    "vibe-email-seq": {
+      "prefix": "@vm-email-seq",
+      "description": "Cria sequência de emails",
+      "body": [
+        "@vm-email-seq",
+        "Produto: ${1:nome do produto}",
+        "Preço: R$ ${2:valor}",
+        "Público: ${3:descrição}",
+        "Lead Magnet: ${4:descrição do lead magnet}"
+      ]
+    },
+    "vibe-seo-content": {
+      "prefix": "@vm-seo-content",
+      "description": "Cria conteúdo SEO",
+      "body": [
+        "@vm-seo-content",
+        "Tópico: ${1:tema principal}",
+        "Keyword: ${2:palavra-chave principal}",
+        "Público: ${3:quem vai ler}"
+      ]
+    },
+    "vibe-atomize": {
+      "prefix": "@vm-atomize",
+      "description": "Atomiza conteúdo",
+      "body": [
+        "@vm-atomize",
+        "Conteúdo: ${1:descreva o conteúdo principal}",
+        "Canais: ${2:onde distribuir}"
+      ]
+    },
+    "vibe-review-copy": {
+      "prefix": "@vm-review-copy",
+      "description": "Revisa copy",
+      "body": [
+        "@vm-review-copy",
+        "",
+        "${1:[COLE SUA COPY AQUI]}",
+        "",
+        "Framework: ${2:AIDA/PAS/etc}",
+        "Objetivo: ${3:clique/cadastro/compra}"
+      ]
+    },
+    "vibe-stack-foundation": {
+      "prefix": "@vm-stack-foundation",
+      "description": "Executa Foundation Stack",
+      "body": [
+        "@vm-stack-foundation",
+        "Projeto: ${1:nome do projeto}",
+        "Descrição: ${2:breve descrição}",
+        "Público: ${3:quem é o público}"
+      ]
+    },
+    "vibe-stack-conversion": {
+      "prefix": "@vm-stack-conversion",
+      "description": "Executa Conversion Stack",
+      "body": [
+        "@vm-stack-conversion",
+        "Produto: ${1:nome do produto}",
+        "Preço: R$ ${2:valor}",
+        "Público: ${3:descrição}"
+      ]
+    },
+    "vibe-checkpoint-save": {
+      "prefix": "@vm-checkpoint-save",
+      "description": "Salva checkpoint",
+      "body": [
+        "@vm-checkpoint-save"
+      ]
+    },
+    "vibe-continue": {
+      "prefix": "@vm-continue",
+      "description": "Continua de checkpoint",
+      "body": [
+        "@vm-continue"
+      ]
+    }
+  }
+}

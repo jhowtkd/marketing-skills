@@ -1,0 +1,351 @@
+{
+  "manifest_version": "1.0.0",
+  "name": "Vibe Marketing — Hybrid Edition",
+  "description": "Marketing de alta performance com IA. Kimi_Agent_Skill (arquitetura) + Compound Growth OS (quality gates). Frameworks clássicos + ferramentas gratuitas.",
+  "version": "3.0.0",
+  "author": "Jhonatan",
+  "license": "MIT",
+  "homepage": "https://github.com/vibe-marketing/skill",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibe-marketing/skill.git"
+  },
+  "categories": [
+    "marketing",
+    "copywriting",
+    "strategy",
+    "research",
+    "creative"
+  ],
+  "keywords": [
+    "marketing",
+    "copywriting",
+    "frameworks",
+    "schwartz",
+    "ogilvy",
+    "hopkins",
+    "halbert",
+    "aida",
+    "pas",
+    "landing-page",
+    "email-marketing",
+    "seo",
+    "content"
+  ],
+  "entry_points": {
+    "orchestrator": "00-orchestrator/orchestrator.md",
+    "guardrails": "00-orchestrator/guardrails.md",
+    "quickstart": "QUICKSTART.md",
+    "config": "vibe.config.yaml"
+  },
+  "ide_support": {
+    "codex": {
+      "command": "@vibe",
+      "config": ".skill/config/ide-codex.yaml",
+      "context_window": 200000,
+      "optimized": true
+    },
+    "kimi": {
+      "command": "/vibe",
+      "config": ".skill/config/ide-kimi.yaml",
+      "context_window": 2000000,
+      "optimized": true
+    },
+    "antigravity": {
+      "command": "vibe:",
+      "config": ".skill/config/ide-antigravity.yaml",
+      "context_window": 100000,
+      "optimized": true
+    }
+  },
+  "structure": {
+    "00-orchestrator": {
+      "description": "Ponto de entrada, roteamento e guardrails",
+      "files": [
+        "orchestrator.md",
+        "workflow-selector.md",
+        "guardrails.md"
+      ]
+    },
+    "01-research": {
+      "description": "Frameworks de pesquisa de mercado",
+      "files": [
+        "research-framework.md",
+        "competitor-analysis.md"
+      ]
+    },
+    "02-methodology": {
+      "description": "Princípios clássicos de marketing",
+      "files": [
+        "schwartz-stages.md",
+        "hopkins-principles.md",
+        "ogilvy-research.md",
+        "halbert-starving-crowd.md"
+      ]
+    },
+    "03-strategy": {
+      "description": "Estratégia de marca",
+      "subdirs": [
+        "brand-voice",
+        "positioning-angles",
+        "keyword-research",
+        "lead-magnet"
+      ]
+    },
+    "04-copy": {
+      "description": "Copywriting e conteúdo",
+      "subdirs": [
+        "direct-response",
+        "email-sequences",
+        "newsletter",
+        "seo-content",
+        "content-atomizer"
+      ]
+    },
+    "05-creative": {
+      "description": "Assets visuais e multimídia",
+      "subdirs": [
+        "creative-strategist",
+        "product-photo",
+        "product-video",
+        "social-graphics",
+        "talking-head"
+      ]
+    },
+    "06-stacks": {
+      "description": "Sequências pré-configuradas de skills",
+      "subdirs": [
+        "foundation-stack",
+        "conversion-stack",
+        "traffic-stack",
+        "nurture-stack"
+      ]
+    },
+    "07-sequences": {
+      "description": "Workflows, quality gates e playbooks",
+      "files": [
+        "5-stage-build.md",
+        "expert-review.md",
+        "quality-gates.md",
+        "channel-playbooks.md",
+        "audit-findings.md"
+      ]
+    },
+    "08-templates": {
+      "description": "Templates de briefings e operação",
+      "files": [
+        "landing-page-brief.md",
+        "email-sequence-brief.md",
+        "seo-content-brief.md",
+        "research-brief.md",
+        "business-brief.md",
+        "experiment-log.md",
+        "weekly-review.md"
+      ]
+    },
+    "09-tools": {
+      "description": "Ferramentas Python e scripts de automação",
+      "files": [
+        "research_tools.py",
+        "bootstrap.py",
+        "quality_check.py",
+        "requirements.txt",
+        "setup.sh"
+      ]
+    },
+    "10-snippets": {
+      "description": "Snippets para IDEs",
+      "files": [
+        "codex-snippets.json",
+        "kimi-snippets.json",
+        "vscode-snippets.json"
+      ]
+    }
+  },
+  "commands": {
+    "workflows": [
+      {
+        "name": "research",
+        "command": "@vm-research",
+        "description": "Pesquisa de mercado completa",
+        "estimated_time": "10-15 min"
+      },
+      {
+        "name": "foundation",
+        "command": "@vm-foundation",
+        "description": "Fundação de marca",
+        "estimated_time": "15-20 min"
+      },
+      {
+        "name": "landing",
+        "command": "@vm-landing",
+        "description": "Landing page completa",
+        "estimated_time": "20-30 min"
+      },
+      {
+        "name": "email-seq",
+        "command": "@vm-email-seq",
+        "description": "Sequência de emails",
+        "estimated_time": "15-20 min"
+      },
+      {
+        "name": "seo-content",
+        "command": "@vm-seo-content",
+        "description": "Conteúdo SEO",
+        "estimated_time": "20-30 min"
+      },
+      {
+        "name": "atomize",
+        "command": "@vm-atomize",
+        "description": "Atomização de conteúdo",
+        "estimated_time": "10-15 min"
+      }
+    ],
+    "stacks": [
+      {
+        "name": "foundation",
+        "command": "@vm-stack-foundation",
+        "description": "Fundação da marca"
+      },
+      {
+        "name": "conversion",
+        "command": "@vm-stack-conversion",
+        "description": "Stack de conversão"
+      },
+      {
+        "name": "traffic",
+        "command": "@vm-stack-traffic",
+        "description": "Stack de tráfego"
+      },
+      {
+        "name": "nurture",
+        "command": "@vm-stack-nurture",
+        "description": "Stack de nutrição"
+      }
+    ],
+    "review": [
+      {
+        "name": "copy",
+        "command": "@vm-review-copy",
+        "description": "Revisão de copy"
+      },
+      {
+        "name": "design",
+        "command": "@vm-review-design",
+        "description": "Revisão de design"
+      },
+      {
+        "name": "strategy",
+        "command": "@vm-review-strategy",
+        "description": "Revisão de estratégia"
+      },
+      {
+        "name": "all",
+        "command": "@vm-review-all",
+        "description": "Revisão completa"
+      }
+    ],
+    "context": [
+      {
+        "name": "checkpoint-save",
+        "command": "@vm-checkpoint-save",
+        "description": "Salva checkpoint atual"
+      },
+      {
+        "name": "context-save",
+        "command": "@vm-context-save",
+        "description": "Salva contexto completo"
+      },
+      {
+        "name": "context-load",
+        "command": "@vm-context-load",
+        "description": "Carrega contexto salvo"
+      },
+      {
+        "name": "continue",
+        "command": "@vm-continue",
+        "description": "Continua de checkpoint"
+      }
+    ]
+  },
+  "frameworks": {
+    "research": [
+      "schwartz-stages",
+      "ogilvy-research",
+      "halbert-starving-crowd"
+    ],
+    "copywriting": [
+      "aida",
+      "pas",
+      "4ps",
+      "fab",
+      "before-after-bridge"
+    ],
+    "email": [
+      "7-email-welcome",
+      "nurture-sequence"
+    ],
+    "content": [
+      "content-atomizer",
+      "content-pyramid",
+      "seo-content-framework"
+    ]
+  },
+  "tools": {
+    "free": [
+      "duckduckgo",
+      "beautifulsoup",
+      "playwright",
+      "pollinations",
+      "ffmpeg"
+    ],
+    "premium": [
+      "perplexity",
+      "firecrawl",
+      "glif",
+      "remotion"
+    ]
+  },
+  "requirements": {
+    "python": ">=3.8",
+    "dependencies": [
+      "requests",
+      "beautifulsoup4",
+      "playwright",
+      "markdown",
+      "pyyaml"
+    ]
+  },
+  "compatibility": {
+    "minimum_ide_version": {
+      "codex": "1.0.0",
+      "kimi": "1.0.0",
+      "antigravity": "1.0.0"
+    }
+  },
+  "changelog": {
+    "3.0.0": {
+      "date": "2026-02-22",
+      "changes": [
+        "Hybrid Edition: Kimi_Agent_Skill + Compound Growth OS",
+        "Guardrails system (anti-patterns, language rules, decision framework)",
+        "Quality gates com script Python",
+        "Bootstrap workspace automation",
+        "Multi-agent expert review framework",
+        "Channel playbooks e audit findings",
+        "Templates de experimento e weekly review",
+        "Cross-IDE setup documentation"
+      ]
+    },
+    "1.0.0": {
+      "date": "2025-01-15",
+      "changes": [
+        "Lançamento inicial",
+        "8 diretórios principais",
+        "20+ skills",
+        "4 stacks pré-configuradas",
+        "Suporte a 3 IDEs"
+      ]
+    }
+  }
+}

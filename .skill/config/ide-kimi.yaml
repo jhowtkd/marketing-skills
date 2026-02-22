@@ -1,0 +1,198 @@
+# Kimi Code Configuration for Vibe Marketing
+# Optimized for 2M context window
+
+---
+skill:
+  name: "Vibe Marketing"
+  command: "/vibe"
+  description: "Marketing de alta performance com IA"
+
+context_management:
+  max_tokens: 1500000
+  strategy: "full_context"
+  preload_frameworks: true
+  
+  # Kimi suporta contexto muito grande
+  # Podemos carregar mais conteúdo de uma vez
+  priority:
+    - "00-orchestrator/orchestrator.md"
+    - "02-methodology/"
+    - "03-strategy/"
+    - "04-copy/"
+    - "vibe.config.yaml"
+    - "active_skill"
+    - "user_input"
+    - "conversation_history"
+
+optimizations:
+  # Pré-carregamento
+  preload:
+    enabled: true
+    frameworks: true
+    methodologies: true
+    common_skills: true
+  
+  # Carregamento completo
+  full_context:
+    enabled: true
+    load_all_frameworks: true
+    load_all_methodologies: true
+  
+  # Cache agressivo
+  cache:
+    enabled: true
+    max_items: 50
+    ttl: 7200
+    preload_all: true
+  
+  # Não precisa de chunking com 2M context
+  chunking:
+    enabled: false
+  
+  # Compressão opcional
+  compression:
+    enabled: false
+
+commands:
+  # Workflows - podem carregar mais contexto
+  "/vm-research":
+    description: "Pesquisa de mercado completa"
+    entry: "01-research/research-framework.md"
+    load_methodologies: true
+    estimated_tokens: 15000
+    
+  "/vm-foundation":
+    description: "Fundação de marca"
+    entry: "03-strategy/brand-voice/skill.md"
+    load_methodologies: true
+    estimated_tokens: 20000
+    
+  "/vm-landing":
+    description: "Landing page completa"
+    entry: "04-copy/direct-response/skill.md"
+    load_methodologies: true
+    load_copy_frameworks: true
+    estimated_tokens: 30000
+    
+  "/vm-email-seq":
+    description: "Sequência de emails"
+    entry: "04-copy/email-sequences/skill.md"
+    load_methodologies: true
+    estimated_tokens: 25000
+    
+  "/vm-seo-content":
+    description: "Conteúdo SEO"
+    entry: "04-copy/seo-content/skill.md"
+    load_methodologies: true
+    estimated_tokens: 30000
+    
+  "/vm-atomize":
+    description: "Atomização de conteúdo"
+    entry: "04-copy/content-atomizer/skill.md"
+    estimated_tokens: 20000
+  
+  # Stacks - carregam múltiplos skills
+  "/vm-stack-foundation":
+    description: "Stack foundation"
+    sequence:
+      - "01-research/research-framework.md"
+      - "03-strategy/brand-voice/skill.md"
+      - "03-strategy/positioning-angles/skill.md"
+      - "03-strategy/keyword-research/skill.md"
+    load_all: true
+    estimated_tokens: 60000
+    
+  "/vm-stack-conversion":
+    description: "Stack conversion"
+    sequence:
+      - "04-copy/direct-response/skill.md"
+      - "04-copy/email-sequences/skill.md"
+      - "03-strategy/lead-magnet/skill.md"
+      - "05-creative/creative-strategist/skill.md"
+    load_all: true
+    estimated_tokens: 70000
+    
+  "/vm-stack-traffic":
+    description: "Stack traffic"
+    sequence:
+      - "04-copy/seo-content/skill.md"
+      - "05-creative/social-graphics/skill.md"
+      - "04-copy/content-atomizer/skill.md"
+    load_all: true
+    estimated_tokens: 60000
+    
+  "/vm-stack-nurture":
+    description: "Stack nurture"
+    sequence:
+      - "04-copy/email-sequences/skill.md"
+      - "04-copy/newsletter/skill.md"
+      - "04-copy/seo-content/skill.md"
+    load_all: true
+    estimated_tokens: 55000
+  
+  # Review
+  "/vm-review-copy":
+    description: "Revisão de copy"
+    entry: "07-sequences/expert-review.md"
+    load_copy_frameworks: true
+    estimated_tokens: 15000
+    
+  "/vm-review-strategy":
+    description: "Revisão de estratégia"
+    entry: "07-sequences/expert-review.md"
+    load_methodologies: true
+    estimated_tokens: 15000
+    
+  "/vm-review-all":
+    description: "Revisão completa"
+    entry: "07-sequences/expert-review.md"
+    load_all: true
+    estimated_tokens: 25000
+  
+  # Context
+  "/vm-checkpoint-save":
+    description: "Salva checkpoint"
+    action: "save_checkpoint"
+    
+  "/vm-context-save":
+    description: "Salva contexto"
+    action: "save_context"
+    
+  "/vm-context-load":
+    description: "Carrega contexto"
+    action: "load_context"
+    
+  "/vm-continue":
+    description: "Continua de checkpoint"
+    action: "load_checkpoint"
+
+templates:
+  # Templates de prompt otimizados para Kimi
+  prompt_header: |
+    Você é um especialista em marketing usando Vibe Marketing.
+    Você tem acesso a todos os frameworks e metodologias carregados.
+    Contexto disponível: {context_size} tokens (amplo)
+    Skill atual: {skill_name}
+    
+  prompt_footer: |
+    ---
+    Use os frameworks carregados para criar uma resposta completa.
+    Aproveite o contexto amplo para referências cruzadas.
+    
+ui:
+  show_progress: true
+  show_token_count: true
+  show_context_usage: true
+  show_estimated_time: true
+  
+  colors:
+    primary: "#9B59B6"
+    secondary: "#2ECC71"
+    warning: "#F39C12"
+    error: "#E74C3C"
+
+---
+# Notas:
+# - Otimizado para context window de 2M tokens
+# - Carrega frameworks completos sem chunking
+# - Aproveita o contexto amplo para referências

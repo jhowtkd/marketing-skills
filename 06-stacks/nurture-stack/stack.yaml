@@ -1,0 +1,69 @@
+# Nurture Stack
+# Stack de nutrição: Welcome → Newsletter → Content
+
+---
+name: nurture-stack
+description: Stack completa de nutrição - relacionamento e retenção
+version: 1.0.0
+category: nurture
+estimated_time: 45-60 minutos
+
+# Sequência de execução
+sequence:
+  - id: welcome-sequence
+    name: Welcome Sequence
+    skill: 04-copy/email-sequences/skill.md
+    description: Sequência de boas-vindas para novos leads
+    estimated_time: 20-25 min
+    output: welcome-sequence
+    
+  - id: newsletter
+    name: Newsletter
+    skill: 04-copy/newsletter/skill.md
+    description: Template de newsletter recorrente
+    estimated_time: 15-20 min
+    output: newsletter-template
+    depends_on: welcome-sequence
+    
+  - id: content-plan
+    name: Content Plan
+    skill: 04-copy/content-atomizer/skill.md
+    description: Plano de conteúdo para nutrição
+    estimated_time: 10-15 min
+    output: content-plan
+    depends_on: newsletter
+
+# Output consolidado
+output:
+  format: consolidated
+  location: 08-output/nurture/
+  files:
+    - welcome-sequence.md
+    - newsletter-template.md
+    - content-plan.md
+    - nurture-calendar.md
+    - nurture-package.md
+
+# Comando de ativação
+command: "@vm-stack-nurture"
+
+# Quando usar
+when_to_use:
+  - "Tem leads que não compram"
+  - "Quer educar o mercado"
+  - "Precisa de relacionamento"
+  - "Quer aumentar retenção"
+
+# Input necessário
+input_required:
+  - "Lead magnet atual"
+  - "Objetivo de nutrição"
+  - "Frequência desejada"
+  - "Canais de comunicação"
+
+# Sucesso esperado
+success_criteria:
+  - "Welcome sequence de 7 emails"
+  - "Template de newsletter"
+  - "Plano de conteúdo mensal"
+  - "Calendário de publicação"

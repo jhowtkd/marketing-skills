@@ -1,0 +1,364 @@
+# 🎯 Vibe Marketing Configuration
+# Versão: 1.0.0
+# Zero custo obrigatório - Todas as ferramentas padrão são gratuitas
+
+---
+vibe_marketing:
+  # Informações da Skill
+  name: "Vibe Marketing"
+  version: "1.0.0"
+  description: "Marketing de alta performance com IA"
+  author: "Vibe Marketing Team"
+  license: "MIT"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE FERRAMENTAS
+  # ============================================================
+  # Todas as ferramentas padrão são GRATUITAS
+  # Upgrades pagos disponíveis quando necessário
+  
+  tools:
+    # --- Research ---
+    research:
+      primary:
+        name: "duckduckgo"
+        enabled: true
+        free: true
+        description: "Busca web gratuita"
+      fallback:
+        name: "brave"
+        enabled: true
+        free: true
+        description: "Busca web alternativa gratuita"
+      premium:
+        name: "perplexity"
+        enabled: false
+        free: false
+        description: "Busca com IA (pago)"
+        note: "Ative apenas se tiver API key"
+    
+    # --- Scraping ---
+    scraping:
+      primary:
+        name: "beautifulsoup"
+        enabled: true
+        free: true
+        description: "Scraping HTML básico"
+      fallback:
+        name: "crawl4ai"
+        enabled: true
+        free: true
+        description: "Scraping com IA"
+      premium:
+        name: "firecrawl"
+        enabled: false
+        free: false
+        description: "Scraping avançado (pago)"
+        note: "Ative apenas se tiver API key"
+    
+    # --- Browser ---
+    browser:
+      primary:
+        name: "playwright"
+        enabled: true
+        free: true
+        description: "Automação de browser"
+    
+    # --- Creative ---
+    creative:
+      primary:
+        name: "pollinations"
+        enabled: true
+        free: true
+        description: "Geração de imagens gratuita"
+      fallback:
+        name: "huggingface"
+        enabled: true
+        free: true
+        description: "Modelos open-source"
+      premium:
+        name: "glif"
+        enabled: false
+        free: false
+        description: "Geração avançada (pago)"
+        note: "Ative apenas se tiver API key"
+    
+    # --- Video ---
+    video:
+      primary:
+        name: "ffmpeg"
+        enabled: true
+        free: true
+        description: "Processamento de vídeo"
+      premium:
+        name: "remotion"
+        enabled: false
+        free: false
+        description: "Vídeo programático (pago)"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE IDE
+  # ============================================================
+  
+  ide:
+    # IDE padrão
+    default: "codex"
+    
+    # Configurações por IDE
+    configurations:
+      codex:
+        name: "Codex"
+        command: "@vibe"
+        context_window: 200000
+        optimization:
+          strategy: "sliding_window"
+          chunk_size: 4000
+          lazy_loading: true
+          max_tokens_per_request: 180000
+        
+      kimi:
+        name: "Kimi Code"
+        command: "/vibe"
+        context_window: 2000000
+        optimization:
+          strategy: "full_context"
+          preload_frameworks: true
+          max_tokens_per_request: 1500000
+        
+      antigravity:
+        name: "Antigravity"
+        command: "vibe:"
+        context_window: 100000
+        optimization:
+          strategy: "visual_chunks"
+          visual_workflows: true
+          drag_drop_stacks: true
+
+  # ============================================================
+  # CONFIGURAÇÃO DE OUTPUT
+  # ============================================================
+  
+  output:
+    # Local de saída
+    location: "./08-output"
+    
+    # Formato padrão
+    format: "markdown"
+    
+    # Auto-save
+    auto_save: true
+    
+    # Estrutura de diretórios
+    structure:
+      by_date: true
+      by_project: true
+      by_type: true
+    
+    # Templates
+    templates:
+      enabled: true
+      location: "./08-templates"
+    
+    # Consolidação
+    consolidate:
+      enabled: true
+      format: "single-file"  # ou "multi-file"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE WORKFLOWS
+  # ============================================================
+  
+  workflows:
+    # Workflows disponíveis
+    available:
+      - name: "research"
+        command: "@vm-research"
+        description: "Pesquisa de mercado completa"
+        estimated_time: "10-15 min"
+        
+      - name: "foundation"
+        command: "@vm-foundation"
+        description: "Fundação de marca"
+        estimated_time: "15-20 min"
+        
+      - name: "landing"
+        command: "@vm-landing"
+        description: "Landing page completa"
+        estimated_time: "20-30 min"
+        
+      - name: "email-seq"
+        command: "@vm-email-seq"
+        description: "Sequência de emails"
+        estimated_time: "15-20 min"
+        
+      - name: "seo-content"
+        command: "@vm-seo-content"
+        description: "Conteúdo SEO"
+        estimated_time: "20-30 min"
+        
+      - name: "atomize"
+        command: "@vm-atomize"
+        description: "Atomização de conteúdo"
+        estimated_time: "10-15 min"
+    
+    # Comandos de revisão
+    review:
+      enabled: true
+      stages:
+        - name: "copy"
+          command: "@vm-review-copy"
+          description: "Revisão de copy"
+          
+        - name: "design"
+          command: "@vm-review-design"
+          description: "Revisão de design"
+          
+        - name: "strategy"
+          command: "@vm-review-strategy"
+          description: "Revisão de estratégia"
+          
+        - name: "all"
+          command: "@vm-review-all"
+          description: "Revisão completa"
+    
+    # Gerenciamento de contexto
+    context:
+      commands:
+        - name: "checkpoint-save"
+          command: "@vm-checkpoint-save"
+          description: "Salva checkpoint"
+          
+        - name: "context-save"
+          command: "@vm-context-save"
+          description: "Salva contexto"
+          
+        - name: "context-load"
+          command: "@vm-context-load"
+          description: "Carrega contexto"
+          
+        - name: "continue"
+          command: "@vm-continue"
+          description: "Continua de checkpoint"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE STACKS
+  # ============================================================
+  
+  stacks:
+    # Stacks pré-configuradas
+    available:
+      - name: "foundation"
+        command: "@vm-stack-foundation"
+        description: "Fundação da marca"
+        skills:
+          - "01-research/research-framework"
+          - "03-strategy/brand-voice"
+          - "03-strategy/positioning-angles"
+          - "03-strategy/keyword-research"
+          
+      - name: "conversion"
+        command: "@vm-stack-conversion"
+        description: "Stack de conversão"
+        skills:
+          - "04-copy/direct-response"
+          - "04-copy/email-sequences"
+          - "03-strategy/lead-magnet"
+          - "05-creative/creative-strategist"
+          
+      - name: "traffic"
+        command: "@vm-stack-traffic"
+        description: "Stack de tráfego"
+        skills:
+          - "04-copy/seo-content"
+          - "05-creative/social-graphics"
+          - "05-creative/creative-strategist"
+          - "04-copy/content-atomizer"
+          
+      - name: "nurture"
+        command: "@vm-stack-nurture"
+        description: "Stack de nutrição"
+        skills:
+          - "04-copy/email-sequences"
+          - "04-copy/newsletter"
+          - "04-copy/seo-content"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE FRAMEWORKS
+  # ============================================================
+  
+  frameworks:
+    # Frameworks habilitados
+    enabled:
+      # Research
+      - "schwartz-stages"
+      - "ogilvy-research"
+      - "halbert-starving-crowd"
+      
+      # Copywriting
+      - "aida"
+      - "pas"
+      - "4ps"
+      - "fab"
+      - "before-after-bridge"
+      
+      # Email
+      - "7-email-welcome"
+      - "nurture-sequence"
+      
+      # Content
+      - "content-atomizer"
+      - "content-pyramid"
+      - "seo-content-framework"
+    
+    # Frameworks padrão por tipo
+    defaults:
+      headline: "pas"
+      landing: "aida"
+      email: "7-email-welcome"
+      content: "seo-content-framework"
+
+  # ============================================================
+  # CONFIGURAÇÃO DE PERSONALIZAÇÃO
+  # ============================================================
+  
+  customization:
+    # Permitir override de configurações
+    allow_override: true
+    
+    # Arquivo de override
+    override_file: "./vibe.config.override.yaml"
+    
+    # Variáveis de ambiente
+    env_prefix: "VIBE_"
+    
+    # Templates personalizados
+    custom_templates:
+      enabled: true
+      location: "./custom-templates"
+
+  # ============================================================
+  # LOGGING E DEBUG
+  # ============================================================
+  
+  logging:
+    level: "info"  # debug, info, warning, error
+    file: "./08-output/vibe-marketing.log"
+    console: true
+    
+  debug:
+    enabled: false
+    save_intermediate: true
+    save_prompts: false
+
+---
+# 📝 NOTAS
+#
+# 1. TODAS as ferramentas padrão são GRATUITAS
+# 2. Para ativar ferramentas pagas, defina 'enabled: true' na seção premium
+# 3. Adicione suas API keys em variáveis de ambiente:
+#    - VIBE_PERPLEXITY_API_KEY
+#    - VIBE_FIRECRAWL_API_KEY
+#    - VIBE_GLIF_API_KEY
+# 4. Para personalizar, crie 'vibe.config.override.yaml'
+#
+# ============================================================

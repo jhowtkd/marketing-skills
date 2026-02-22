@@ -1,0 +1,158 @@
+# Codex IDE Configuration for Vibe Marketing
+# Optimized for 200k context window
+
+---
+skill:
+  name: "Vibe Marketing"
+  command: "@vibe"
+  description: "Marketing de alta performance com IA"
+
+context_management:
+  max_tokens: 180000
+  strategy: "sliding_window"
+  chunk_size: 4000
+  overlap: 500
+  lazy_loading: true
+  
+  # Prioridades de contexto
+  priority:
+    - "00-orchestrator/orchestrator.md"
+    - "vibe.config.yaml"
+    - "active_skill"
+    - "user_input"
+    - "conversation_history"
+
+optimizations:
+  # Carregamento preguiçoso
+  lazy_loading:
+    enabled: true
+    load_on_demand: true
+    cache_size: 5
+  
+  # Chunking inteligente
+  chunking:
+    enabled: true
+    method: "semantic"
+    max_chunk_size: 4000
+    preserve_context: true
+  
+  # Compressão de contexto
+  compression:
+    enabled: true
+    method: "summarization"
+    threshold: 0.8
+  
+  # Cache
+  cache:
+    enabled: true
+    max_items: 10
+    ttl: 3600
+
+commands:
+  # Workflows
+  "@vm-research":
+    description: "Pesquisa de mercado completa"
+    entry: "01-research/research-framework.md"
+    estimated_tokens: 15000
+    
+  "@vm-foundation":
+    description: "Fundação de marca"
+    entry: "03-strategy/brand-voice/skill.md"
+    estimated_tokens: 20000
+    
+  "@vm-landing":
+    description: "Landing page completa"
+    entry: "04-copy/direct-response/skill.md"
+    estimated_tokens: 25000
+    
+  "@vm-email-seq":
+    description: "Sequência de emails"
+    entry: "04-copy/email-sequences/skill.md"
+    estimated_tokens: 20000
+    
+  "@vm-seo-content":
+    description: "Conteúdo SEO"
+    entry: "04-copy/seo-content/skill.md"
+    estimated_tokens: 25000
+    
+  "@vm-atomize":
+    description: "Atomização de conteúdo"
+    entry: "04-copy/content-atomizer/skill.md"
+    estimated_tokens: 15000
+  
+  # Stacks
+  "@vm-stack-foundation":
+    description: "Stack foundation"
+    sequence:
+      - "01-research/research-framework.md"
+      - "03-strategy/brand-voice/skill.md"
+      - "03-strategy/positioning-angles/skill.md"
+    estimated_tokens: 45000
+    
+  "@vm-stack-conversion":
+    description: "Stack conversion"
+    sequence:
+      - "04-copy/direct-response/skill.md"
+      - "04-copy/email-sequences/skill.md"
+      - "03-strategy/lead-magnet/skill.md"
+    estimated_tokens: 50000
+  
+  # Review
+  "@vm-review-copy":
+    description: "Revisão de copy"
+    entry: "07-sequences/expert-review.md"
+    estimated_tokens: 10000
+    
+  "@vm-review-strategy":
+    description: "Revisão de estratégia"
+    entry: "07-sequences/expert-review.md"
+    estimated_tokens: 10000
+    
+  "@vm-review-all":
+    description: "Revisão completa"
+    entry: "07-sequences/expert-review.md"
+    estimated_tokens: 15000
+  
+  # Context
+  "@vm-checkpoint-save":
+    description: "Salva checkpoint"
+    action: "save_checkpoint"
+    
+  "@vm-context-save":
+    description: "Salva contexto"
+    action: "save_context"
+    
+  "@vm-continue":
+    description: "Continua de checkpoint"
+    action: "load_checkpoint"
+
+templates:
+  # Templates de prompt otimizados para Codex
+  prompt_header: |
+    Você é um especialista em marketing usando Vibe Marketing.
+    Contexto disponível: {context_size} tokens
+    Skill atual: {skill_name}
+    
+  prompt_footer: |
+    ---
+    Responda de forma concisa e estruturada.
+    Use markdown para formatação.
+    
+ui:
+  # Configurações de UI
+  show_progress: true
+  show_token_count: true
+  show_estimated_time: true
+  
+  # Cores (se suportado)
+  colors:
+    primary: "#4A90D9"
+    secondary: "#5CB85C"
+    warning: "#F0AD4E"
+    error: "#D9534F"
+
+---
+# Notas:
+# - Otimizado para context window de 200k tokens
+# - Usa sliding window para gerenciar contexto
+# - Lazy loading para carregar skills sob demanda

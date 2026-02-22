@@ -1,0 +1,79 @@
+# Conversion Stack
+# Stack de conversão: Landing Page → Email Sequence → Lead Magnet
+
+---
+name: conversion-stack
+description: Stack completa de conversão - landing, emails e lead magnet
+version: 1.0.0
+category: conversion
+estimated_time: 60-90 minutos
+
+# Sequência de execução
+sequence:
+  - id: lead-magnet
+    name: Lead Magnet
+    skill: 03-strategy/lead-magnet/skill.md
+    description: Criação de isca digital para captura de leads
+    estimated_time: 15-20 min
+    output: lead-magnet
+    
+  - id: landing-copy
+    name: Landing Page Copy
+    skill: 04-copy/direct-response/skill.md
+    description: Copy completa para página de vendas
+    estimated_time: 20-30 min
+    output: landing-copy
+    depends_on: lead-magnet
+    
+  - id: email-sequence
+    name: Email Sequence
+    skill: 04-copy/email-sequences/skill.md
+    description: Sequência de 7 emails de nurture
+    estimated_time: 20-30 min
+    output: email-sequence
+    depends_on: landing-copy
+    
+  - id: creative-brief
+    name: Creative Brief
+    skill: 05-creative/creative-strategist/skill.md
+    description: Brief criativo para assets visuais
+    estimated_time: 10-15 min
+    output: creative-brief
+    depends_on: email-sequence
+
+# Output consolidado
+output:
+  format: consolidated
+  location: 08-output/conversion/
+  files:
+    - lead-magnet.md
+    - landing-page-copy.md
+    - email-sequence.md
+    - creative-brief.md
+    - conversion-package.md
+
+# Comando de ativação
+command: "@vm-stack-conversion"
+
+# Quando usar
+when_to_use:
+  - "Vai lançar um produto"
+  - "Precisa converter visitantes"
+  - "Quer maximizar vendas"
+  - "Não tem funil de vendas"
+
+# Input necessário
+input_required:
+  - "Nome do produto"
+  - "Preço"
+  - "Descrição do produto"
+  - "Público-alvo"
+  - "Diferencial principal"
+  - "Provas (depoimentos, números)"
+
+# Sucesso esperado
+success_criteria:
+  - "Lead magnet criado e pronto"
+  - "Landing page copy completa"
+  - "Email sequence de 7 emails"
+  - "Brief criativo para designer"

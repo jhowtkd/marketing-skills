@@ -1,0 +1,244 @@
+# Antigravity IDE Configuration for Vibe Marketing
+# Optimized for visual workflows
+
+---
+skill:
+  name: "Vibe Marketing"
+  command: "vibe:"
+  description: "Marketing de alta performance com IA"
+
+context_management:
+  max_tokens: 90000
+  strategy: "visual_chunks"
+  
+  # Antigravity é visual - organizar por blocos
+  priority:
+    - "00-orchestrator/orchestrator.md"
+    - "visual_workflow"
+    - "active_skill"
+    - "user_input"
+
+optimizations:
+  # Workflows visuais
+  visual_workflows:
+    enabled: true
+    show_diagrams: true
+    interactive_nodes: true
+    color_coding: true
+  
+  # Drag and drop
+  drag_drop:
+    enabled: true
+    stacks_draggable: true
+    skills_draggable: true
+    reorder_sequences: true
+  
+  # Visualização de stacks
+  stack_visualization:
+    enabled: true
+    show_flow: true
+    show_dependencies: true
+    highlight_active: true
+  
+  # Chunking visual
+  chunking:
+    enabled: true
+    method: "visual_blocks"
+    max_block_size: 3000
+  
+  # Cache
+  cache:
+    enabled: true
+    max_items: 20
+    ttl: 1800
+
+commands:
+  # Workflows com visualização
+  "vibe:research":
+    description: "Pesquisa de mercado"
+    entry: "01-research/research-framework.md"
+    visual_flow: true
+    estimated_tokens: 15000
+    
+  "vibe:foundation":
+    description: "Fundação de marca"
+    entry: "03-strategy/brand-voice/skill.md"
+    visual_flow: true
+    estimated_tokens: 20000
+    
+  "vibe:landing":
+    description: "Landing page"
+    entry: "04-copy/direct-response/skill.md"
+    visual_flow: true
+    estimated_tokens: 25000
+    
+  "vibe:email-seq":
+    description: "Sequência de emails"
+    entry: "04-copy/email-sequences/skill.md"
+    visual_flow: true
+    show_sequence_diagram: true
+    estimated_tokens: 20000
+    
+  "vibe:seo-content":
+    description: "Conteúdo SEO"
+    entry: "04-copy/seo-content/skill.md"
+    visual_flow: true
+    estimated_tokens: 25000
+    
+  "vibe:atomize":
+    description: "Atomização"
+    entry: "04-copy/content-atomizer/skill.md"
+    visual_flow: true
+    show_content_tree: true
+    estimated_tokens: 15000
+  
+  # Stacks com visualização
+  "vibe:stack-foundation":
+    description: "Stack foundation"
+    sequence:
+      - "01-research/research-framework.md"
+      - "03-strategy/brand-voice/skill.md"
+      - "03-strategy/positioning-angles/skill.md"
+    visual_flow: true
+    show_pipeline: true
+    estimated_tokens: 45000
+    
+  "vibe:stack-conversion":
+    description: "Stack conversion"
+    sequence:
+      - "04-copy/direct-response/skill.md"
+      - "04-copy/email-sequences/skill.md"
+      - "03-strategy/lead-magnet/skill.md"
+    visual_flow: true
+    show_pipeline: true
+    estimated_tokens: 50000
+    
+  "vibe:stack-traffic":
+    description: "Stack traffic"
+    sequence:
+      - "04-copy/seo-content/skill.md"
+      - "05-creative/social-graphics/skill.md"
+      - "04-copy/content-atomizer/skill.md"
+    visual_flow: true
+    show_pipeline: true
+    estimated_tokens: 45000
+    
+  "vibe:stack-nurture":
+    description: "Stack nurture"
+    sequence:
+      - "04-copy/email-sequences/skill.md"
+      - "04-copy/newsletter/skill.md"
+      - "04-copy/seo-content/skill.md"
+    visual_flow: true
+    show_pipeline: true
+    estimated_tokens: 40000
+  
+  # Review
+  "vibe:review-copy":
+    description: "Revisão de copy"
+    entry: "07-sequences/expert-review.md"
+    visual_checklist: true
+    estimated_tokens: 10000
+    
+  "vibe:review-strategy":
+    description: "Revisão de estratégia"
+    entry: "07-sequences/expert-review.md"
+    visual_checklist: true
+    estimated_tokens: 10000
+    
+  "vibe:review-all":
+    description: "Revisão completa"
+    entry: "07-sequences/expert-review.md"
+    visual_checklist: true
+    show_score: true
+    estimated_tokens: 15000
+  
+  # Context
+  "vibe:checkpoint-save":
+    description: "Salva checkpoint"
+    action: "save_checkpoint"
+    visual_indicator: true
+    
+  "vibe:context-save":
+    description: "Salva contexto"
+    action: "save_context"
+    visual_indicator: true
+    
+  "vibe:context-load":
+    description: "Carrega contexto"
+    action: "load_context"
+    visual_selector: true
+    
+  "vibe:continue":
+    description: "Continua"
+    action: "load_checkpoint"
+    visual_indicator: true
+
+ui:
+  # Interface visual
+  visual_mode: true
+  show_workflow_diagram: true
+  show_progress_bar: true
+  show_skill_cards: true
+  
+  # Cores do tema
+  colors:
+    primary: "#3498DB"
+    secondary: "#1ABC9C"
+    accent: "#E67E22"
+    success: "#27AE60"
+    warning: "#F1C40F"
+    error: "#E74C3C"
+    background: "#ECF0F1"
+    text: "#2C3E50"
+  
+  # Cards de skills
+  skill_cards:
+    enabled: true
+    show_icon: true
+    show_description: true
+    show_estimated_time: true
+    expandable: true
+  
+  # Diagramas
+  diagrams:
+    enabled: true
+    type: "flowchart"
+    interactive: true
+    zoomable: true
+  
+  # Checkpoints visuais
+  checkpoints:
+    enabled: true
+    visual_indicator: true
+    save_animation: true
+
+templates:
+  # Templates visuais
+  prompt_header: |
+    ## Vibe Marketing - {skill_name}
+    
+    ```
+    [Workflow Visual]
+    ```
+    
+  prompt_footer: |
+    ---
+    💡 **Dica**: Use os cards interativos para navegar
+    
+visual_components:
+  # Componentes visuais disponíveis
+  workflow_diagram: true
+  skill_cards: true
+  progress_indicator: true
+  checklist: true
+  content_tree: true
+  pipeline_view: true
+  score_card: true
+
+---
+# Notas:
+# - Otimizado para interface visual
+# - Workflows como diagramas interativos
+# - Stacks com visualização de pipeline
+# - Checkpoints com indicadores visuais

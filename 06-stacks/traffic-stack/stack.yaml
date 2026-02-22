@@ -1,0 +1,78 @@
+# Traffic Stack
+# Stack de tráfego: SEO Content → Social Graphics → Ad Creative
+
+---
+name: traffic-stack
+description: Stack completa de tráfego - SEO, social e anúncios
+version: 1.0.0
+category: traffic
+estimated_time: 60-90 minutos
+
+# Sequência de execução
+sequence:
+  - id: seo-content
+    name: SEO Content
+    skill: 04-copy/seo-content/skill.md
+    description: Artigo otimizado para SEO
+    estimated_time: 25-35 min
+    output: seo-article
+    
+  - id: social-graphics
+    name: Social Graphics
+    skill: 05-creative/social-graphics/skill.md
+    description: Gráficos para redes sociais
+    estimated_time: 15-20 min
+    output: social-graphics-brief
+    depends_on: seo-content
+    
+  - id: ad-creative
+    name: Ad Creative
+    skill: 04-copy/direct-response/skill.md
+    description: Copy para anúncios pagos
+    estimated_time: 15-20 min
+    output: ad-copy
+    depends_on: social-graphics
+    
+  - id: atomize
+    name: Content Atomizer
+    skill: 04-copy/content-atomizer/skill.md
+    description: Multiplicar conteúdo em 15+ peças
+    estimated_time: 10-15 min
+    output: content-pieces
+    depends_on: ad-creative
+
+# Output consolidado
+output:
+  format: consolidated
+  location: 08-output/traffic/
+  files:
+    - seo-article.md
+    - social-graphics-brief.md
+    - ad-copy.md
+    - content-calendar.md
+    - traffic-package.md
+
+# Comando de ativação
+command: "@vm-stack-traffic"
+
+# Quando usar
+when_to_use:
+  - "Precisa de mais visitantes"
+  - "Quer conteúdo para redes sociais"
+  - "Vai investir em anúncios"
+  - "Quer tráfego orgânico"
+
+# Input necessário
+input_required:
+  - "Tópico principal"
+  - "Palavras-chave target"
+  - "Público-alvo"
+  - "Canais de distribuição"
+  - "Orçamento para ads (se houver)"
+
+# Sucesso esperado
+success_criteria:
+  - "Artigo SEO pronto para publicar"
+  - "Brief para gráficos sociais"
+  - "Copy para anúncios"
+  - "15+ peças de conteúdo derivadas"

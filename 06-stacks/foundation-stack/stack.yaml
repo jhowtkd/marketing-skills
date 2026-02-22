@@ -1,0 +1,77 @@
+# Foundation Stack
+# Base completa da marca: Research → Brand Voice → Positioning → Keywords
+
+---
+name: foundation-stack
+description: Fundação completa da marca - do research ao brand voice
+version: 1.0.0
+category: strategy
+estimated_time: 45-60 minutos
+
+# Sequência de execução
+sequence:
+  - id: research
+    name: Pesquisa de Mercado
+    skill: 01-research/research-framework.md
+    description: Análise completa de mercado, concorrência e público
+    estimated_time: 15-20 min
+    output: research-report
+    
+  - id: brand-voice
+    name: Brand Voice
+    skill: 03-strategy/brand-voice/skill.md
+    description: Definição da voz e personalidade da marca
+    estimated_time: 15-20 min
+    output: brand-voice-guide
+    depends_on: research
+    
+  - id: positioning
+    name: Positioning Angles
+    skill: 03-strategy/positioning-angles/skill.md
+    description: Escolha do ângulo de posicionamento estratégico
+    estimated_time: 10-15 min
+    output: positioning-strategy
+    depends_on: brand-voice
+    
+  - id: keywords
+    name: Keyword Research
+    skill: 03-strategy/keyword-research/skill.md
+    description: Mapeamento de palavras-chave estratégicas
+    estimated_time: 10-15 min
+    output: keyword-map
+    depends_on: positioning
+
+# Output consolidado
+output:
+  format: consolidated
+  location: 08-output/foundation/
+  files:
+    - research-report.md
+    - brand-voice-guide.md
+    - positioning-strategy.md
+    - keyword-map.md
+    - foundation-brief.md
+
+# Comando de ativação
+command: "@vm-stack-foundation"
+
+# Quando usar
+when_to_use:
+  - "Está começando um novo negócio"
+  - "Precisa definir marca do zero"
+  - "Vai criar múltiplos assets"
+  - "Quer consistência de marca"
+
+# Input necessário
+input_required:
+  - "Nome do projeto/empresa"
+  - "Descrição do produto/serviço"
+  - "Público-alvo (se conhecido)"
+  - "Concorrentes principais (se conhecidos)"
+
+# Sucesso esperado
+success_criteria:
+  - "Research completo com insights acionáveis"
+  - "Brand voice documentada e aplicável"
+  - "Posicionamento claro e diferenciado"
+  - "Keywords mapeadas e priorizadas"
