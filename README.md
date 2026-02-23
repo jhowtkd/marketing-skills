@@ -139,6 +139,17 @@ bash 09-tools/setup.sh --persist-keys
 bash 09-tools/setup.sh --run-onboard --onboard-dry-run --onboard-ide codex,cursor,kimi,antigravity
 ```
 
+### Onboarding GUI local (Web Console)
+
+Para uma interface gráfica interativa:
+
+```bash
+python3 09-tools/onboard_web.py serve
+```
+
+Acesse em `http://127.0.0.1:8765` — selecione IDEs, configure chaves premium, visualize diffs e aplique mudanças com um clique.
+```
+
 `--persist-keys` grava as chaves no profile do shell (`~/.zshrc`/`~/.bashrc`) para uso em novas sessões nessa máquina.
 
 ### Onboarding MCP + IDEs (híbrido)

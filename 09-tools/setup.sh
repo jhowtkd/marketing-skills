@@ -279,7 +279,9 @@ print_next_steps() {
   echo "     python3 ${SCRIPT_DIR}/pipeline_runner.py status --project-id demo --thread-id t1"
   echo "  3. Run onboarding preview (optional):"
   echo "     python3 ${SCRIPT_DIR}/onboard.py run --dry-run --ide codex,cursor,kimi,antigravity"
-  echo "  4. Approve next stage:"
+  echo "  4. Or use the GUI (optional):"
+  echo "     python3 ${SCRIPT_DIR}/onboard_web.py serve"
+  echo "  5. Approve next stage:"
   echo "     python3 ${SCRIPT_DIR}/pipeline_runner.py approve --project-id demo --thread-id t1 --stage brand-voice"
 }
 

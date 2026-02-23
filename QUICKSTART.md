@@ -23,6 +23,15 @@ bash 09-tools/setup.sh
 python -m pip install -r 09-tools/requirements.txt
 ```
 
+### GUI Local (Opcional)
+
+Para interface gráfica de onboarding:
+
+```bash
+python3 09-tools/onboard_web.py serve
+# Acesse http://127.0.0.1:8765
+```
+
 ### 3. Configure sua IDE (1 minuto)
 
 **Codex:**

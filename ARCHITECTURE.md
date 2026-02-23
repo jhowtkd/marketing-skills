@@ -204,6 +204,31 @@ Creative:
   Pollinations (grátis) → HuggingFace (grátis) → Glif (pago)
 ```
 
+### Web Console (Flask + Static UI)
+
+Interface gráfica local para onboarding de IDEs e chaves premium:
+
+```
+09-tools/
+├── onboard_web.py        # Flask app factory + CLI
+├── onboard_api.py        # Normalização/validação de payload
+└── web/onboard/
+    ├── index.html        # UI estática
+    ├── styles.css        # Dark theme styling
+    └── app.js            # Fetch API wiring
+```
+
+**Endpoints:**
+- `GET /api/v1/health` — Status do serviço
+- `GET /api/v1/defaults` — IDEs suportadas e shell detectado
+- `POST /api/v1/onboard/preview` — Executa dry-run
+- `POST /api/v1/onboard/apply` — Aplica mudanças com decisões
+
+**Uso:**
+```bash
+python3 09-tools/onboard_web.py serve --host 127.0.0.1 --port 8765
+```
+
 ---
 
 ## 💾 Sistema de Contexto
