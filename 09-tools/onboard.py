@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import OrderedDict
+from difflib import unified_diff
 from importlib import import_module
 from pathlib import Path
 
@@ -42,6 +43,16 @@ def discover_targets(ide_csv: str) -> list[dict]:
             }
         )
     return targets
+
+
+def build_diff_preview(before: str, after: str, target: str) -> str:
+    diff_lines = unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        fromfile=target,
+        tofile=target,
+    )
+    return "".join(diff_lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
