@@ -11,8 +11,8 @@ def run_research_with_fallback(
         payload = premium_runner()
         payload["fallback_used"] = False
         return payload
-    except Exception:
+    except Exception as exc:
         payload = free_runner()
         payload["fallback_used"] = True
+        payload["premium_error"] = str(exc)
         return payload
-

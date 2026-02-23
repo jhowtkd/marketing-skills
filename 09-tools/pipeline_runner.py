@@ -16,6 +16,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="runtime",
         help="Runtime state root path",
     )
+    parser.add_argument(
+        "--output-root",
+        default="08-output",
+        help="Artifacts output root path",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -54,6 +59,7 @@ def main() -> int:
             thread_id=args.thread_id,
             stack_path=args.stack_path,
             query=args.query,
+            output_root=Path(args.output_root),
         )
         print(dump_json(result))
         return 0

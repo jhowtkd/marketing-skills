@@ -111,6 +111,7 @@ O stack `@vm-stack-foundation` agora suporta execução híbrida por projeto/thr
 
 ```bash
 python3 09-tools/pipeline_runner.py run \
+  --output-root /path/for/artifacts \
   --project-id acme \
   --thread-id th-001 \
   --stack-path 06-stacks/foundation-stack/stack.yaml \
@@ -120,6 +121,8 @@ python3 09-tools/pipeline_runner.py approve --project-id acme --thread-id th-001
 python3 09-tools/pipeline_runner.py status --project-id acme --thread-id th-001
 python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 --stage research
 ```
+
+`--output-root` define onde os artefatos da execução serão gravados e esse caminho fica persistido no estado da thread.
 
 ### Providers (premium-first com fallback)
 
