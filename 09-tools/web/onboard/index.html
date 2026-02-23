@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VM Onboard Web Console</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>VM Onboard</h1>
+            <p>Configure IDEs and premium keys for Vibe Marketing</p>
+        </header>
+
+        <main>
+            <form id="ide-form">
+                <section class="card">
+                    <h2>Select IDEs</h2>
+                    <div class="ide-list">
+                        <label><input type="checkbox" name="ide" value="codex"> Codex</label>
+                        <label><input type="checkbox" name="ide" value="cursor"> Cursor</label>
+                        <label><input type="checkbox" name="ide" value="kimi"> Kimi</label>
+                        <label><input type="checkbox" name="ide" value="antigravity"> Antigravity</label>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>Premium Keys (optional)</h2>
+                    <div class="key-inputs">
+                        <label>
+                            PERPLEXITY_API_KEY
+                            <input type="password" name="PERPLEXITY_API_KEY" placeholder="Optional">
+                        </label>
+                        <label>
+                            FIRECRAWL_API_KEY
+                            <input type="password" name="FIRECRAWL_API_KEY" placeholder="Optional">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>Actions</h2>
+                    <div class="actions">
+                        <button id="preview-btn" type="button">Preview</button>
+                        <button id="apply-btn" type="button" disabled>Apply</button>
+                    </div>
+                </section>
+            </form>
+
+            <section id="diff-panel" class="card hidden">
+                <h2>Preview Changes</h2>
+                <div id="diff-content"></div>
+            </section>
+
+            <section id="summary-panel" class="card hidden">
+                <h2>Summary</h2>
+                <pre id="summary-content"></pre>
+            </section>
+        </main>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
