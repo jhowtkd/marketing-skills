@@ -10,6 +10,7 @@ from difflib import unified_diff
 from importlib import import_module
 from pathlib import Path
 import shutil
+import tempfile
 
 
 SUPPORTED_IDES = ("codex", "cursor", "kimi", "antigravity")
@@ -82,6 +83,27 @@ def apply_change(target: Path, new_content: str) -> dict:
         "target_path": str(target_path),
         "backup_path": backup_path,
     }
+
+
+def _escape_single_quotes(value: str) -> str:
+    return value.replace("'", "'\"'\"'")
+
+
+def upsert_export(profile_path: Path, var_name: str, var_value: str) -> None:
+    profile = Path(profile_path).expanduser()
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    if not profile.exists():
+        profile.write_text("", encoding="utf-8")
+
+    lines = profile.read_text(encoding="utf-8").splitlines()
+    filtered = [line for line in lines if not line.startswith(f"export {var_name}=")]
+    filtered.append(f"export {var_name}='{_escape_single_quotes(var_value)}'")
+    new_content = "\n".join(filtered).strip() + "\n"
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(new_content)
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(profile)
 
 
 def build_parser() -> argparse.ArgumentParser:
