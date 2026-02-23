@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from onboard_web import create_app
+from onboard_web import create_app, build_parser
 
 
 def test_health_endpoint() -> None:
@@ -83,3 +83,10 @@ def test_homepage_serves_index_html() -> None:
 
     assert response.status_code == 200
     assert b"vm onboard" in response.data.lower()
+
+
+def test_web_parser_exposes_serve_command() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["serve", "--port", "8765"])
+    assert args.command == "serve"
+    assert args.port == 8765

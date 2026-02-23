@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -57,3 +58,24 @@ def create_app() -> Flask:
         return send_from_directory(WEB_DIR, asset_path)
 
     return app
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser("vm-onboard-web")
+    sub = parser.add_subparsers(dest="command", required=True)
+    serve = sub.add_parser("serve")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if args.command == "serve":
+        app = create_app()
+        app.run(host=args.host, port=args.port)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
