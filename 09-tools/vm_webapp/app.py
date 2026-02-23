@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
@@ -31,4 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.llm = llm
 
     app.include_router(api_router, prefix="/api/v1")
+
+    static_dir = Path(__file__).resolve().parents[1] / "web" / "vm"
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="vm-ui")
     return app

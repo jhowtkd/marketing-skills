@@ -14,3 +14,11 @@ def test_api_health_and_list_brands() -> None:
     res = client.get("/api/v1/brands")
     assert res.status_code == 200
     assert res.json()["brands"] == []
+
+
+def test_root_serves_ui() -> None:
+    client = TestClient(create_app())
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "text/html" in res.headers.get("content-type", "")
+    assert "VM Web App" in res.text
