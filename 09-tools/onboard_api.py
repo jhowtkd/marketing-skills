@@ -20,3 +20,21 @@ def run_preview(ides: list[str], shell_file: str, apply_keys: bool, keys: dict[s
         key_values=keys,
         apply_keys=apply_keys,
     )
+
+
+def run_apply(
+    ides: list[str],
+    decisions: dict[str, str],
+    shell_file: str,
+    apply_keys: bool,
+    keys: dict[str, str],
+) -> dict:
+    return run_onboarding(
+        ide_csv=",".join(ides),
+        dry_run=False,
+        auto_apply=False,
+        decisions=decisions,
+        shell_file=shell_file,
+        key_values=keys,
+        apply_keys=apply_keys,
+    )
