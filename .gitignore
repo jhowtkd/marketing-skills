@@ -8,6 +8,7 @@
 
 # Outputs gerados
 08-output/
+runtime/
 
 # Cache Python
 __pycache__/
