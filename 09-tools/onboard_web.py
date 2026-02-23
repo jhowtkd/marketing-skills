@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from flask import Flask, jsonify, request
+from pathlib import Path
+
+from flask import Flask, jsonify, request, send_from_directory
 
 from onboard_api import build_defaults, run_preview, run_apply
 from onboard_report import render_summary
+
+WEB_DIR = Path(__file__).resolve().parent / "web" / "onboard"
 
 
 def create_app() -> Flask:
@@ -43,5 +47,13 @@ def create_app() -> Flask:
             keys=payload.get("keys", {}),
         )
         return jsonify({"ok": True, "report": report, "summary": render_summary(list(report["ides"].values()))})
+
+    @app.get("/")
+    def index():
+        return send_from_directory(WEB_DIR, "index.html")
+
+    @app.get("/<path:asset_path>")
+    def static_assets(asset_path: str):
+        return send_from_directory(WEB_DIR, asset_path)
 
     return app

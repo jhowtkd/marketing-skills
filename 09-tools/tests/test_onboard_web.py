@@ -74,3 +74,12 @@ def test_apply_endpoint_requires_decisions() -> None:
         json={"ides": ["codex"], "applyKeys": False, "keys": {}, "shellFile": ""},
     )
     assert response.status_code == 400
+
+
+def test_homepage_serves_index_html() -> None:
+    app = create_app()
+    client = app.test_client()
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"vm onboard" in response.data.lower()
