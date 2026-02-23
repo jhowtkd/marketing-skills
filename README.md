@@ -129,3 +129,12 @@ python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 -
 - Primário: Perplexity + Firecrawl.
 - Fallback em erro: DuckDuckGo + scraping gratuito.
 - Configure: `PERPLEXITY_API_KEY` e `FIRECRAWL_API_KEY`.
+
+### Setup rápido de ambiente
+
+```bash
+bash 09-tools/setup.sh --check-only
+bash 09-tools/setup.sh --persist-keys
+```
+
+`--persist-keys` grava as chaves no profile do shell (`~/.zshrc`/`~/.bashrc`) para uso em novas sessões nessa máquina.
