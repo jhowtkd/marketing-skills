@@ -43,3 +43,34 @@ def test_preview_endpoint_returns_report(monkeypatch) -> None:
     payload = response.get_json()
     assert payload["ok"] is True
     assert payload["report"]["dry_run"] is True
+
+
+def test_apply_endpoint_returns_report(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "onboard_web.run_apply",
+        lambda **kwargs: {"ides": {"codex": {"status": "applied"}}, "keys": {}, "dry_run": False},
+    )
+    app = create_app()
+    client = app.test_client()
+    response = client.post(
+        "/api/v1/onboard/apply",
+        json={
+            "ides": ["codex"],
+            "decisions": {"codex": "apply"},
+            "applyKeys": False,
+            "keys": {},
+            "shellFile": "",
+        },
+    )
+    assert response.status_code == 200
+    assert response.get_json()["report"]["dry_run"] is False
+
+
+def test_apply_endpoint_requires_decisions() -> None:
+    app = create_app()
+    client = app.test_client()
+    response = client.post(
+        "/api/v1/onboard/apply",
+        json={"ides": ["codex"], "applyKeys": False, "keys": {}, "shellFile": ""},
+    )
+    assert response.status_code == 400
