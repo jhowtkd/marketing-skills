@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -13,7 +14,12 @@ from vm_webapp.settings import Settings
 from vm_webapp.workspace import Workspace
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    memory: Any | None = None,
+    llm: Any | None = None,
+) -> FastAPI:
     settings = settings or Settings()
 
     app = FastAPI(title="VM Web App")
@@ -21,10 +27,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     workspace = Workspace(root=settings.vm_workspace_root)
     engine = build_engine(settings.vm_db_path)
     init_db(engine)
-    memory = MemoryIndex(root=workspace.root / "zvec")
-
-    llm = None
-    if settings.kimi_api_key:
+    memory = memory or MemoryIndex(root=workspace.root / "zvec")
+    if llm is None and settings.kimi_api_key:
         llm = KimiClient(base_url=settings.kimi_base_url, api_key=settings.kimi_api_key)
 
     app.state.settings = settings

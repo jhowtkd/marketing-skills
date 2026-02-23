@@ -134,9 +134,36 @@ class RunEngine:
     def _execute_stage(self, run: Run, stage_id: str) -> None:
         artifact_path = self._artifacts_dir(run.run_id) / f"{stage_id}.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(
-            f"# {stage_id}\n\nPlaceholder artifact for run `{run.run_id}`.\n",
-            encoding="utf-8",
+        content = f"# {stage_id}\n\nPlaceholder artifact for run `{run.run_id}`.\n"
+        if self.llm is not None:
+            content = self.llm.chat(
+                model="kimi-for-coding",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Run ID: {run.run_id}\n"
+                            f"Stage: {stage_id}\n"
+                            f"User request: {run.user_request}\n"
+                            "Generate concise markdown output."
+                        ),
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=1024,
+            )
+        artifact_path.write_text(content, encoding="utf-8")
+        self.memory.upsert_doc(
+            doc_id=f"run:{run.run_id}:stage:{stage_id}",
+            text=content,
+            meta={
+                "run_id": run.run_id,
+                "brand_id": run.brand_id,
+                "product_id": run.product_id,
+                "thread_id": run.thread_id,
+                "stage_id": stage_id,
+                "kind": "artifact",
+            },
         )
 
     def _artifacts_dir(self, run_id: str) -> Path:
