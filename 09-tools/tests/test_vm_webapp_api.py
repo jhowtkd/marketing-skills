@@ -76,3 +76,7 @@ def test_chat_uses_retrieved_context_in_prompt() -> None:
 
     prompt_text = "\n".join(str(item.get("content", "")) for item in fake_llm.last_messages)
     assert "We tried X and it failed." in prompt_text
+
+
+def test_cli_module_imports() -> None:
+    import vm_webapp.__main__  # noqa: F401
