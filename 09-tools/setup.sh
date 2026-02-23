@@ -12,6 +12,11 @@ INSTALL_DEPS=1
 PERSIST_KEYS=0
 CHECK_ONLY=0
 SHELL_FILE=""
+RUN_ONBOARD=0
+ONBOARD_DRY_RUN=0
+ONBOARD_AUTO_APPLY=0
+ONBOARD_APPLY_KEYS=0
+ONBOARD_IDE=""
 
 print_usage() {
   cat <<'USAGE'
@@ -23,6 +28,11 @@ Options:
   --skip-deps          Nao instala dependencias Python.
   --persist-keys       Persiste PERPLEXITY_API_KEY e FIRECRAWL_API_KEY no shell profile.
   --shell-file <path>  Forca arquivo de profile (ex: ~/.zshrc).
+  --run-onboard        Executa onboarding MCP/IDE via 09-tools/onboard.py.
+  --onboard-dry-run    Executa onboarding em modo preview (diff sem aplicar).
+  --onboard-yes        Auto-aplica mudancas por IDE (equivale a --yes no onboard).
+  --onboard-apply-keys Aplica PERPLEXITY_API_KEY/FIRECRAWL_API_KEY no profile via onboard.
+  --onboard-ide <csv>  IDEs alvo (ex: codex,cursor,kimi,antigravity).
   --help               Mostra esta ajuda.
 USAGE
 }
@@ -46,6 +56,34 @@ while [[ $# -gt 0 ]]; do
       SHELL_FILE="${2:-}"
       if [[ -z "${SHELL_FILE}" ]]; then
         echo "ERROR: --shell-file requires a path."
+        exit 1
+      fi
+      shift 2
+      ;;
+    --run-onboard)
+      RUN_ONBOARD=1
+      shift
+      ;;
+    --onboard-dry-run)
+      RUN_ONBOARD=1
+      ONBOARD_DRY_RUN=1
+      shift
+      ;;
+    --onboard-yes)
+      RUN_ONBOARD=1
+      ONBOARD_AUTO_APPLY=1
+      shift
+      ;;
+    --onboard-apply-keys)
+      RUN_ONBOARD=1
+      ONBOARD_APPLY_KEYS=1
+      shift
+      ;;
+    --onboard-ide)
+      RUN_ONBOARD=1
+      ONBOARD_IDE="${2:-}"
+      if [[ -z "${ONBOARD_IDE}" ]]; then
+        echo "ERROR: --onboard-ide requires a csv value."
         exit 1
       fi
       shift 2
@@ -202,6 +240,34 @@ report_key_status() {
   fi
 }
 
+run_onboard_if_requested() {
+  if [[ "${RUN_ONBOARD}" -ne 1 ]]; then
+    return
+  fi
+
+  local cmd=(python3 "${SCRIPT_DIR}/onboard.py" run)
+  if [[ "${ONBOARD_DRY_RUN}" -eq 1 ]]; then
+    cmd+=("--dry-run")
+  fi
+  if [[ "${ONBOARD_AUTO_APPLY}" -eq 1 ]]; then
+    cmd+=("--yes")
+  fi
+  if [[ "${ONBOARD_APPLY_KEYS}" -eq 1 ]]; then
+    cmd+=("--apply-keys")
+  fi
+  if [[ -n "${ONBOARD_IDE}" ]]; then
+    cmd+=("--ide" "${ONBOARD_IDE}")
+  fi
+  if [[ -n "${SHELL_FILE}" ]]; then
+    cmd+=("--shell-file" "${SHELL_FILE}")
+  fi
+
+  echo
+  echo "Running vm-onboard:"
+  echo "  ${cmd[*]}"
+  "${cmd[@]}"
+}
+
 print_next_steps() {
   echo
   echo "Setup complete."
@@ -211,7 +277,9 @@ print_next_steps() {
   echo "     python3 ${SCRIPT_DIR}/pipeline_runner.py run --project-id demo --thread-id t1 --stack-path ${SKILL_DIR}/06-stacks/foundation-stack/stack.yaml --query 'crm para clinicas'"
   echo "  2. Check status:"
   echo "     python3 ${SCRIPT_DIR}/pipeline_runner.py status --project-id demo --thread-id t1"
-  echo "  3. Approve next stage:"
+  echo "  3. Run onboarding preview (optional):"
+  echo "     python3 ${SCRIPT_DIR}/onboard.py run --dry-run --ide codex,cursor,kimi,antigravity"
+  echo "  4. Approve next stage:"
   echo "     python3 ${SCRIPT_DIR}/pipeline_runner.py approve --project-id demo --thread-id t1 --stage brand-voice"
 }
 
@@ -225,4 +293,5 @@ validate_imports
 configure_output_dirs
 persist_keys_if_requested
 report_key_status
+run_onboard_if_requested
 print_next_steps
