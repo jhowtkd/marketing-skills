@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
@@ -92,6 +92,21 @@ def runs(thread_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
             for row in rows
         ]
     }
+
+
+@router.post("/runs/{run_id}/approve")
+def approve_run(run_id: str, request: Request) -> dict[str, str]:
+    run_engine = request.app.state.run_engine
+    try:
+        run_engine.approve_and_continue(run_id)
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message:
+            raise HTTPException(status_code=404, detail=message) from exc
+        raise HTTPException(status_code=409, detail=message) from exc
+
+    run = run_engine.get_run(run_id)
+    return {"run_id": run.run_id, "status": run.status}
 
 
 @router.post("/chat")

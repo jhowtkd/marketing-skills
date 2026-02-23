@@ -155,6 +155,14 @@ def list_stages(session: Session, run_id: str) -> list[Stage]:
     )
 
 
+def get_waiting_stage(session: Session, run_id: str) -> Stage | None:
+    return session.scalar(
+        select(Stage)
+        .where(Stage.run_id == run_id, Stage.status == "waiting_approval")
+        .order_by(Stage.position.asc())
+    )
+
+
 def update_stage_status(session: Session, stage_pk: int, status: str, attempts: int) -> None:
     session.execute(
         update(Stage)

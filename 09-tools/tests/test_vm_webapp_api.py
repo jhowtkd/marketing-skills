@@ -109,6 +109,32 @@ def test_list_runs_by_thread(tmp_path: Path) -> None:
     assert len(res.json()["runs"]) >= 1
 
 
+def test_approve_endpoint_continues_waiting_run(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    start = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "t1",
+            "user_request": "crm",
+        },
+    )
+    assert start.status_code == 200
+    run_id = start.json()["run_id"]
+
+    res = client.post(f"/api/v1/runs/{run_id}/approve")
+    assert res.status_code == 200
+    assert res.json()["run_id"] == run_id
+
+
 def test_root_serves_ui() -> None:
     client = TestClient(create_app())
     res = client.get("/")
