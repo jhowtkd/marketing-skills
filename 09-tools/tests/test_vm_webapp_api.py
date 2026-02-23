@@ -1,3 +1,8 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
@@ -80,3 +85,17 @@ def test_chat_uses_retrieved_context_in_prompt() -> None:
 
 def test_cli_module_imports() -> None:
     import vm_webapp.__main__  # noqa: F401
+
+
+def test_vm_webapp_is_importable_without_conftest_path_hack() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    proc = subprocess.run(
+        [sys.executable, "-c", "import vm_webapp, vm_webapp.__main__"],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr

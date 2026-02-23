@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "marketing-skills"
 version = "0.0.0"
@@ -10,6 +14,13 @@ dependencies = [
   "httpx>=0.27",
   "zvec>=0.1",
 ]
+
+[tool.setuptools]
+package-dir = { "" = "09-tools" }
+
+[tool.setuptools.packages.find]
+where = ["09-tools"]
+include = ["vm_webapp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["09-tools/tests"]
