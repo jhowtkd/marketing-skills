@@ -113,6 +113,12 @@ No `@vm-stack-foundation`, a execução agora suporta automação por projeto/th
 - `@vm-status`: retorna estado atual da execução por thread.
 - `@vm-retry <stage>`: reexecuta uma etapa e incrementa tentativa.
 
+### Onboarding MCP + IDE (híbrido)
+
+- `@vm-onboard`: roda onboarding com preview/diff por IDE e decisão `apply/skip` por destino.
+- Cobre Codex, Cursor, Kimi e Antigravity.
+- CLI equivalente: `python3 09-tools/onboard.py run --dry-run --ide codex,cursor,kimi,antigravity`.
+
 ### Política de Providers
 
 - **Premium-first:** Perplexity + Firecrawl.
@@ -144,6 +150,7 @@ No `@vm-stack-foundation`, a execução agora suporta automação por projeto/th
 - `talking-head/skill.md` — Vídeos talking head
 
 ### 09-tools/ (Executor & Automação)
+- `onboard.py` — CLI de onboarding MCP/IDE (`run`, preview/diff, apply/skip)
 - `pipeline_runner.py` — CLI de execução (`run`, `approve`, `status`, `retry`)
 - `executor.py` — Orquestração de estágios e gates manuais
 - `state_store.py` — Persistência de estado por projeto/thread

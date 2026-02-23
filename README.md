@@ -61,8 +61,8 @@ Foundation · Conversion · Traffic · Nurture
 ### 08-templates/ (7 templates)
 Landing · Email · SEO · Research · Business Brief · Experiment Log · Weekly Review
 
-### 09-tools/ (6 ferramentas)
-- `research_tools.py`, `bootstrap.py`, `quality_check.py`
+### 09-tools/ (9 ferramentas)
+- `research_tools.py`, `bootstrap.py`, `quality_check.py`, `onboard.py`
 - `analytics-tracking.md` — UTM, eventos, dashboards (Corey Haines)
 
 ## Sequência obrigatória
@@ -91,6 +91,7 @@ Leia `00-orchestrator/guardrails.md` antes de qualquer execução.
 | CRO | `@vm-page-cro` `@vm-seo-audit` `@vm-ab-test` `@vm-analytics` |
 | Review | `@vm-review-copy` `@vm-review-strategy` `@vm-review-all` |
 | Stacks | `@vm-stack-foundation` `@vm-stack-conversion` `@vm-stack-traffic` `@vm-stack-nurture` |
+| Onboarding | `@vm-onboard` |
 
 ## Threaded Foundation Executor (V1)
 
@@ -135,6 +136,19 @@ python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 -
 ```bash
 bash 09-tools/setup.sh --check-only
 bash 09-tools/setup.sh --persist-keys
+bash 09-tools/setup.sh --run-onboard --onboard-dry-run --onboard-ide codex,cursor,kimi,antigravity
 ```
 
 `--persist-keys` grava as chaves no profile do shell (`~/.zshrc`/`~/.bashrc`) para uso em novas sessões nessa máquina.
+
+### Onboarding MCP + IDEs (híbrido)
+
+Use `@vm-onboard` para iniciar onboarding guiado (preview/diff por IDE + confirmação de apply/skip).
+
+CLI equivalente:
+
+```bash
+python3 09-tools/onboard.py run --dry-run --ide codex,cursor,kimi,antigravity
+python3 09-tools/onboard.py run --ide codex,cursor --decision codex=apply --decision cursor=skip
+python3 09-tools/onboard.py run --yes --apply-keys --shell-file ~/.zshrc
+```

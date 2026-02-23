@@ -121,6 +121,12 @@ O orchestrator vai:
 
 No `@vm-stack-foundation`, o `research` roda automaticamente e o restante depende de aprovação manual.
 
+### Onboarding MCP + IDEs
+
+| Comando | Descrição |
+|---------|-----------|
+| `@vm-onboard` | Executa onboarding híbrido (preview/diff + apply/skip por IDE) para Codex, Cursor, Kimi e Antigravity |
+
 ---
 
 ## 🔍 Sistema de Roteamento
@@ -148,6 +154,7 @@ Entrada do Usuário
 │ • approve:X → @vm-approve X         │
 │ • status → @vm-status               │
 │ • retry:X → @vm-retry X             │
+│ • onboard → @vm-onboard             │
 │ • review:X → @vm-review-X           │
 └─────────────────────────────────────┘
        │
@@ -197,6 +204,7 @@ Todas as ferramentas são **gratuitas** por padrão:
 | Creative | Pollinations | Imagens |
 | QA | quality_check.py | Quality gates |
 | Bootstrap | bootstrap.py | Setup de workspace |
+| Onboarding | onboard.py | Setup MCP + IDE com preview/diff e confirmação |
 
 Para o executor de threads do foundation stack:
 - premium-first: Perplexity + Firecrawl;
