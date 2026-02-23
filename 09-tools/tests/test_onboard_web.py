@@ -25,3 +25,21 @@ def test_defaults_endpoint_returns_supported_ides(monkeypatch) -> None:
     payload = response.get_json()
     assert payload["ok"] is True
     assert payload["defaults"]["supported_ides"] == ["codex"]
+
+
+def test_preview_endpoint_returns_report(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "onboard_web.run_preview",
+        lambda **kwargs: {"ides": {"codex": {"status": "preview"}}, "keys": {}, "dry_run": True},
+    )
+    app = create_app()
+    client = app.test_client()
+    response = client.post(
+        "/api/v1/onboard/preview",
+        json={"ides": ["codex"], "applyKeys": False, "keys": {}, "shellFile": ""},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["report"]["dry_run"] is True
