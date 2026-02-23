@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 from collections import OrderedDict
+from datetime import datetime
 from difflib import unified_diff
 from importlib import import_module
 from pathlib import Path
+import shutil
 
 
 SUPPORTED_IDES = ("codex", "cursor", "kimi", "antigravity")
@@ -53,6 +55,33 @@ def build_diff_preview(before: str, after: str, target: str) -> str:
         tofile=target,
     )
     return "".join(diff_lines)
+
+
+def apply_change(target: Path, new_content: str) -> dict:
+    target_path = Path(target)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    backup_path = ""
+    existed = target_path.exists()
+    previous_content = ""
+    if existed:
+        previous_content = target_path.read_text(encoding="utf-8")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_candidate = target_path.with_name(f"{target_path.name}.bak.{timestamp}")
+        shutil.copy2(target_path, backup_candidate)
+        backup_path = str(backup_candidate)
+
+    if (not existed) or previous_content != new_content:
+        target_path.write_text(new_content, encoding="utf-8")
+        status = "applied"
+    else:
+        status = "unchanged"
+
+    return {
+        "status": status,
+        "target_path": str(target_path),
+        "backup_path": backup_path,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
