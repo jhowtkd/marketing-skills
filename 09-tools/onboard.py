@@ -4,6 +4,44 @@
 from __future__ import annotations
 
 import argparse
+from collections import OrderedDict
+from importlib import import_module
+from pathlib import Path
+
+
+SUPPORTED_IDES = ("codex", "cursor", "kimi", "antigravity")
+
+
+def _adapter_module_name(ide: str) -> str:
+    return f"onboard_adapters.{ide}"
+
+
+def load_adapter(ide: str):
+    if ide not in SUPPORTED_IDES:
+        raise ValueError(f"Unsupported IDE: {ide}")
+    return import_module(_adapter_module_name(ide))
+
+
+def discover_targets(ide_csv: str) -> list[dict]:
+    if ide_csv.strip():
+        requested = [item.strip().lower() for item in ide_csv.split(",") if item.strip()]
+    else:
+        requested = list(SUPPORTED_IDES)
+
+    unique = OrderedDict((ide, None) for ide in requested)
+    targets: list[dict] = []
+    home = Path.home()
+
+    for ide in unique.keys():
+        adapter = load_adapter(ide)
+        targets.append(
+            {
+                "ide": ide,
+                "status": "detected",
+                "target_paths": [str(p) for p in adapter.default_target_paths(home)],
+            }
+        )
+    return targets
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,4 +65,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
