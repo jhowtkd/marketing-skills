@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
-from vm_webapp.repo import list_brands, list_products_by_brand
+from vm_webapp.repo import list_brands, list_products_by_brand, list_runs_by_thread
 from vm_webapp.stacking import build_context_pack
 
 
@@ -47,6 +47,51 @@ class ChatRequest(BaseModel):
     product_id: str
     thread_id: str
     message: str
+
+
+class FoundationRunRequest(BaseModel):
+    brand_id: str
+    product_id: str
+    thread_id: str
+    user_request: str
+
+
+@router.post("/runs/foundation")
+def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dict[str, str]:
+    stack_path = (
+        Path(__file__).resolve().parents[2] / "06-stacks" / "foundation-stack" / "stack.yaml"
+    )
+    run_engine = request.app.state.run_engine
+    run = run_engine.start_run(
+        brand_id=payload.brand_id,
+        product_id=payload.product_id,
+        thread_id=payload.thread_id,
+        stack_path=str(stack_path),
+        user_request=payload.user_request,
+    )
+    run_engine.run_until_gate(run.run_id)
+    run = run_engine.get_run(run.run_id)
+    return {"run_id": run.run_id, "status": run.status}
+
+
+@router.get("/runs")
+def runs(thread_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_runs_by_thread(session, thread_id)
+    return {
+        "runs": [
+            {
+                "run_id": row.run_id,
+                "thread_id": row.thread_id,
+                "brand_id": row.brand_id,
+                "product_id": row.product_id,
+                "status": row.status,
+                "stack_path": row.stack_path,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+    }
 
 
 @router.post("/chat")

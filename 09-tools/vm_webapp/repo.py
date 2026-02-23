@@ -110,6 +110,14 @@ def get_run(session: Session, run_id: str) -> Run | None:
     return session.get(Run, run_id)
 
 
+def list_runs_by_thread(session: Session, thread_id: str) -> list[Run]:
+    return list(
+        session.scalars(
+            select(Run).where(Run.thread_id == thread_id).order_by(Run.created_at.desc())
+        )
+    )
+
+
 def update_run_status(session: Session, run_id: str, status: str) -> None:
     session.execute(
         update(Run)
