@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
-from vm_webapp.repo import list_brands
+from vm_webapp.repo import list_brands, list_products_by_brand
 from vm_webapp.stacking import build_context_pack
 
 
@@ -27,6 +27,18 @@ def brands(request: Request) -> dict[str, list[dict[str, str]]]:
         rows = list_brands(session)
     return {
         "brands": [{"brand_id": row.brand_id, "name": row.name} for row in rows],
+    }
+
+
+@router.get("/products")
+def products(brand_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_products_by_brand(session, brand_id)
+    return {
+        "products": [
+            {"product_id": row.product_id, "brand_id": row.brand_id, "name": row.name}
+            for row in rows
+        ],
     }
 
 

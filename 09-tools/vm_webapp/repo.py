@@ -38,6 +38,16 @@ def list_brands(session: Session) -> list[Brand]:
     return list(session.scalars(select(Brand).order_by(Brand.brand_id)))
 
 
+def list_products_by_brand(session: Session, brand_id: str) -> list[Product]:
+    return list(
+        session.scalars(
+            select(Product)
+            .where(Product.brand_id == brand_id)
+            .order_by(Product.product_id.asc())
+        )
+    )
+
+
 def create_product(
     session: Session,
     *,

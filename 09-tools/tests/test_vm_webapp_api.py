@@ -6,7 +6,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
+from vm_webapp.db import session_scope
 from vm_webapp.memory import Hit
+from vm_webapp.repo import create_brand, create_product
+from vm_webapp.settings import Settings
 
 
 def test_api_health_and_list_brands() -> None:
@@ -20,6 +23,41 @@ def test_api_health_and_list_brands() -> None:
     res = client.get("/api/v1/brands")
     assert res.status_code == 200
     assert res.json()["brands"] == []
+
+
+def test_list_products_by_brand(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    ws = app.state.workspace
+    engine = app.state.engine
+
+    with session_scope(engine) as session:
+        create_brand(
+            session,
+            brand_id="b1",
+            name="Acme",
+            canonical={},
+            ws=ws,
+            soul_md="",
+        )
+        create_product(
+            session,
+            brand_id="b1",
+            product_id="p1",
+            name="Widget",
+            canonical={},
+            ws=ws,
+            essence_md="",
+        )
+
+    client = TestClient(app)
+    res = client.get("/api/v1/products", params={"brand_id": "b1"})
+    assert res.status_code == 200
+    assert res.json()["products"][0]["product_id"] == "p1"
 
 
 def test_root_serves_ui() -> None:
