@@ -8,7 +8,16 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from vm_webapp.events import EventEnvelope
-from vm_webapp.models import Brand, CommandDedup, EventLog, Product, Run, Stage
+from vm_webapp.models import (
+    Brand,
+    BrandView,
+    CommandDedup,
+    EventLog,
+    Product,
+    ProjectView,
+    Run,
+    Stage,
+)
 from vm_webapp.workspace import Workspace
 
 
@@ -237,3 +246,17 @@ def save_command_dedup(
     session.add(row)
     session.flush()
     return row
+
+
+def list_brands_view(session: Session) -> list[BrandView]:
+    return list(session.scalars(select(BrandView).order_by(BrandView.brand_id.asc())))
+
+
+def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
+    return list(
+        session.scalars(
+            select(ProjectView)
+            .where(ProjectView.brand_id == brand_id)
+            .order_by(ProjectView.project_id.asc())
+        )
+    )

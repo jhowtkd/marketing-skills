@@ -93,3 +93,23 @@ class CommandDedup(Base):
     event_id: Mapped[str] = mapped_column(String(64), nullable=False)
     response_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class BrandView(Base):
+    __tablename__ = "brands_view"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ProjectView(Base):
+    __tablename__ = "projects_view"
+
+    project_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    channels_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
