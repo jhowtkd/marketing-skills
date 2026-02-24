@@ -17,6 +17,7 @@ const runsTimeline = document.getElementById("runs-timeline");
 
 let activeRunId = null;
 let runsEventSource = null;
+const approvingRunIds = new Set();
 
 function getThreadId() {
   const existing = localStorage.getItem(THREAD_STORAGE_KEY);
@@ -122,7 +123,7 @@ function renderRuns(runs) {
         button.type = "button";
         button.textContent = "Approve";
         button.addEventListener("click", async () => {
-          await approveRun(run.run_id);
+          await approveRun(run.run_id, button);
         });
         item.append(" ");
         item.appendChild(button);
@@ -189,12 +190,31 @@ async function loadRuns() {
   }
 }
 
-async function approveRun(runId) {
-  const body = await fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}/approve`, {
-    method: "POST",
-  }); // /approve
-  setRunStatus(`Run ${body.run_id} status: ${body.status}`);
-  await loadRuns();
+async function approveRun(runId, buttonEl = null) {
+  if (approvingRunIds.has(runId)) {
+    return;
+  }
+  approvingRunIds.add(runId);
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Approving...";
+  }
+
+  try {
+    const body = await fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}/approve`, {
+      method: "POST",
+    }); // /approve
+    setRunStatus(`Run ${body.run_id} status: ${body.status}`);
+    await loadRuns();
+  } catch (error) {
+    setRunStatus(`Approve failed: ${error.message}`, true);
+  } finally {
+    approvingRunIds.delete(runId);
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = "Approve";
+    }
+  }
 }
 
 async function startFoundationRun(userRequest) {

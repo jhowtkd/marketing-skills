@@ -27,3 +27,17 @@ def test_vm_app_js_uses_eventsource_and_approve_api() -> None:
     assert "new EventSource" in js
     assert "/events" in js
     assert "/approve" in js
+
+
+def test_vm_app_js_disables_approve_button_while_request_in_flight() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "buttonEl.disabled = true" in js
+    assert "buttonEl.disabled = false" in js
+
+
+def test_vm_app_js_guards_duplicate_approve_requests_per_run_id() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "const approvingRunIds = new Set();" in js
+    assert "if (approvingRunIds.has(runId))" in js
+    assert "approvingRunIds.add(runId)" in js
+    assert "approvingRunIds.delete(runId)" in js
