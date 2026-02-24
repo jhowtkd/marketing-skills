@@ -14,6 +14,7 @@ from vm_webapp.repo import (
     create_run,
     create_stage,
     get_run,
+    get_waiting_stage,
     list_stages,
     update_run_status,
     update_stage_status,
@@ -130,6 +131,31 @@ class RunEngine:
             if run is None:
                 raise ValueError(f"run not found: {run_id}")
             return run
+
+    def approve_and_continue(self, run_id: str) -> None:
+        with session_scope(self.engine) as session:
+            run = get_run(session, run_id)
+            if run is None:
+                raise ValueError(f"run not found: {run_id}")
+
+            waiting = get_waiting_stage(session, run_id)
+            if waiting is None:
+                raise ValueError(f"no stage waiting approval for run: {run_id}")
+
+            update_run_status(session, run_id=run_id, status="running")
+            self._execute_stage(run, waiting.stage_id)
+            update_stage_status(
+                session,
+                stage_pk=waiting.stage_pk,
+                status="completed",
+                attempts=waiting.attempts + 1,
+            )
+            append_event(
+                self._events_path(run_id),
+                {"type": "stage_completed", "run_id": run_id, "stage_id": waiting.stage_id},
+            )
+
+        self.run_until_gate(run_id)
 
     def _execute_stage(self, run: Run, stage_id: str) -> None:
         artifact_path = self._artifacts_dir(run.run_id) / f"{stage_id}.md"

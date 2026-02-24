@@ -41,3 +41,60 @@ select {
 .placeholder {
   color: #6b7280;
 }
+
+.chat-messages {
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid #d5dbe7;
+  border-radius: 8px;
+  background: #f9fbff;
+  margin-bottom: 10px;
+  overflow-y: auto;
+}
+
+.chat-form {
+  display: flex;
+  gap: 8px;
+}
+
+#chat-input {
+  flex: 1;
+  padding: 10px;
+}
+
+#start-foundation-run {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+}
+
+.runs-timeline {
+  min-height: 80px;
+  border: 1px solid #d5dbe7;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f9fbff;
+}
+
+.run-card {
+  border: 1px solid #d5dbe7;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #ffffff;
+}
+
+.run-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.stage-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.run-event {
+  font-size: 0.9rem;
+  color: #4b5563;
+  margin-bottom: 6px;
+}

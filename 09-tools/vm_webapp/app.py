@@ -10,6 +10,7 @@ from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
 from vm_webapp.llm import KimiClient
 from vm_webapp.memory import MemoryIndex
+from vm_webapp.run_engine import RunEngine
 from vm_webapp.settings import Settings
 from vm_webapp.workspace import Workspace
 
@@ -30,12 +31,14 @@ def create_app(
     memory = memory or MemoryIndex(root=workspace.root / "zvec")
     if llm is None and settings.kimi_api_key:
         llm = KimiClient(base_url=settings.kimi_base_url, api_key=settings.kimi_api_key)
+    run_engine = RunEngine(engine=engine, workspace=workspace, memory=memory, llm=llm)
 
     app.state.settings = settings
     app.state.workspace = workspace
     app.state.engine = engine
     app.state.memory = memory
     app.state.llm = llm
+    app.state.run_engine = run_engine
 
     app.include_router(api_router, prefix="/api/v1")
 

@@ -6,7 +6,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
+from vm_webapp.db import session_scope
 from vm_webapp.memory import Hit
+from vm_webapp.repo import create_brand, create_product
+from vm_webapp.settings import Settings
 
 
 def test_api_health_and_list_brands() -> None:
@@ -20,6 +23,171 @@ def test_api_health_and_list_brands() -> None:
     res = client.get("/api/v1/brands")
     assert res.status_code == 200
     assert res.json()["brands"] == []
+
+
+def test_list_products_by_brand(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    ws = app.state.workspace
+    engine = app.state.engine
+
+    with session_scope(engine) as session:
+        create_brand(
+            session,
+            brand_id="b1",
+            name="Acme",
+            canonical={},
+            ws=ws,
+            soul_md="",
+        )
+        create_product(
+            session,
+            brand_id="b1",
+            product_id="p1",
+            name="Widget",
+            canonical={},
+            ws=ws,
+            essence_md="",
+        )
+
+    client = TestClient(app)
+    res = client.get("/api/v1/products", params={"brand_id": "b1"})
+    assert res.status_code == 200
+    assert res.json()["products"][0]["product_id"] == "p1"
+
+
+def test_start_foundation_run_returns_run_id_and_status(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "t1",
+            "user_request": "crm para clinicas",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["run_id"]
+    assert body["status"] in {"running", "waiting_approval", "completed"}
+
+
+def test_list_runs_by_thread(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    start = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "thread-xyz",
+            "user_request": "crm para clinicas",
+        },
+    )
+    assert start.status_code == 200
+
+    res = client.get("/api/v1/runs", params={"thread_id": "thread-xyz"})
+    assert res.status_code == 200
+    assert len(res.json()["runs"]) >= 1
+
+
+def test_approve_endpoint_continues_waiting_run(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    start = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "t1",
+            "user_request": "crm",
+        },
+    )
+    assert start.status_code == 200
+    run_id = start.json()["run_id"]
+
+    res = client.post(f"/api/v1/runs/{run_id}/approve")
+    assert res.status_code == 200
+    assert res.json()["run_id"] == run_id
+
+
+def test_run_events_sse_streams_existing_events(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    ws = app.state.workspace
+    run_id = "run-abc"
+    events_path = ws.root / "runs" / run_id / "events.jsonl"
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    events_path.write_text(
+        '{"type":"run_started","run_id":"run-abc"}\n',
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    with client.stream(
+        "GET",
+        f"/api/v1/runs/{run_id}/events",
+        params={"from_start": "true", "max_events": 1},
+    ) as res:
+        assert res.status_code == 200
+        assert "text/event-stream" in res.headers.get("content-type", "")
+        first = next(res.iter_text())
+        assert "run_started" in first
+
+
+def test_run_listing_includes_stages_for_panel(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    start = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "t-ui",
+            "user_request": "crm",
+        },
+    )
+    assert start.status_code == 200
+    run_id = start.json()["run_id"]
+
+    res = client.get("/api/v1/runs", params={"thread_id": "t-ui"})
+    assert res.status_code == 200
+    assert any(r["run_id"] == run_id for r in res.json()["runs"])
+    assert "stages" in res.json()["runs"][0]
 
 
 def test_root_serves_ui() -> None:

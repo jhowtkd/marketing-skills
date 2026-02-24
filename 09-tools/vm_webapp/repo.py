@@ -38,6 +38,16 @@ def list_brands(session: Session) -> list[Brand]:
     return list(session.scalars(select(Brand).order_by(Brand.brand_id)))
 
 
+def list_products_by_brand(session: Session, brand_id: str) -> list[Product]:
+    return list(
+        session.scalars(
+            select(Product)
+            .where(Product.brand_id == brand_id)
+            .order_by(Product.product_id.asc())
+        )
+    )
+
+
 def create_product(
     session: Session,
     *,
@@ -100,6 +110,14 @@ def get_run(session: Session, run_id: str) -> Run | None:
     return session.get(Run, run_id)
 
 
+def list_runs_by_thread(session: Session, thread_id: str) -> list[Run]:
+    return list(
+        session.scalars(
+            select(Run).where(Run.thread_id == thread_id).order_by(Run.created_at.desc())
+        )
+    )
+
+
 def update_run_status(session: Session, run_id: str, status: str) -> None:
     session.execute(
         update(Run)
@@ -134,6 +152,14 @@ def list_stages(session: Session, run_id: str) -> list[Stage]:
         session.scalars(
             select(Stage).where(Stage.run_id == run_id).order_by(Stage.position.asc())
         )
+    )
+
+
+def get_waiting_stage(session: Session, run_id: str) -> Stage | None:
+    return session.scalar(
+        select(Stage)
+        .where(Stage.run_id == run_id, Stage.status == "waiting_approval")
+        .order_by(Stage.position.asc())
     )
 
 
