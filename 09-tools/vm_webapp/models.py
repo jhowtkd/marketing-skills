@@ -76,3 +76,101 @@ class Stage(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class EventLog(Base):
+    __tablename__ = "event_log"
+
+    event_pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    stream_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    brand_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    causation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    processed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CommandDedup(Base):
+    __tablename__ = "command_dedup"
+
+    idempotency_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    command_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class BrandView(Base):
+    __tablename__ = "brands_view"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ProjectView(Base):
+    __tablename__ = "projects_view"
+
+    project_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    channels_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ThreadView(Base):
+    __tablename__ = "threads_view"
+
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    modes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    last_activity_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class TimelineItemView(Base):
+    __tablename__ = "timeline_items_view"
+
+    timeline_pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class TaskView(Base):
+    __tablename__ = "tasks_view"
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ApprovalView(Base):
+    __tablename__ = "approvals_view"
+
+    approval_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    required_role: Mapped[str] = mapped_column(String(64), nullable=False, default="editor")
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

@@ -8,18 +8,37 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from vm_webapp.commands_v2 import (
+    add_comment_command,
+    add_thread_mode_command,
+    complete_task_command,
+    create_brand_command,
+    create_project_command,
+    create_thread_command,
+    grant_approval_command,
+    start_agent_plan_command,
+)
 from vm_webapp.db import session_scope
+from vm_webapp.events import EventEnvelope
+from vm_webapp.orchestrator_v2 import process_new_events
+from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
+    append_event,
     close_thread,
     create_thread as create_thread_row,
+    get_event_by_id,
     get_thread,
+    list_approvals_view,
     list_brands,
+    list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
+    list_tasks_view,
     list_threads,
+    list_timeline_items_view,
     touch_thread_activity,
 )
 from vm_webapp.stacking import build_context_pack
@@ -63,6 +82,303 @@ def products(brand_id: str, request: Request) -> dict[str, list[dict[str, str]]]
             for row in rows
         ],
     }
+
+
+def require_idempotency(request: Request) -> str:
+    key = request.headers.get("Idempotency-Key")
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Idempotency-Key header")
+    return key
+
+
+def project_command_event(session, *, event_id: str) -> None:
+    row = get_event_by_id(session, event_id)
+    if row is None:
+        raise ValueError(f"event not found: {event_id}")
+    apply_event_to_read_models(session, row)
+
+
+class BrandCreateRequest(BaseModel):
+    brand_id: str
+    name: str
+
+
+class ProjectCreateRequest(BaseModel):
+    project_id: str
+    brand_id: str
+    name: str
+    objective: str = ""
+    channels: list[str] = Field(default_factory=list)
+    due_date: str | None = None
+
+
+class ThreadCreateV2Request(BaseModel):
+    thread_id: str
+    project_id: str
+    brand_id: str
+    title: str
+
+
+class ThreadModeAddRequest(BaseModel):
+    mode: str
+
+
+class TaskCommentRequest(BaseModel):
+    message: str
+
+
+class ForceConflictRequest(BaseModel):
+    thread_id: str
+
+
+@router.post("/v2/brands")
+def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_brand_command(
+            session,
+            brand_id=payload.brand_id,
+            name=payload.name,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "brand_id": payload.brand_id}
+
+
+@router.post("/v2/projects")
+def create_project_v2(payload: ProjectCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_project_command(
+            session,
+            project_id=payload.project_id,
+            brand_id=payload.brand_id,
+            name=payload.name,
+            objective=payload.objective,
+            channels=payload.channels,
+            due_date=payload.due_date,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "project_id": payload.project_id}
+
+
+@router.get("/v2/projects")
+def list_projects_v2(
+    brand_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_projects_view(session, brand_id=brand_id)
+    return {
+        "projects": [
+            {
+                "project_id": row.project_id,
+                "brand_id": row.brand_id,
+                "name": row.name,
+                "objective": row.objective,
+                "channels": json.loads(row.channels_json),
+                "due_date": row.due_date,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/v2/threads")
+def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_thread_command(
+            session,
+            thread_id=payload.thread_id,
+            project_id=payload.project_id,
+            brand_id=payload.brand_id,
+            title=payload.title,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "thread_id": payload.thread_id}
+
+
+@router.post("/v2/threads/{thread_id}/modes")
+def add_thread_mode_v2(
+    thread_id: str, payload: ThreadModeAddRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = add_thread_mode_command(
+            session,
+            thread_id=thread_id,
+            mode=payload.mode,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "thread_id": thread_id}
+
+
+@router.get("/v2/threads/{thread_id}/timeline")
+def list_thread_timeline_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_timeline_items_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "event_id": row.event_id,
+                "thread_id": row.thread_id,
+                "event_type": row.event_type,
+                "actor_type": row.actor_type,
+                "actor_id": row.actor_id,
+                "payload": json.loads(row.payload_json),
+                "occurred_at": row.occurred_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/v2/threads/{thread_id}/tasks")
+def list_thread_tasks_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_tasks_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "task_id": row.task_id,
+                "thread_id": row.thread_id,
+                "title": row.title,
+                "status": row.status,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/v2/threads/{thread_id}/approvals")
+def list_thread_approvals_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_approvals_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "approval_id": row.approval_id,
+                "thread_id": row.thread_id,
+                "status": row.status,
+                "reason": row.reason,
+                "required_role": row.required_role,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/v2/tasks/{task_id}/comment")
+def comment_task_v2(
+    task_id: str, payload: TaskCommentRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = add_comment_command(
+            session,
+            task_id=task_id,
+            message=payload.message,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "task_id": task_id}
+
+
+@router.post("/v2/tasks/{task_id}/complete")
+def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = complete_task_command(
+            session,
+            task_id=task_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "task_id": task_id}
+
+
+@router.post("/v2/approvals/{approval_id}/grant")
+def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = grant_approval_command(
+            session,
+            approval_id=approval_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        process_new_events(session)
+    return {"event_id": result.event_id, "approval_id": approval_id}
+
+
+@router.post("/v2/threads/{thread_id}/agent-plan/start")
+def start_agent_plan_v2(thread_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = start_agent_plan_command(
+            session,
+            thread_id=thread_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        process_new_events(session)
+    return {"event_id": result.event_id, "thread_id": thread_id}
+
+
+@router.post("/v2/test/force-conflict")
+def force_conflict_v2(payload: ForceConflictRequest, request: Request) -> dict[str, str]:
+    stream_id = f"thread:{payload.thread_id}"
+    with session_scope(request.app.state.engine) as session:
+        append_event(
+            session,
+            EventEnvelope(
+                event_id=f"evt-conflict-a-{payload.thread_id}",
+                event_type="ConflictProbe",
+                aggregate_type="thread",
+                aggregate_id=payload.thread_id,
+                stream_id=stream_id,
+                expected_version=0,
+                actor_type="system",
+                actor_id="test-helper",
+                payload={"thread_id": payload.thread_id},
+                thread_id=payload.thread_id,
+            ),
+        )
+        append_event(
+            session,
+            EventEnvelope(
+                event_id=f"evt-conflict-b-{payload.thread_id}",
+                event_type="ConflictProbe",
+                aggregate_type="thread",
+                aggregate_id=payload.thread_id,
+                stream_id=stream_id,
+                expected_version=0,
+                actor_type="system",
+                actor_id="test-helper",
+                payload={"thread_id": payload.thread_id},
+                thread_id=payload.thread_id,
+            ),
+        )
+    return {"status": "ok"}
 
 
 class ChatRequest(BaseModel):

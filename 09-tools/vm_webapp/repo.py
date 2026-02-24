@@ -4,10 +4,25 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from vm_webapp.models import Brand, Product, Run, Stage, Thread
+from vm_webapp.events import EventEnvelope
+from vm_webapp.models import (
+    ApprovalView,
+    Brand,
+    BrandView,
+    CommandDedup,
+    EventLog,
+    Product,
+    ProjectView,
+    Run,
+    Stage,
+    TaskView,
+    Thread,
+    ThreadView,
+    TimelineItemView,
+)
 from vm_webapp.workspace import Workspace
 
 
@@ -218,4 +233,176 @@ def update_stage_status(session: Session, stage_pk: int, status: str, attempts: 
         update(Stage)
         .where(Stage.stage_pk == stage_pk)
         .values(status=status, attempts=attempts, updated_at=_now_iso())
+    )
+
+
+def append_event(session: Session, envelope: EventEnvelope) -> EventLog:
+    current = session.scalar(
+        select(func.max(EventLog.stream_version)).where(
+            EventLog.stream_id == envelope.stream_id
+        )
+    )
+    current_version = int(current or 0)
+    if current_version != envelope.expected_version:
+        raise ValueError(
+            f"stream version conflict: expected={envelope.expected_version} actual={current_version}"
+        )
+
+    row = EventLog(
+        event_id=envelope.event_id,
+        event_type=envelope.event_type,
+        aggregate_type=envelope.aggregate_type,
+        aggregate_id=envelope.aggregate_id,
+        stream_id=envelope.stream_id,
+        stream_version=current_version + 1,
+        actor_type=envelope.actor_type,
+        actor_id=envelope.actor_id,
+        brand_id=envelope.brand_id,
+        project_id=envelope.project_id,
+        thread_id=envelope.thread_id,
+        correlation_id=envelope.correlation_id,
+        causation_id=envelope.causation_id,
+        payload_json=json.dumps(envelope.payload, ensure_ascii=False),
+        occurred_at=envelope.occurred_at,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_events_by_stream(session: Session, stream_id: str) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.stream_id == stream_id)
+            .order_by(EventLog.stream_version.asc())
+        )
+    )
+
+
+def get_stream_version(session: Session, stream_id: str) -> int:
+    current = session.scalar(
+        select(func.max(EventLog.stream_version)).where(EventLog.stream_id == stream_id)
+    )
+    return int(current or 0)
+
+
+def list_events_by_thread(session: Session, thread_id: str) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .order_by(EventLog.stream_version.asc())
+        )
+    )
+
+
+def list_unprocessed_events(session: Session) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.processed_at.is_(None))
+            .order_by(EventLog.event_pk.asc())
+        )
+    )
+
+
+def mark_event_processed(session: Session, event_id: str) -> None:
+    session.execute(
+        update(EventLog)
+        .where(EventLog.event_id == event_id)
+        .values(processed_at=_now_iso())
+    )
+
+
+def get_command_dedup(session: Session, *, idempotency_key: str) -> CommandDedup | None:
+    return session.get(CommandDedup, idempotency_key)
+
+
+def save_command_dedup(
+    session: Session,
+    *,
+    idempotency_key: str,
+    command_name: str,
+    event_id: str,
+    response: dict[str, Any],
+) -> CommandDedup:
+    row = CommandDedup(
+        idempotency_key=idempotency_key,
+        command_name=command_name,
+        event_id=event_id,
+        response_json=json.dumps(response, ensure_ascii=False),
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_brands_view(session: Session) -> list[BrandView]:
+    return list(session.scalars(select(BrandView).order_by(BrandView.brand_id.asc())))
+
+
+def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
+    return list(
+        session.scalars(
+            select(ProjectView)
+            .where(ProjectView.brand_id == brand_id)
+            .order_by(ProjectView.project_id.asc())
+        )
+    )
+
+
+def get_event_by_id(session: Session, event_id: str) -> EventLog | None:
+    return session.scalar(select(EventLog).where(EventLog.event_id == event_id))
+
+
+def list_threads_view(session: Session, *, project_id: str) -> list[ThreadView]:
+    return list(
+        session.scalars(
+            select(ThreadView)
+            .where(ThreadView.project_id == project_id)
+            .order_by(ThreadView.last_activity_at.desc())
+        )
+    )
+
+
+def get_thread_view(session: Session, thread_id: str) -> ThreadView | None:
+    return session.get(ThreadView, thread_id)
+
+
+def list_timeline_items_view(session: Session, *, thread_id: str) -> list[TimelineItemView]:
+    return list(
+        session.scalars(
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+    )
+
+
+def get_task_view(session: Session, task_id: str) -> TaskView | None:
+    return session.get(TaskView, task_id)
+
+
+def list_tasks_view(session: Session, *, thread_id: str) -> list[TaskView]:
+    return list(
+        session.scalars(
+            select(TaskView)
+            .where(TaskView.thread_id == thread_id)
+            .order_by(TaskView.task_id.asc())
+        )
+    )
+
+
+def get_approval_view(session: Session, approval_id: str) -> ApprovalView | None:
+    return session.get(ApprovalView, approval_id)
+
+
+def list_approvals_view(session: Session, *, thread_id: str) -> list[ApprovalView]:
+    return list(
+        session.scalars(
+            select(ApprovalView)
+            .where(ApprovalView.thread_id == thread_id)
+            .order_by(ApprovalView.approval_id.asc())
+        )
     )
