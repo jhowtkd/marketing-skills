@@ -1,56 +1,42 @@
-const API_BASE = "/api/v1";
-const ENDPOINT_BRANDS = "/api/v1/brands";
-const ENDPOINT_PRODUCTS = "/api/v1/products";
-const ENDPOINT_CHAT = "/api/v1/chat";
-const ENDPOINT_RUN_FOUNDATION = "/api/v1/runs/foundation";
-const ENDPOINT_RUNS = "/api/v1/runs";
-const THREAD_STORAGE_KEY = "vm_webapp_thread_id";
+const ENDPOINT_BRANDS = "/api/v2/brands";
+const ENDPOINT_PROJECTS = "/api/v2/projects";
+const ENDPOINT_THREADS = "/api/v2/threads";
 
-const brandSelect = document.getElementById("brand-select");
-const productSelect = document.getElementById("product-select");
-const chatMessages = document.getElementById("chat-messages");
-const chatForm = document.getElementById("chat-form");
-const chatInput = document.getElementById("chat-input");
-const startRunButton = document.getElementById("start-foundation-run");
-const runStatus = document.getElementById("run-status");
-const runsTimeline = document.getElementById("runs-timeline");
+const brandForm = document.getElementById("brand-create-form");
+const brandIdInput = document.getElementById("brand-id-input");
+const brandNameInput = document.getElementById("brand-name-input");
+const brandsList = document.getElementById("brands-list");
 
-let activeRunId = null;
-let runsEventSource = null;
-const approvingRunIds = new Set();
+const projectForm = document.getElementById("project-create-form");
+const projectIdInput = document.getElementById("project-id-input");
+const projectNameInput = document.getElementById("project-name-input");
+const projectObjectiveInput = document.getElementById("project-objective-input");
+const projectChannelsInput = document.getElementById("project-channels-input");
+const projectDueDateInput = document.getElementById("project-due-date-input");
+const projectsList = document.getElementById("projects-list");
 
-function getThreadId() {
-  const existing = localStorage.getItem(THREAD_STORAGE_KEY);
-  if (existing) {
-    return existing;
-  }
-  const generated = `thread-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  localStorage.setItem(THREAD_STORAGE_KEY, generated);
-  return generated;
+const threadTitleInput = document.getElementById("thread-title-input");
+const threadCreateButton = document.getElementById("thread-create-button");
+const threadModeForm = document.getElementById("thread-mode-form");
+const threadModeInput = document.getElementById("thread-mode-input");
+const threadsList = document.getElementById("threads-list");
+const timelineList = document.getElementById("timeline-list");
+const tasksList = document.getElementById("tasks-list");
+const approvalsList = document.getElementById("approvals-list");
+
+let activeBrandId = null;
+let activeProjectId = null;
+let activeThreadId = null;
+
+const brandsState = [];
+const projectsState = [];
+const threadsState = [];
+
+function buildIdempotencyKey(prefix) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function appendMessage(role, content) {
-  const wrapper = document.createElement("div");
-  wrapper.className = `message message-${role}`;
-  wrapper.textContent = `${role}: ${content}`;
-  chatMessages.appendChild(wrapper);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function appendRunEvent(event) {
-  const line = document.createElement("div");
-  line.className = "run-event";
-  const stage = event.stage_id ? ` (${event.stage_id})` : "";
-  line.textContent = `${event.type || "event"}${stage}`;
-  runsTimeline.prepend(line);
-}
-
-function setRunStatus(message, isError = false) {
-  runStatus.textContent = message;
-  runStatus.style.color = isError ? "#b91c1c" : "#6b7280";
-}
-
-async function fetchJson(url, options = undefined) {
+async function fetchJson(url, options) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -60,246 +46,272 @@ async function fetchJson(url, options = undefined) {
   return body;
 }
 
-function populateSelect(selectElement, rows, valueKey, labelKey) {
-  selectElement.innerHTML = "";
+async function postV2(url, payload, prefix) {
+  return fetchJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": buildIdempotencyKey(prefix),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+function clearAndRender(container, rows, renderItem) {
+  container.innerHTML = "";
   if (!rows.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No data";
-    selectElement.appendChild(option);
+    const empty = document.createElement("div");
+    empty.className = "item muted";
+    empty.textContent = "No items yet.";
+    container.appendChild(empty);
     return;
   }
   for (const row of rows) {
-    const option = document.createElement("option");
-    option.value = row[valueKey];
-    option.textContent = row[labelKey];
-    selectElement.appendChild(option);
+    const node = renderItem(row);
+    container.appendChild(node);
   }
 }
 
-async function loadBrands() {
-  const body = await fetchJson(ENDPOINT_BRANDS);
-  populateSelect(brandSelect, body.brands || [], "brand_id", "name");
-  if (brandSelect.value) {
-    await loadProducts(brandSelect.value);
-  }
+function renderBrands() {
+  clearAndRender(brandsList, brandsState, (row) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "item ghost";
+    item.textContent = `${row.brand_id} - ${row.name}`;
+    item.addEventListener("click", async () => {
+      activeBrandId = row.brand_id;
+      await loadProjects(activeBrandId);
+    });
+    return item;
+  });
 }
 
-async function loadProducts(brandId) {
+function renderProjects() {
+  const rows = projectsState.filter((row) => row.brand_id === activeBrandId);
+  clearAndRender(projectsList, rows, (row) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "item ghost";
+    item.textContent = `${row.project_id} - ${row.name}`;
+    item.addEventListener("click", () => {
+      activeProjectId = row.project_id;
+    });
+    return item;
+  });
+}
+
+function renderThreads() {
+  const rows = threadsState.filter((row) => row.project_id === activeProjectId);
+  clearAndRender(threadsList, rows, (row) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "item ghost";
+    item.textContent = `${row.thread_id} - ${row.title}`;
+    item.addEventListener("click", async () => {
+      activeThreadId = row.thread_id;
+      await loadThreadWorkspace();
+    });
+    return item;
+  });
+}
+
+async function loadProjects(brandId) {
   if (!brandId) {
-    populateSelect(productSelect, [], "product_id", "name");
+    renderProjects();
     return;
   }
-  const body = await fetchJson(`${ENDPOINT_PRODUCTS}?brand_id=${encodeURIComponent(brandId)}`);
-  populateSelect(productSelect, body.products || [], "product_id", "name");
+  const body = await fetchJson(`${ENDPOINT_PROJECTS}?brand_id=${encodeURIComponent(brandId)}`);
+  projectsState.length = 0;
+  projectsState.push(...(body.projects || []));
+  if (!activeProjectId && projectsState.length) {
+    activeProjectId = projectsState[0].project_id;
+  }
+  renderProjects();
+  renderThreads();
 }
 
-function renderRuns(runs) {
-  runsTimeline.innerHTML = "";
-  if (!runs.length) {
-    const empty = document.createElement("div");
-    empty.className = "placeholder";
-    empty.textContent = "No runs yet.";
-    runsTimeline.appendChild(empty);
-    return;
-  }
+function renderTimeline(items) {
+  clearAndRender(timelineList, items, (itemRow) => {
+    const node = document.createElement("div");
+    node.className = "item";
+    node.textContent = `${itemRow.event_type} @ ${itemRow.occurred_at}`;
+    return node;
+  });
+}
 
-  for (const run of runs) {
-    const runCard = document.createElement("div");
-    runCard.className = "run-card";
-
+function renderTasks(items) {
+  clearAndRender(tasksList, items, (task) => {
+    const row = document.createElement("div");
+    row.className = "item";
     const title = document.createElement("div");
-    title.className = "run-title";
-    title.textContent = `${run.run_id} (${run.status})`;
-    runCard.appendChild(title);
+    title.textContent = `${task.task_id} (${task.status})`;
+    row.appendChild(title);
 
-    const stageList = document.createElement("ul");
-    stageList.className = "stage-list";
-    for (const stage of run.stages || []) {
-      const item = document.createElement("li");
-      item.textContent = `${stage.stage_id}: ${stage.status}`;
-      if (stage.status === "waiting_approval") {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = "Approve";
-        button.addEventListener("click", async () => {
-          await approveRun(run.run_id, button);
-        });
-        item.append(" ");
-        item.appendChild(button);
+    const actions = document.createElement("div");
+    actions.className = "inline";
+
+    const commentButton = document.createElement("button");
+    commentButton.type = "button";
+    commentButton.className = "ghost";
+    commentButton.textContent = "Comment";
+    commentButton.addEventListener("click", async () => {
+      const message = window.prompt("Comment for task:", "Need stronger KPI rationale");
+      if (!message) {
+        return;
       }
-      stageList.appendChild(item);
-    }
-    runCard.appendChild(stageList);
-    runsTimeline.appendChild(runCard);
-  }
-}
+      await postV2(`/api/v2/tasks/${encodeURIComponent(task.task_id)}/comment`, { message }, "task-comment");
+      await loadThreadWorkspace();
+    });
+    actions.appendChild(commentButton);
 
-function connectRunEvents(runId) {
-  if (!runId) {
-    return;
-  }
-  if (runsEventSource) {
-    runsEventSource.close();
-  }
-  const eventsUrl = `${API_BASE}/runs/${encodeURIComponent(runId)}/events?max_events=500`; // /events
-  runsEventSource = new EventSource(eventsUrl); // new EventSource
-  runsEventSource.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      appendRunEvent(payload);
-      if (
-        payload.type === "stage_completed" ||
-        payload.type === "approval_required" ||
-        payload.type === "run_completed"
-      ) {
-        loadRuns().catch((error) => setRunStatus(error.message, true));
-      }
-    } catch (_error) {
-      appendRunEvent({ type: "event", stage_id: "" });
-    }
-  };
-  runsEventSource.onerror = () => {
-    setRunStatus("Run stream disconnected; retrying...", true);
-    runsEventSource.close();
-    runsEventSource = null;
-    setTimeout(() => {
-      if (activeRunId === runId) {
-        connectRunEvents(runId);
-      }
-    }, 1000);
-  };
-}
+    const completeButton = document.createElement("button");
+    completeButton.type = "button";
+    completeButton.className = "ghost";
+    completeButton.textContent = "Complete";
+    completeButton.addEventListener("click", async () => {
+      await postV2(`/api/v2/tasks/${encodeURIComponent(task.task_id)}/complete`, {}, "task-complete");
+      await loadThreadWorkspace();
+    });
+    actions.appendChild(completeButton);
 
-async function loadRuns() {
-  const threadId = getThreadId();
-  const body = await fetchJson(`${ENDPOINT_RUNS}?thread_id=${encodeURIComponent(threadId)}`);
-  const runs = body.runs || [];
-  renderRuns(runs);
-  if (!runs.length) {
-    activeRunId = null;
-    setRunStatus("No active run.");
-    return;
-  }
-
-  const latest = runs[0];
-  setRunStatus(`Run ${latest.run_id} status: ${latest.status}`);
-  if (activeRunId !== latest.run_id) {
-    activeRunId = latest.run_id;
-    connectRunEvents(activeRunId);
-  }
-}
-
-async function approveRun(runId, buttonEl = null) {
-  if (approvingRunIds.has(runId)) {
-    return;
-  }
-  approvingRunIds.add(runId);
-  if (buttonEl) {
-    buttonEl.disabled = true;
-    buttonEl.textContent = "Approving...";
-  }
-
-  try {
-    const body = await fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}/approve`, {
-      method: "POST",
-    }); // /approve
-    setRunStatus(`Run ${body.run_id} status: ${body.status}`);
-    await loadRuns();
-  } catch (error) {
-    setRunStatus(`Approve failed: ${error.message}`, true);
-  } finally {
-    approvingRunIds.delete(runId);
-    if (buttonEl) {
-      buttonEl.disabled = false;
-      buttonEl.textContent = "Approve";
-    }
-  }
-}
-
-async function startFoundationRun(userRequest) {
-  const payload = {
-    brand_id: brandSelect.value,
-    product_id: productSelect.value,
-    thread_id: getThreadId(),
-    user_request: userRequest,
-  };
-  const body = await fetchJson(ENDPOINT_RUN_FOUNDATION, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  setRunStatus(`Run ${body.run_id} status: ${body.status}`);
-  await loadRuns();
-  return body;
-}
-
-async function sendChatMessage(message) {
-  const payload = {
-    brand_id: brandSelect.value,
-    product_id: productSelect.value,
-    thread_id: getThreadId(),
-    message,
-  };
-  return fetchJson(ENDPOINT_CHAT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    row.appendChild(actions);
+    return row;
   });
 }
 
-async function handleChatSubmit(event) {
+function renderApprovals(items) {
+  clearAndRender(approvalsList, items, (approval) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    const text = document.createElement("div");
+    text.textContent = `${approval.approval_id} (${approval.status})`;
+    row.appendChild(text);
+
+    if (approval.status !== "granted") {
+      const grantButton = document.createElement("button");
+      grantButton.type = "button";
+      grantButton.className = "ghost";
+      grantButton.textContent = "Grant";
+      grantButton.addEventListener("click", async () => {
+        await postV2(
+          `/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`,
+          {},
+          "approval-grant"
+        );
+        await loadThreadWorkspace();
+      });
+      row.appendChild(grantButton);
+    }
+    return row;
+  });
+}
+
+async function loadThreadWorkspace() {
+  if (!activeThreadId) {
+    renderTimeline([]);
+    renderTasks([]);
+    renderApprovals([]);
+    return;
+  }
+  const timeline = await fetchJson(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/timeline`
+  );
+  const tasks = await fetchJson(`/api/v2/threads/${encodeURIComponent(activeThreadId)}/tasks`);
+  const approvals = await fetchJson(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/approvals`
+  );
+  renderTimeline(timeline.items || []);
+  renderTasks(tasks.items || []);
+  renderApprovals(approvals.items || []);
+}
+
+brandForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const raw = chatInput.value.trim();
-  if (!raw) {
+  const brand_id = brandIdInput.value.trim();
+  const name = brandNameInput.value.trim();
+  if (!brand_id || !name) {
     return;
   }
+  await postV2(ENDPOINT_BRANDS, { brand_id, name }, "brand-create");
+  brandsState.push({ brand_id, name });
+  activeBrandId = brand_id;
+  renderBrands();
+  brandForm.reset();
+});
 
-  if (raw.startsWith("/run foundation")) {
-    try {
-      const run = await startFoundationRun(raw);
-      appendMessage("system", `Foundation run started: ${run.run_id}`);
-    } catch (error) {
-      appendMessage("system", `Failed to start run: ${error.message}`);
-      setRunStatus(error.message, true);
-    }
-    chatInput.value = "";
+projectForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!activeBrandId) {
+    window.alert("Create/select a brand first.");
     return;
   }
-
-  appendMessage("user", raw);
-  try {
-    const out = await sendChatMessage(raw);
-    appendMessage("assistant", out.assistant_message || "(empty)");
-  } catch (error) {
-    appendMessage("system", `Chat failed: ${error.message}`);
+  const project_id = projectIdInput.value.trim();
+  const name = projectNameInput.value.trim();
+  if (!project_id || !name) {
+    return;
   }
-  chatInput.value = "";
-}
+  const channels = projectChannelsInput.value
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const payload = {
+    project_id,
+    brand_id: activeBrandId,
+    name,
+    objective: projectObjectiveInput.value.trim(),
+    channels,
+    due_date: projectDueDateInput.value.trim() || null,
+  };
+  await postV2(ENDPOINT_PROJECTS, payload, "project-create");
+  await loadProjects(activeBrandId);
+  activeProjectId = project_id;
+  projectForm.reset();
+  renderThreads();
+});
 
-async function handleStartButtonClick() {
-  try {
-    const run = await startFoundationRun("Start Foundation Run button");
-    appendMessage("system", `Foundation run started: ${run.run_id}`);
-  } catch (error) {
-    appendMessage("system", `Failed to start run: ${error.message}`);
-    setRunStatus(error.message, true);
+threadCreateButton.addEventListener("click", async () => {
+  if (!activeBrandId || !activeProjectId) {
+    window.alert("Create/select brand and project first.");
+    return;
   }
-}
+  const title = threadTitleInput.value.trim() || "Planning Thread";
+  const thread_id = `t-${Date.now().toString(36)}`;
+  await postV2(
+    ENDPOINT_THREADS,
+    {
+      thread_id,
+      project_id: activeProjectId,
+      brand_id: activeBrandId,
+      title,
+    },
+    "thread-create"
+  );
+  threadsState.unshift({ thread_id, project_id: activeProjectId, title });
+  activeThreadId = thread_id;
+  renderThreads();
+  await loadThreadWorkspace();
+});
 
-async function bootstrap() {
-  brandSelect.addEventListener("change", async () => {
-    await loadProducts(brandSelect.value);
-  });
-  chatForm.addEventListener("submit", handleChatSubmit);
-  startRunButton.addEventListener("click", handleStartButtonClick);
-
-  try {
-    await loadBrands();
-    await loadRuns();
-  } catch (error) {
-    setRunStatus(`Failed to initialize UI: ${error.message}`, true);
+threadModeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!activeThreadId) {
+    window.alert("Create/select a thread first.");
+    return;
   }
-}
+  const mode = threadModeInput.value.trim();
+  if (!mode) {
+    return;
+  }
+  await postV2(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/modes`,
+    { mode },
+    "thread-mode"
+  );
+  threadModeForm.reset();
+  await loadThreadWorkspace();
+});
 
-bootstrap();
+renderBrands();
+renderProjects();
+renderThreads();
+loadThreadWorkspace().catch(() => undefined);
