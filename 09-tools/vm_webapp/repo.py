@@ -4,10 +4,11 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from vm_webapp.models import Brand, Product, Run, Stage
+from vm_webapp.events import EventEnvelope
+from vm_webapp.models import Brand, EventLog, Product, Run, Stage
 from vm_webapp.workspace import Workspace
 
 
@@ -168,4 +169,48 @@ def update_stage_status(session: Session, stage_pk: int, status: str, attempts: 
         update(Stage)
         .where(Stage.stage_pk == stage_pk)
         .values(status=status, attempts=attempts, updated_at=_now_iso())
+    )
+
+
+def append_event(session: Session, envelope: EventEnvelope) -> EventLog:
+    current = session.scalar(
+        select(func.max(EventLog.stream_version)).where(
+            EventLog.stream_id == envelope.stream_id
+        )
+    )
+    current_version = int(current or 0)
+    if current_version != envelope.expected_version:
+        raise ValueError(
+            f"stream version conflict: expected={envelope.expected_version} actual={current_version}"
+        )
+
+    row = EventLog(
+        event_id=envelope.event_id,
+        event_type=envelope.event_type,
+        aggregate_type=envelope.aggregate_type,
+        aggregate_id=envelope.aggregate_id,
+        stream_id=envelope.stream_id,
+        stream_version=current_version + 1,
+        actor_type=envelope.actor_type,
+        actor_id=envelope.actor_id,
+        brand_id=envelope.brand_id,
+        project_id=envelope.project_id,
+        thread_id=envelope.thread_id,
+        correlation_id=envelope.correlation_id,
+        causation_id=envelope.causation_id,
+        payload_json=json.dumps(envelope.payload, ensure_ascii=False),
+        occurred_at=envelope.occurred_at,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_events_by_stream(session: Session, stream_id: str) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.stream_id == stream_id)
+            .order_by(EventLog.stream_version.asc())
+        )
     )

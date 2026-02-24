@@ -61,3 +61,25 @@ class Stage(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class EventLog(Base):
+    __tablename__ = "event_log"
+
+    event_pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    stream_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    brand_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    causation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    processed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
