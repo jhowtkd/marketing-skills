@@ -183,6 +183,51 @@ def test_execute_stage_generates_llm_artifact_when_llm_available(tmp_path: Path,
     assert any("LLM Generated" in content for content in result.artifacts.values())
 
 
+def test_execute_stage_preserves_original_artifact_when_llm_fails(tmp_path: Path, monkeypatch) -> None:
+    """Ensure original artifact is preserved when LLM raises exception."""
+    class FailingLLM:
+        def chat(self, **kwargs):
+            raise RuntimeError("LLM service unavailable")
+
+    service = FoundationRunnerService(workspace_root=tmp_path, llm=FailingLLM())
+
+    def _fake_run_until_gate(
+        runtime_root: Path,
+        project_id: str,
+        thread_id: str,
+        stack_path: str,
+        query: str,
+        output_root: Path,
+    ) -> dict[str, object]:
+        _write_foundation_artifact(
+            output_root,
+            run_date="2026-02-24",
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="research/research-report.md",
+            content="# Original Research Content\n\nThis must be preserved.",
+        )
+        return {
+            "status": "waiting_approval",
+            "output_root": str(output_root),
+            "run_date": "2026-02-24",
+            "artifacts": ["research/research-report.md"],
+        }
+
+    monkeypatch.setattr(foundation_module.executor, "run_until_gate", _fake_run_until_gate)
+
+    result = service.execute_stage(
+        run_id="r1",
+        thread_id="t1",
+        project_id="p1",
+        request_text="crm",
+        stage_key="research",
+    )
+    content = result.artifacts.get("research/research-report.md", "")
+    assert "Original Research Content" in content
+    assert "must be preserved" in content
+
+
 def test_execute_stage_keeps_executor_artifact_when_llm_not_configured(tmp_path: Path, monkeypatch) -> None:
     service = FoundationRunnerService(workspace_root=tmp_path, llm=None)
 

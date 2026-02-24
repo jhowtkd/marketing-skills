@@ -95,19 +95,27 @@ class FoundationRunnerService:
 
         # Generate LLM-enhanced content if LLM is available
         if self.llm is not None:
+            # Build accumulated context from all artifacts in state
+            accumulated_artifacts = self._load_all_artifacts_from_state(
+                state=state,
+                project_id=project_id,
+                thread_id=foundation_thread_id,
+            )
             prompt = self._build_stage_prompt(
                 stage_key=stage_key,
                 request_text=request_text,
-                previous_artifacts=artifacts,
-            )
-            llm_content = self._render_stage_markdown(
-                prompt=prompt,
-                fallback="",
+                previous_artifacts=accumulated_artifacts,
             )
             # Replace the primary artifact with LLM-generated content
             candidates = STAGE_ARTIFACT_CANDIDATES.get(stage_key, ())
             for candidate in candidates:
                 if candidate in artifacts:
+                    # Use current artifact content as fallback to avoid data loss
+                    current_content = artifacts[candidate]
+                    llm_content = self._render_stage_markdown(
+                        prompt=prompt,
+                        fallback=current_content,
+                    )
                     artifacts[candidate] = llm_content
                     break
 
@@ -151,6 +159,27 @@ class FoundationRunnerService:
         except FileNotFoundError:
             return None
         return state if isinstance(state, dict) else None
+
+    def _load_all_artifacts_from_state(
+        self,
+        *,
+        state: dict[str, Any],
+        project_id: str,
+        thread_id: str,
+    ) -> dict[str, str]:
+        """Load all artifacts from state for context building (not just stage-specific)."""
+        base_dir = self._artifact_base_dir(state=state, project_id=project_id, thread_id=thread_id)
+        all_artifacts = [
+            path
+            for path in state.get("artifacts", [])
+            if isinstance(path, str) and path.strip()
+        ]
+        payload: dict[str, str] = {}
+        for relative_path in all_artifacts:
+            artifact_path = base_dir / relative_path
+            if artifact_path.exists():
+                payload[relative_path] = artifact_path.read_text(encoding="utf-8")
+        return payload
 
     @staticmethod
     def _artifact_set(state: dict[str, Any] | None) -> set[str]:
