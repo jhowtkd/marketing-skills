@@ -119,6 +119,19 @@ class FoundationRunnerService:
                     artifacts[candidate] = llm_content
                     break
 
+            # Generate final brief when keywords stage completes the pipeline
+            if stage_key == "keywords" and state.get("status") == "completed":
+                brief_prompt = self._build_final_brief_prompt(
+                    request_text=request_text,
+                    artifacts=accumulated_artifacts,
+                )
+                existing_brief = accumulated_artifacts.get("final/foundation-brief.md", "")
+                brief_md = self._render_stage_markdown(
+                    prompt=brief_prompt,
+                    fallback=existing_brief,
+                )
+                artifacts["final/foundation-brief.md"] = brief_md
+
         output_payload = self._build_output_payload(state=state, stage_key=stage_key)
         return FoundationStageResult(
             stage_key=stage_key,

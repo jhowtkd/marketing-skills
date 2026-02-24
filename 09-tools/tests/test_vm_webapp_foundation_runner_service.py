@@ -266,6 +266,85 @@ def test_execute_stage_keeps_executor_artifact_when_llm_not_configured(tmp_path:
     assert "Static Research" in result.artifacts.get("research/research-report.md", "")
 
 
+def test_keywords_stage_also_returns_llm_final_brief_when_pipeline_completed(tmp_path: Path, monkeypatch) -> None:
+    class FakeLLM:
+        def __init__(self):
+            self.calls = []
+
+        def chat(self, **kwargs):
+            self.calls.append(kwargs)
+            prompt = kwargs["messages"][0]["content"]
+            if "foundation brief" in prompt.lower():
+                return "# Final Foundation Brief\n\nThis is the synthesized brief."
+            return "# Stage Output"
+
+    service = FoundationRunnerService(workspace_root=tmp_path, llm=FakeLLM())
+
+    def _fake_approve_stage(
+        runtime_root: Path,
+        project_id: str,
+        thread_id: str,
+        stage_id: str,
+    ) -> dict[str, object]:
+        output_root = tmp_path / "foundation-output"
+        # Write all previous artifacts
+        _write_foundation_artifact(
+            output_root,
+            run_date="2026-02-24",
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="research/research-report.md",
+            content="# Research\n\nMarket analysis",
+        )
+        _write_foundation_artifact(
+            output_root,
+            run_date="2026-02-24",
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="strategy/brand-voice-guide.md",
+            content="# Brand Voice\n\nVoice guide",
+        )
+        _write_foundation_artifact(
+            output_root,
+            run_date="2026-02-24",
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="strategy/positioning-strategy.md",
+            content="# Positioning\n\nPositioning strategy",
+        )
+        _write_foundation_artifact(
+            output_root,
+            run_date="2026-02-24",
+            project_id=project_id,
+            thread_id=thread_id,
+            relative_path="strategy/keyword-map.md",
+            content="# Keywords\n\nKeyword map",
+        )
+        return {
+            "status": "completed",
+            "output_root": str(output_root),
+            "run_date": "2026-02-24",
+            "artifacts": [
+                "research/research-report.md",
+                "strategy/brand-voice-guide.md",
+                "strategy/positioning-strategy.md",
+                "strategy/keyword-map.md",
+            ],
+        }
+
+    monkeypatch.setattr(foundation_module.executor, "approve_stage", _fake_approve_stage)
+
+    result = service.execute_stage(
+        run_id="r1",
+        thread_id="t1",
+        project_id="p1",
+        request_text="crm",
+        stage_key="keywords",
+    )
+    assert "final/foundation-brief.md" in result.artifacts
+    assert "Final Foundation Brief" in result.artifacts["final/foundation-brief.md"]
+
+
 def test_service_isolates_foundation_thread_per_run(tmp_path: Path, monkeypatch) -> None:
     service = FoundationRunnerService(workspace_root=tmp_path)
     seen_thread_ids: list[str] = []
