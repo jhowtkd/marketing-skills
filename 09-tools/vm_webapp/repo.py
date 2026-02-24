@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from vm_webapp.events import EventEnvelope
 from vm_webapp.models import (
+    ApprovalView,
     Brand,
     BrandView,
     CommandDedup,
@@ -17,6 +18,7 @@ from vm_webapp.models import (
     ProjectView,
     Run,
     Stage,
+    TaskView,
     ThreadView,
     TimelineItemView,
 )
@@ -319,5 +321,33 @@ def list_timeline_items_view(session: Session, *, thread_id: str) -> list[Timeli
             select(TimelineItemView)
             .where(TimelineItemView.thread_id == thread_id)
             .order_by(TimelineItemView.timeline_pk.asc())
+        )
+    )
+
+
+def get_task_view(session: Session, task_id: str) -> TaskView | None:
+    return session.get(TaskView, task_id)
+
+
+def list_tasks_view(session: Session, *, thread_id: str) -> list[TaskView]:
+    return list(
+        session.scalars(
+            select(TaskView)
+            .where(TaskView.thread_id == thread_id)
+            .order_by(TaskView.task_id.asc())
+        )
+    )
+
+
+def get_approval_view(session: Session, approval_id: str) -> ApprovalView | None:
+    return session.get(ApprovalView, approval_id)
+
+
+def list_approvals_view(session: Session, *, thread_id: str) -> list[ApprovalView]:
+    return list(
+        session.scalars(
+            select(ApprovalView)
+            .where(ApprovalView.thread_id == thread_id)
+            .order_by(ApprovalView.approval_id.asc())
         )
     )

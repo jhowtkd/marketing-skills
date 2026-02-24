@@ -11,20 +11,26 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from vm_webapp.commands_v2 import (
+    add_comment_command,
     add_thread_mode_command,
+    complete_task_command,
     create_brand_command,
     create_project_command,
     create_thread_command,
+    grant_approval_command,
 )
 from vm_webapp.db import session_scope
+from vm_webapp.orchestrator_v2 import process_new_events
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
     get_event_by_id,
+    list_approvals_view,
     list_brands,
     list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
+    list_tasks_view,
     list_timeline_items_view,
 )
 from vm_webapp.stacking import build_context_pack
@@ -96,6 +102,10 @@ class ThreadCreateRequest(BaseModel):
 
 class ThreadModeAddRequest(BaseModel):
     mode: str
+
+
+class TaskCommentRequest(BaseModel):
+    message: str
 
 
 @router.post("/v2/brands")
@@ -207,6 +217,93 @@ def list_thread_timeline_v2(
             for row in rows
         ]
     }
+
+
+@router.get("/v2/threads/{thread_id}/tasks")
+def list_thread_tasks_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_tasks_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "task_id": row.task_id,
+                "thread_id": row.thread_id,
+                "title": row.title,
+                "status": row.status,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/v2/threads/{thread_id}/approvals")
+def list_thread_approvals_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_approvals_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "approval_id": row.approval_id,
+                "thread_id": row.thread_id,
+                "status": row.status,
+                "reason": row.reason,
+                "required_role": row.required_role,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/v2/tasks/{task_id}/comment")
+def comment_task_v2(
+    task_id: str, payload: TaskCommentRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = add_comment_command(
+            session,
+            task_id=task_id,
+            message=payload.message,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "task_id": task_id}
+
+
+@router.post("/v2/tasks/{task_id}/complete")
+def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = complete_task_command(
+            session,
+            task_id=task_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "task_id": task_id}
+
+
+@router.post("/v2/approvals/{approval_id}/grant")
+def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = grant_approval_command(
+            session,
+            approval_id=approval_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        process_new_events(session)
+    return {"event_id": result.event_id, "approval_id": approval_id}
 
 
 class ChatRequest(BaseModel):

@@ -138,3 +138,24 @@ class TimelineItemView(Base):
     actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class TaskView(Base):
+    __tablename__ = "tasks_view"
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ApprovalView(Base):
+    __tablename__ = "approvals_view"
+
+    approval_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    required_role: Mapped[str] = mapped_column(String(64), nullable=False, default="editor")
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

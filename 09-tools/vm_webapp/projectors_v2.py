@@ -5,7 +5,15 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from vm_webapp.models import BrandView, EventLog, ProjectView, ThreadView, TimelineItemView
+from vm_webapp.models import (
+    ApprovalView,
+    BrandView,
+    EventLog,
+    ProjectView,
+    TaskView,
+    ThreadView,
+    TimelineItemView,
+)
 
 
 def apply_event_to_read_models(session: Session, event: EventLog) -> None:
@@ -71,6 +79,61 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             modes.append(payload["mode"])
             row.modes_json = json.dumps(modes, ensure_ascii=False)
         row.last_activity_at = event.occurred_at
+
+    if event.event_type == "TaskCommentAdded":
+        row = session.get(TaskView, payload["task_id"])
+        if row is None and event.thread_id:
+            row = TaskView(
+                task_id=payload["task_id"],
+                thread_id=event.thread_id,
+                title=payload["task_id"],
+                status="open",
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        if row is not None:
+            row.updated_at = event.occurred_at
+
+    if event.event_type == "TaskCompleted":
+        row = session.get(TaskView, payload["task_id"])
+        if row is None and event.thread_id:
+            row = TaskView(
+                task_id=payload["task_id"],
+                thread_id=event.thread_id,
+                title=payload["task_id"],
+                status="completed",
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        if row is not None:
+            row.status = "completed"
+            row.updated_at = event.occurred_at
+
+    if event.event_type == "ApprovalRequested":
+        approval_id = payload["approval_id"]
+        row = session.get(ApprovalView, approval_id)
+        if row is None and event.thread_id:
+            row = ApprovalView(
+                approval_id=approval_id,
+                thread_id=event.thread_id,
+                status="pending",
+                reason=payload.get("reason", ""),
+                required_role=payload.get("required_role", "editor"),
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        elif row is not None:
+            row.status = "pending"
+            row.reason = payload.get("reason", row.reason)
+            row.required_role = payload.get("required_role", row.required_role)
+            row.updated_at = event.occurred_at
+
+    if event.event_type == "ApprovalGranted":
+        approval_id = payload["approval_id"]
+        row = session.get(ApprovalView, approval_id)
+        if row is not None:
+            row.status = "granted"
+            row.updated_at = event.occurred_at
 
     if event.thread_id:
         timeline_item = session.scalar(
