@@ -377,6 +377,54 @@ def test_v2_workflow_run_endpoints_queue_resume_and_list_artifacts(tmp_path: Pat
     assert any(row["run_id"] == run_id for row in listed.json()["runs"])
 
 
+def test_start_workflow_run_returns_requested_and_effective_mode(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "mode-b"}, json={"name": "Acme"}
+    )
+    brand_id = client.get("/api/v2/brands").json()["brands"][0]["brand_id"]
+
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "mode-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    )
+    project_id = client.get("/api/v2/projects", params={"brand_id": brand_id}).json()[
+        "projects"
+    ][0]["project_id"]
+
+    thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "mode-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()
+
+    started = client.post(
+        f"/api/v2/threads/{thread['thread_id']}/workflow-runs",
+        headers={"Idempotency-Key": "mode-run"},
+        json={"request_text": "Generate plan assets", "mode": "content_calendar"},
+    )
+    assert started.status_code == 200
+    assert started.json()["requested_mode"] == "content_calendar"
+    assert started.json()["effective_mode"] == "foundation_stack"
+
+    detail = wait_for_run_status(client, started.json()["run_id"], {"waiting_approval", "completed"})
+    assert detail["requested_mode"] == "content_calendar"
+    assert detail["effective_mode"] == "foundation_stack"
+    assert detail["profile_version"] == "v1"
+    assert detail["fallback_applied"] is True
+    assert "error_code" in detail["stages"][0]
+    assert "error_message" in detail["stages"][0]
+    assert "retryable" in detail["stages"][0]
+
+
 def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path) -> None:
     app = create_app(
         settings=Settings(
