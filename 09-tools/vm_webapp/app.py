@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from vm_webapp.api import router as api_router
@@ -15,6 +16,13 @@ from vm_webapp.settings import Settings
 from vm_webapp.workspace import Workspace
 
 
+async def value_error_to_http(_request: Request, exc: ValueError) -> JSONResponse:
+    message = str(exc)
+    if "stream version conflict" in message:
+        return JSONResponse(status_code=409, content={"detail": message})
+    return JSONResponse(status_code=400, content={"detail": message})
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -24,6 +32,7 @@ def create_app(
     settings = settings or Settings()
 
     app = FastAPI(title="VM Web App")
+    app.add_exception_handler(ValueError, value_error_to_http)
 
     workspace = Workspace(root=settings.vm_workspace_root)
     engine = build_engine(settings.vm_db_path)

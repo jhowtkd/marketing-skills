@@ -18,11 +18,14 @@ from vm_webapp.commands_v2 import (
     create_project_command,
     create_thread_command,
     grant_approval_command,
+    start_agent_plan_command,
 )
 from vm_webapp.db import session_scope
+from vm_webapp.events import EventEnvelope
 from vm_webapp.orchestrator_v2 import process_new_events
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
+    append_event,
     get_event_by_id,
     list_approvals_view,
     list_brands,
@@ -106,6 +109,10 @@ class ThreadModeAddRequest(BaseModel):
 
 class TaskCommentRequest(BaseModel):
     message: str
+
+
+class ForceConflictRequest(BaseModel):
+    thread_id: str
 
 
 @router.post("/v2/brands")
@@ -304,6 +311,58 @@ def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
         project_command_event(session, event_id=result.event_id)
         process_new_events(session)
     return {"event_id": result.event_id, "approval_id": approval_id}
+
+
+@router.post("/v2/threads/{thread_id}/agent-plan/start")
+def start_agent_plan_v2(thread_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = start_agent_plan_command(
+            session,
+            thread_id=thread_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        process_new_events(session)
+    return {"event_id": result.event_id, "thread_id": thread_id}
+
+
+@router.post("/v2/test/force-conflict")
+def force_conflict_v2(payload: ForceConflictRequest, request: Request) -> dict[str, str]:
+    stream_id = f"thread:{payload.thread_id}"
+    with session_scope(request.app.state.engine) as session:
+        append_event(
+            session,
+            EventEnvelope(
+                event_id=f"evt-conflict-a-{payload.thread_id}",
+                event_type="ConflictProbe",
+                aggregate_type="thread",
+                aggregate_id=payload.thread_id,
+                stream_id=stream_id,
+                expected_version=0,
+                actor_type="system",
+                actor_id="test-helper",
+                payload={"thread_id": payload.thread_id},
+                thread_id=payload.thread_id,
+            ),
+        )
+        append_event(
+            session,
+            EventEnvelope(
+                event_id=f"evt-conflict-b-{payload.thread_id}",
+                event_type="ConflictProbe",
+                aggregate_type="thread",
+                aggregate_id=payload.thread_id,
+                stream_id=stream_id,
+                expected_version=0,
+                actor_type="system",
+                actor_id="test-helper",
+                payload={"thread_id": payload.thread_id},
+                thread_id=payload.thread_id,
+            ),
+        )
+    return {"status": "ok"}
 
 
 class ChatRequest(BaseModel):

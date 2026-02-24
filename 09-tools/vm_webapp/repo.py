@@ -315,6 +315,10 @@ def list_threads_view(session: Session, *, project_id: str) -> list[ThreadView]:
     )
 
 
+def get_thread_view(session: Session, thread_id: str) -> ThreadView | None:
+    return session.get(ThreadView, thread_id)
+
+
 def list_timeline_items_view(session: Session, *, thread_id: str) -> list[TimelineItemView]:
     return list(
         session.scalars(
