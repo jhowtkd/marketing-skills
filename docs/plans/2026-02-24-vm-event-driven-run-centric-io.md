@@ -864,10 +864,10 @@ Expected: server healthy at `GET /api/v1/health`.
 Run:
 
 ```bash
-find runtime/vm/runs -maxdepth 4 -type f | sort
+find runtime/vm/runs -maxdepth 6 -type f | sort
 ```
 
-Expected: each run has `run.json`, per-stage `manifest.json`, `input.json`, `output.json`, and artifact files.
+Expected: each run has `run.json`, per-stage `manifest.json`, `input.json`, `output.json`, and `stages/<stage>/artifacts/*.md` files.
 
 **Step 4: Final commit (docs-only if adjustments were needed)**
 
