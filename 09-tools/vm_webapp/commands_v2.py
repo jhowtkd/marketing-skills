@@ -49,3 +49,57 @@ def create_brand_command(
     dedup = get_command_dedup(session, idempotency_key=idempotency_key)
     assert dedup is not None
     return dedup
+
+
+def create_project_command(
+    session: Session,
+    *,
+    project_id: str,
+    brand_id: str,
+    name: str,
+    objective: str,
+    channels: list[str],
+    due_date: str | None,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    stream_id = f"project:{project_id}"
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="ProjectCreated",
+        aggregate_type="project",
+        aggregate_id=project_id,
+        stream_id=stream_id,
+        expected_version=0,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "project_id": project_id,
+            "brand_id": brand_id,
+            "name": name,
+            "objective": objective,
+            "channels": channels,
+            "due_date": due_date,
+        },
+        brand_id=brand_id,
+        project_id=project_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_project",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "project_id": project_id,
+            "brand_id": brand_id,
+        },
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup

@@ -260,3 +260,7 @@ def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
             .order_by(ProjectView.project_id.asc())
         )
     )
+
+
+def get_event_by_id(session: Session, event_id: str) -> EventLog | None:
+    return session.scalar(select(EventLog).where(EventLog.event_id == event_id))

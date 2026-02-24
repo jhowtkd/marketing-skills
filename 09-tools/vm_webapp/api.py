@@ -8,11 +8,15 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from vm_webapp.commands_v2 import create_brand_command, create_project_command
 from vm_webapp.db import session_scope
+from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
+    get_event_by_id,
     list_brands,
+    list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
@@ -46,6 +50,89 @@ def products(brand_id: str, request: Request) -> dict[str, list[dict[str, str]]]
             {"product_id": row.product_id, "brand_id": row.brand_id, "name": row.name}
             for row in rows
         ],
+    }
+
+
+def require_idempotency(request: Request) -> str:
+    key = request.headers.get("Idempotency-Key")
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Idempotency-Key header")
+    return key
+
+
+def project_command_event(session, *, event_id: str) -> None:
+    row = get_event_by_id(session, event_id)
+    if row is None:
+        raise ValueError(f"event not found: {event_id}")
+    apply_event_to_read_models(session, row)
+
+
+class BrandCreateRequest(BaseModel):
+    brand_id: str
+    name: str
+
+
+class ProjectCreateRequest(BaseModel):
+    project_id: str
+    brand_id: str
+    name: str
+    objective: str = ""
+    channels: list[str] = Field(default_factory=list)
+    due_date: str | None = None
+
+
+@router.post("/v2/brands")
+def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_brand_command(
+            session,
+            brand_id=payload.brand_id,
+            name=payload.name,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "brand_id": payload.brand_id}
+
+
+@router.post("/v2/projects")
+def create_project_v2(payload: ProjectCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_project_command(
+            session,
+            project_id=payload.project_id,
+            brand_id=payload.brand_id,
+            name=payload.name,
+            objective=payload.objective,
+            channels=payload.channels,
+            due_date=payload.due_date,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "project_id": payload.project_id}
+
+
+@router.get("/v2/projects")
+def list_projects_v2(
+    brand_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_projects_view(session, brand_id=brand_id)
+    return {
+        "projects": [
+            {
+                "project_id": row.project_id,
+                "brand_id": row.brand_id,
+                "name": row.name,
+                "objective": row.objective,
+                "channels": json.loads(row.channels_json),
+                "due_date": row.due_date,
+            }
+            for row in rows
+        ]
     }
 
 
