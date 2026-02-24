@@ -10,7 +10,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from vm_webapp.commands_v2 import create_brand_command, create_project_command
+from vm_webapp.commands_v2 import (
+    add_thread_mode_command,
+    create_brand_command,
+    create_project_command,
+    create_thread_command,
+)
 from vm_webapp.db import session_scope
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
@@ -20,6 +25,7 @@ from vm_webapp.repo import (
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
+    list_timeline_items_view,
 )
 from vm_webapp.stacking import build_context_pack
 
@@ -81,6 +87,17 @@ class ProjectCreateRequest(BaseModel):
     due_date: str | None = None
 
 
+class ThreadCreateRequest(BaseModel):
+    thread_id: str
+    project_id: str
+    brand_id: str
+    title: str
+
+
+class ThreadModeAddRequest(BaseModel):
+    mode: str
+
+
 @router.post("/v2/brands")
 def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
@@ -130,6 +147,62 @@ def list_projects_v2(
                 "objective": row.objective,
                 "channels": json.loads(row.channels_json),
                 "due_date": row.due_date,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/v2/threads")
+def create_thread_v2(payload: ThreadCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_thread_command(
+            session,
+            thread_id=payload.thread_id,
+            project_id=payload.project_id,
+            brand_id=payload.brand_id,
+            title=payload.title,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "thread_id": payload.thread_id}
+
+
+@router.post("/v2/threads/{thread_id}/modes")
+def add_thread_mode_v2(
+    thread_id: str, payload: ThreadModeAddRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = add_thread_mode_command(
+            session,
+            thread_id=thread_id,
+            mode=payload.mode,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "thread_id": thread_id}
+
+
+@router.get("/v2/threads/{thread_id}/timeline")
+def list_thread_timeline_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_timeline_items_view(session, thread_id=thread_id)
+    return {
+        "items": [
+            {
+                "event_id": row.event_id,
+                "thread_id": row.thread_id,
+                "event_type": row.event_type,
+                "actor_type": row.actor_type,
+                "actor_id": row.actor_id,
+                "payload": json.loads(row.payload_json),
+                "occurred_at": row.occurred_at,
             }
             for row in rows
         ]

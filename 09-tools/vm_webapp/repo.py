@@ -17,6 +17,8 @@ from vm_webapp.models import (
     ProjectView,
     Run,
     Stage,
+    ThreadView,
+    TimelineItemView,
 )
 from vm_webapp.workspace import Workspace
 
@@ -225,6 +227,13 @@ def list_events_by_stream(session: Session, stream_id: str) -> list[EventLog]:
     )
 
 
+def get_stream_version(session: Session, stream_id: str) -> int:
+    current = session.scalar(
+        select(func.max(EventLog.stream_version)).where(EventLog.stream_id == stream_id)
+    )
+    return int(current or 0)
+
+
 def get_command_dedup(session: Session, *, idempotency_key: str) -> CommandDedup | None:
     return session.get(CommandDedup, idempotency_key)
 
@@ -264,3 +273,23 @@ def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
 
 def get_event_by_id(session: Session, event_id: str) -> EventLog | None:
     return session.scalar(select(EventLog).where(EventLog.event_id == event_id))
+
+
+def list_threads_view(session: Session, *, project_id: str) -> list[ThreadView]:
+    return list(
+        session.scalars(
+            select(ThreadView)
+            .where(ThreadView.project_id == project_id)
+            .order_by(ThreadView.last_activity_at.desc())
+        )
+    )
+
+
+def list_timeline_items_view(session: Session, *, thread_id: str) -> list[TimelineItemView]:
+    return list(
+        session.scalars(
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+    )

@@ -113,3 +113,28 @@ class ProjectView(Base):
     channels_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ThreadView(Base):
+    __tablename__ = "threads_view"
+
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    modes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    last_activity_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class TimelineItemView(Base):
+    __tablename__ = "timeline_items_view"
+
+    timeline_pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
