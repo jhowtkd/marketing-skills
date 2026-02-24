@@ -406,7 +406,13 @@ function renderWorkflowRuns(items) {
     const bar = document.createElement("div");
     bar.className = "inline";
     const label = document.createElement("div");
-    label.textContent = `${run.run_id} (${run.status}) ${run.completed_stages || 0}/${run.total_stages || 0}`;
+    const requestedMode = run.requested_mode || run.mode || "plan_90d";
+    const effectiveMode = run.effective_mode || run.mode || requestedMode;
+    const modeLabel =
+      requestedMode === effectiveMode
+        ? `mode=${effectiveMode}`
+        : `mode=${requestedMode} -> ${effectiveMode}`;
+    label.textContent = `${run.run_id} (${run.status}) ${run.completed_stages || 0}/${run.total_stages || 0} ${modeLabel}`;
     bar.appendChild(label);
 
     const openDetail = createActionButton("Details", async () => {
@@ -437,8 +443,23 @@ function renderWorkflowRunDetail(detail) {
     clearAndRender(workflowRunDetailList, [], () => document.createElement("div"));
     return;
   }
+  workflowRunDetailList.innerHTML = "";
+  const requestedMode = detail.requested_mode || detail.mode || "plan_90d";
+  const effectiveMode = detail.effective_mode || detail.mode || requestedMode;
+  const runMeta = document.createElement("div");
+  runMeta.className = "item";
+  runMeta.textContent =
+    `${detail.run_id} (${detail.status}) mode=${requestedMode} -> ${effectiveMode}`;
+  workflowRunDetailList.appendChild(runMeta);
+  if (detail.fallback_applied) {
+    const fallbackNotice = document.createElement("div");
+    fallbackNotice.className = "item muted";
+    fallbackNotice.textContent = "fallback_applied: selected mode was mapped to foundation execution.";
+    workflowRunDetailList.appendChild(fallbackNotice);
+  }
+
   const stages = Array.isArray(detail.stages) ? detail.stages : [];
-  clearAndRender(workflowRunDetailList, stages, (stage) => {
+  for (const stage of stages) {
     const row = document.createElement("div");
     row.className = "item";
     const title = document.createElement("div");
@@ -448,8 +469,16 @@ function renderWorkflowRunDetail(detail) {
     skills.className = "muted";
     skills.textContent = (stage.skills || []).join(", ");
     row.appendChild(skills);
-    return row;
-  });
+    if (stage.error_code) {
+      const errorLine = document.createElement("div");
+      errorLine.className = "muted";
+      const retryable = stage.retryable ? "retryable" : "non-retryable";
+      errorLine.textContent =
+        `error_code=${stage.error_code} error_message=${stage.error_message || ""} ${retryable}`;
+      row.appendChild(errorLine);
+    }
+    workflowRunDetailList.appendChild(row);
+  }
 
   const pendingApprovals = detail.pending_approvals || [];
   for (const approval of pendingApprovals) {

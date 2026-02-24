@@ -44,3 +44,13 @@ def test_vm_app_js_calls_workflow_run_endpoints() -> None:
     assert "/api/v2/workflow-runs/" in js and "/artifacts" in js
     assert "/api/v2/workflow-runs/" in js and "/resume" in js
     assert "/api/v2/workflow-profiles" in js
+
+
+def test_ui_assets_include_effective_mode_and_stage_status_labels() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "effective_mode" in js
+    assert "requested_mode" in js
+    assert "fallback_applied" in js
+    assert "error_code" in js
+    assert "Run Detail" in html
