@@ -95,3 +95,49 @@ def test_approval_gate_blocks_agent_run_until_granted(tmp_path: Path) -> None:
         "items"
     ]
     assert any(i["event_type"] == "AgentStepCompleted" for i in timeline_after)
+
+
+def test_thread_workflow_request_generates_versioned_artifacts_and_timeline(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    brand_id = client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "b1"}, json={"name": "Acme"}
+    ).json()["brand_id"]
+    project_id = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "p1"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    ).json()["project_id"]
+    thread_id = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "t1"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()["thread_id"]
+
+    r1 = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "run-a"},
+        json={"request_text": "First output", "mode": "plan_90d"},
+    ).json()
+    r2 = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "run-b"},
+        json={"request_text": "Second output", "mode": "plan_90d"},
+    ).json()
+
+    assert r1["run_id"] != r2["run_id"]
+
+    timeline = client.get(f"/api/v2/threads/{thread_id}/timeline").json()["items"]
+    assert any(item["event_type"] == "WorkflowRunCompleted" for item in timeline)
+
+    runs_root = app.state.workspace.root / "runs"
+    assert (runs_root / r1["run_id"]).exists()
+    assert (runs_root / r2["run_id"]).exists()
