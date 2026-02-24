@@ -224,15 +224,25 @@ python3 09-tools/onboard.py run --yes --apply-keys --shell-file ~/.zshrc
 
 ### Configuração LLM para VM Web App
 
-O VM Web App suporta execução com LLM real (Kimi) para geração de artefatos Foundation e chat. Quando configurado, os estágios `research`, `brand-voice`, `positioning`, `keywords` e o `final foundation brief` são gerados via LLM em vez de placeholders estáticos.
+O VM Web App suporta execução com LLM real para geração de artefatos Foundation e chat. Quando configurado, os estágios `research`, `brand-voice`, `positioning`, `keywords` e o `final foundation brief` são gerados via LLM em vez de placeholders estáticos.
 
-**Variáveis de ambiente (.env):**
+**Providers suportados:**
+- **OpenRouter** (recomendado): Acesso a múltiplos modelos (MiniMax, Kimi, etc.)
+- **Kimi API direta**: Apenas para agentes de código integrados
+
+**Configuração OpenRouter (recomendado):**
 
 ```bash
-KIMI_API_KEY=your_key_here
-KIMI_MODEL=kimi-for-coding
-KIMI_BASE_URL=https://api.kimi.com/coding/v1
+# Obtenha sua chave em https://openrouter.ai/keys
+KIMI_API_KEY=sk-or-v1-...
+KIMI_MODEL=minimax/minimax-01
+KIMI_BASE_URL=https://openrouter.ai/api/v1
 ```
+
+**Modelos recomendados via OpenRouter:**
+- `minimax/minimax-01` - Bom custo-benefício
+- `kimi-ai/kimi-k2` - Modelo Kimi avançado
+- `anthropic/claude-3.5-sonnet` - Claude 3.5 Sonnet
 
 **Comportamento:**
 - **LLM ativo:** Quando `KIMI_API_KEY` está configurado, os artefatos de cada estágio são gerados via LLM com prompts especializados.
@@ -243,10 +253,10 @@ KIMI_BASE_URL=https://api.kimi.com/coding/v1
 **Exemplo de .env completo:**
 
 ```bash
-# LLM Provider
-KIMI_API_KEY=sk-...
-KIMI_MODEL=kimi-for-coding
-KIMI_BASE_URL=https://api.kimi.com/coding/v1
+# LLM Provider (OpenRouter recomendado)
+KIMI_API_KEY=sk-or-v1-...
+KIMI_MODEL=minimax/minimax-01
+KIMI_BASE_URL=https://openrouter.ai/api/v1
 
 # VM Web App
 VM_WORKSPACE_ROOT=runtime/vm

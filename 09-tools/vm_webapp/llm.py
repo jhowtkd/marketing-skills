@@ -25,12 +25,19 @@ class KimiClient:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        # Build headers with optional HTTP-Referer for OpenRouter compatibility
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        # Add HTTP-Referer for OpenRouter (required by their API)
+        if "openrouter" in self._base_url.lower():
+            headers["HTTP-Referer"] = "https://vm-webapp.local"
+            headers["X-Title"] = "VM Web App"
+        
         response = self._client.post(
             f"{self._base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             json={
                 "model": model,
                 "messages": messages,
