@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     kimi_api_key: str = ""
     vm_workspace_root: Path = Path("runtime/vm")
     vm_db_path: Path = Path("runtime/vm/workspace.sqlite3")
+    vm_workflow_profiles_path: Path | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -110,6 +110,22 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
         if row is not None:
             row.updated_at = event.occurred_at
 
+    if event.event_type == "TaskCreated":
+        row = session.get(TaskView, payload["task_id"])
+        if row is None and event.thread_id:
+            row = TaskView(
+                task_id=payload["task_id"],
+                thread_id=event.thread_id,
+                title=payload.get("title", payload["task_id"]),
+                status=payload.get("status", "open"),
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        elif row is not None:
+            row.title = payload.get("title", row.title)
+            row.status = payload.get("status", row.status)
+            row.updated_at = event.occurred_at
+
     if event.event_type == "TaskCompleted":
         row = session.get(TaskView, payload["task_id"])
         if row is None and event.thread_id:

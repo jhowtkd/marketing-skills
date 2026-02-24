@@ -61,11 +61,23 @@ body {
 }
 
 input,
+textarea,
 button {
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 9px 10px;
   font: inherit;
+}
+
+textarea {
+  min-height: 68px;
+  resize: vertical;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
 }
 
 button {

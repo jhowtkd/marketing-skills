@@ -21,20 +21,20 @@ from vm_webapp.commands_v2 import (
     remove_thread_mode_command,
     rename_thread_command,
     request_workflow_run_command,
+    resume_workflow_run_command,
     start_agent_plan_command,
     update_brand_command,
     update_project_command,
 )
 from vm_webapp.db import session_scope
 from vm_webapp.events import EventEnvelope
-from vm_webapp.orchestrator_v2 import process_new_events
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
     append_event,
     close_thread,
     create_thread as create_thread_row,
-    get_event_by_causation,
     get_event_by_id,
+    get_run,
     get_brand_view,
     get_project_view,
     get_thread,
@@ -109,6 +109,13 @@ def project_command_event(session, *, event_id: str) -> None:
     apply_event_to_read_models(session, row)
 
 
+def pump_event_worker(request: Request, *, max_events: int = 30) -> int:
+    worker = getattr(request.app.state, "event_worker", None)
+    if worker is None:
+        return 0
+    return int(worker.pump(max_events=max_events))
+
+
 class BrandCreateRequest(BaseModel):
     brand_id: str | None = None
     name: str
@@ -152,6 +159,7 @@ class ThreadModeAddRequest(BaseModel):
 class WorkflowRunRequest(BaseModel):
     request_text: str
     mode: str = "plan_90d"
+    skill_overrides: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class TaskCommentRequest(BaseModel):
@@ -383,11 +391,18 @@ def remove_thread_mode_v2(
     return {"event_id": result.event_id, "thread_id": thread_id, "mode": mode}
 
 
+@router.get("/v2/workflow-profiles")
+def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, object]]]:
+    payload = request.app.state.workflow_runtime.list_profiles()
+    return {"profiles": payload}
+
+
 @router.post("/v2/threads/{thread_id}/workflow-runs")
 def start_workflow_run_v2(
     thread_id: str, payload: WorkflowRunRequest, request: Request
 ) -> dict[str, str]:
     idem = require_idempotency(request)
+    proposed_run_id = f"run-{uuid4().hex[:12]}"
     with session_scope(request.app.state.engine) as session:
         thread = get_thread_view(session, thread_id)
         if thread is None:
@@ -399,68 +414,183 @@ def start_workflow_run_v2(
             project_id=thread.project_id,
             request_text=payload.request_text,
             mode=payload.mode,
+            run_id=proposed_run_id,
+            skill_overrides=payload.skill_overrides,
             actor_id="workspace-owner",
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-        process_new_events(session)
-
-        completed = get_event_by_causation(
-            session,
-            thread_id=thread_id,
-            causation_id=result.event_id,
-            event_type="WorkflowRunCompleted",
+        command_payload = json.loads(result.response_json)
+        run_id = str(command_payload["run_id"])
+        request.app.state.workflow_runtime.ensure_queued_run(
+            session=session,
+            run_id=run_id,
+            thread_id=thread.thread_id,
+            brand_id=thread.brand_id,
+            project_id=thread.project_id,
+            request_text=payload.request_text,
+            mode=payload.mode,
+            skill_overrides=payload.skill_overrides,
         )
-        run_id = ""
-        if completed is not None:
-            run_id = str(json.loads(completed.payload_json).get("run_id", ""))
-        runs = list_runs_by_thread(session, thread_id)
-        if not run_id and runs:
-            run_id = runs[0].run_id
-        if not run_id:
-            raise HTTPException(status_code=500, detail="workflow run was not created")
-        status = "completed"
-        for row in runs:
-            if row.run_id == run_id:
-                status = row.status
-                break
-    return {"run_id": run_id, "status": status}
+    return {"run_id": run_id, "status": "queued"}
 
 
 @router.get("/v2/threads/{thread_id}/workflow-runs")
 def list_workflow_runs_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
+    pump_event_worker(request, max_events=20)
     with session_scope(request.app.state.engine) as session:
         rows = list_runs_by_thread(session, thread_id)
+        payload_rows: list[dict[str, object]] = []
+        for row in rows:
+            stages = list_stages(session, row.run_id)
+            completed = sum(1 for stage in stages if stage.status == "completed")
+            payload_rows.append(
+                {
+                    "run_id": row.run_id,
+                    "status": row.status,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                    "completed_stages": completed,
+                    "total_stages": len(stages),
+                }
+            )
     return {
-        "runs": [
-            {
-                "run_id": row.run_id,
-                "status": row.status,
-                "created_at": row.created_at,
-            }
-            for row in rows
-        ]
+        "runs": payload_rows
     }
 
 
 @router.get("/v2/workflow-runs/{run_id}/artifacts")
 def list_workflow_run_artifacts_v2(run_id: str, request: Request) -> dict[str, object]:
+    pump_event_worker(request, max_events=20)
     root = Path(request.app.state.workspace.root) / "runs" / run_id / "stages"
     stages: list[dict[str, object]] = []
     if root.exists():
         for stage_dir in sorted(root.iterdir()):
             manifest = stage_dir / "manifest.json"
             if manifest.exists():
-                stages.append(json.loads(manifest.read_text(encoding="utf-8")))
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                payload["stage_dir"] = stage_dir.name
+                stages.append(payload)
     return {"run_id": run_id, "stages": stages}
+
+
+@router.get("/v2/workflow-runs/{run_id}")
+def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
+    pump_event_worker(request, max_events=30)
+    with session_scope(request.app.state.engine) as session:
+        run = get_run(session, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+        stage_rows = list_stages(session, run_id)
+        approvals = list_approvals_view(session, thread_id=run.thread_id)
+
+    run_root = Path(request.app.state.workspace.root) / "runs" / run_id
+    plan_payload: dict[str, object] = {"mode": "plan_90d", "stages": []}
+    plan_path = run_root / "plan.json"
+    if plan_path.exists():
+        plan_payload = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan_stage_map = {
+        str(stage["key"]): stage for stage in plan_payload.get("stages", []) if isinstance(stage, dict)
+    }
+
+    manifests_by_stage: dict[str, dict[str, object]] = {}
+    stages_root = run_root / "stages"
+    if stages_root.exists():
+        for stage_dir in sorted(stages_root.iterdir()):
+            manifest_path = stage_dir / "manifest.json"
+            if manifest_path.exists():
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                payload["stage_dir"] = stage_dir.name
+                manifests_by_stage[str(payload.get("stage_key", ""))] = payload
+
+    pending = []
+    prefix = f"workflow_gate:{run_id}:"
+    for approval in approvals:
+        if approval.reason.startswith(prefix) and approval.status == "pending":
+            pending.append(
+                {
+                    "approval_id": approval.approval_id,
+                    "status": approval.status,
+                    "reason": approval.reason,
+                    "required_role": approval.required_role,
+                }
+            )
+
+    stages_payload: list[dict[str, object]] = []
+    for row in stage_rows:
+        plan_stage = plan_stage_map.get(row.stage_id, {})
+        manifest = manifests_by_stage.get(row.stage_id)
+        stages_payload.append(
+            {
+                "stage_id": row.stage_id,
+                "position": row.position,
+                "status": row.status,
+                "attempts": row.attempts,
+                "approval_required": row.approval_required,
+                "skills": list(plan_stage.get("skills", []))
+                if isinstance(plan_stage.get("skills", []), list)
+                else [],
+                "manifest": manifest,
+            }
+        )
+
+    return {
+        "run_id": run.run_id,
+        "thread_id": run.thread_id,
+        "brand_id": run.brand_id,
+        "project_id": run.product_id,
+        "status": run.status,
+        "request_text": run.user_request,
+        "mode": str(plan_payload.get("mode", "plan_90d")),
+        "stages": stages_payload,
+        "pending_approvals": pending,
+        "created_at": run.created_at,
+        "updated_at": run.updated_at,
+    }
+
+
+@router.post("/v2/workflow-runs/{run_id}/resume")
+def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = resume_workflow_run_command(
+            session,
+            run_id=run_id,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"run_id": run_id, "status": "running"}
+
+
+@router.get("/v2/workflow-runs/{run_id}/artifact-content")
+def get_workflow_artifact_content_v2(
+    run_id: str, stage_dir: str, artifact_path: str, request: Request
+) -> dict[str, str]:
+    root = Path(request.app.state.workspace.root) / "runs" / run_id / "stages" / stage_dir
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="stage not found")
+    target = (root / artifact_path).resolve()
+    root_resolved = root.resolve()
+    if root_resolved not in target.parents and target != root_resolved:
+        raise HTTPException(status_code=400, detail="invalid artifact path")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return {
+        "run_id": run_id,
+        "stage_dir": stage_dir,
+        "artifact_path": artifact_path,
+        "content": target.read_text(encoding="utf-8"),
+    }
 
 
 @router.get("/v2/threads/{thread_id}/timeline")
 def list_thread_timeline_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
+    pump_event_worker(request, max_events=20)
     with session_scope(request.app.state.engine) as session:
         rows = list_timeline_items_view(session, thread_id=thread_id)
     return {
@@ -483,6 +613,7 @@ def list_thread_timeline_v2(
 def list_thread_tasks_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
+    pump_event_worker(request, max_events=20)
     with session_scope(request.app.state.engine) as session:
         rows = list_tasks_view(session, thread_id=thread_id)
     return {
@@ -503,6 +634,7 @@ def list_thread_tasks_v2(
 def list_thread_approvals_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
+    pump_event_worker(request, max_events=20)
     with session_scope(request.app.state.engine) as session:
         rows = list_approvals_view(session, thread_id=thread_id)
     return {
@@ -562,7 +694,6 @@ def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-        process_new_events(session)
     return {"event_id": result.event_id, "approval_id": approval_id}
 
 
@@ -577,7 +708,6 @@ def start_agent_plan_v2(thread_id: str, request: Request) -> dict[str, str]:
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-        process_new_events(session)
     return {"event_id": result.event_id, "thread_id": thread_id}
 
 

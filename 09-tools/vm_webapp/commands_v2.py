@@ -10,6 +10,7 @@ from vm_webapp.repo import (
     append_event,
     get_approval_view,
     get_command_dedup,
+    get_run,
     get_stream_version,
     get_task_view,
     save_command_dedup,
@@ -540,6 +541,8 @@ def request_workflow_run_command(
     project_id: str,
     request_text: str,
     mode: str,
+    run_id: str,
+    skill_overrides: dict[str, list[str]] | None,
     actor_id: str,
     idempotency_key: str,
 ) -> CommandDedup:
@@ -551,7 +554,7 @@ def request_workflow_run_command(
     expected = get_stream_version(session, stream_id)
     event = EventEnvelope(
         event_id=f"evt-{uuid4().hex[:12]}",
-        event_type="WorkflowRunRequested",
+        event_type="WorkflowRunQueued",
         aggregate_type="thread",
         aggregate_id=thread_id,
         stream_id=stream_id,
@@ -562,8 +565,10 @@ def request_workflow_run_command(
             "thread_id": thread_id,
             "brand_id": brand_id,
             "project_id": project_id,
+            "run_id": run_id,
             "request_text": request_text,
             "mode": mode,
+            "skill_overrides": skill_overrides or {},
         },
         thread_id=thread_id,
         brand_id=brand_id,
@@ -575,7 +580,62 @@ def request_workflow_run_command(
         idempotency_key=idempotency_key,
         command_name="request_workflow_run",
         event_id=saved.event_id,
-        response={"event_id": saved.event_id, "thread_id": thread_id},
+        response={
+            "event_id": saved.event_id,
+            "thread_id": thread_id,
+            "run_id": run_id,
+            "status": "queued",
+            "mode": mode,
+        },
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
+def resume_workflow_run_command(
+    session: Session,
+    *,
+    run_id: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    run = get_run(session, run_id)
+    if run is None:
+        raise ValueError(f"run not found: {run_id}")
+
+    stream_id = f"thread:{run.thread_id}"
+    expected = get_stream_version(session, stream_id)
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="WorkflowRunResumed",
+        aggregate_type="thread",
+        aggregate_id=run.thread_id,
+        stream_id=stream_id,
+        expected_version=expected,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "thread_id": run.thread_id,
+            "brand_id": run.brand_id,
+            "project_id": run.product_id,
+            "run_id": run_id,
+        },
+        thread_id=run.thread_id,
+        brand_id=run.brand_id,
+        project_id=run.product_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="resume_workflow_run",
+        event_id=saved.event_id,
+        response={"event_id": saved.event_id, "run_id": run_id, "status": "running"},
     )
     dedup = get_command_dedup(session, idempotency_key=idempotency_key)
     assert dedup is not None

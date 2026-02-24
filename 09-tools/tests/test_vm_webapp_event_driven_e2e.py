@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -52,6 +53,21 @@ def seed_thread_with_pending_approval(client: TestClient) -> dict[str, str]:
         )
 
     return {"thread_id": "t1", "approval_id": "apr-1"}
+
+
+def wait_for_run_status(
+    client: TestClient, run_id: str, expected: set[str], timeout_s: float = 2.0
+) -> dict[str, object]:
+    deadline = time.time() + timeout_s
+    payload: dict[str, object] = {}
+    while time.time() < deadline:
+        response = client.get(f"/api/v2/workflow-runs/{run_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        if payload.get("status") in expected:
+            return payload
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} did not reach one of {sorted(expected)}")
 
 
 def test_duplicate_idempotency_key_returns_same_event(tmp_path: Path) -> None:
@@ -125,15 +141,17 @@ def test_thread_workflow_request_generates_versioned_artifacts_and_timeline(
     r1 = client.post(
         f"/api/v2/threads/{thread_id}/workflow-runs",
         headers={"Idempotency-Key": "run-a"},
-        json={"request_text": "First output", "mode": "plan_90d"},
+        json={"request_text": "First output", "mode": "content_calendar"},
     ).json()
     r2 = client.post(
         f"/api/v2/threads/{thread_id}/workflow-runs",
         headers={"Idempotency-Key": "run-b"},
-        json={"request_text": "Second output", "mode": "plan_90d"},
+        json={"request_text": "Second output", "mode": "content_calendar"},
     ).json()
 
     assert r1["run_id"] != r2["run_id"]
+    wait_for_run_status(client, r1["run_id"], {"completed"})
+    wait_for_run_status(client, r2["run_id"], {"completed"})
 
     timeline = client.get(f"/api/v2/threads/{thread_id}/timeline").json()["items"]
     assert any(item["event_type"] == "WorkflowRunCompleted" for item in timeline)
@@ -141,3 +159,34 @@ def test_thread_workflow_request_generates_versioned_artifacts_and_timeline(
     runs_root = app.state.workspace.root / "runs"
     assert (runs_root / r1["run_id"]).exists()
     assert (runs_root / r2["run_id"]).exists()
+
+
+def test_workflow_queue_is_idempotent_by_idempotency_key(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+    brand_id = client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "b1"}, json={"name": "Acme"}
+    ).json()["brand_id"]
+    project_id = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "p1"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    ).json()["project_id"]
+    thread_id = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "t1"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()["thread_id"]
+
+    one = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "idem-run"},
+        json={"request_text": "output", "mode": "content_calendar"},
+    )
+    two = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "idem-run"},
+        json={"request_text": "output", "mode": "content_calendar"},
+    )
+    assert one.status_code == 200
+    assert two.status_code == 200
+    assert one.json()["run_id"] == two.json()["run_id"]

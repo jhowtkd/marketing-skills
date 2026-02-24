@@ -1,0 +1,52 @@
+profiles:
+  - mode: plan_90d
+    description: "Plano trimestral com gate de revisao estrategica."
+    stages:
+      - key: research_sync
+        skills:
+          - "01-research/research-framework"
+          - "03-strategy/keyword-research"
+        approval_required: false
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 120
+      - key: strategy_draft
+        skills:
+          - "03-strategy/positioning-angles"
+          - "03-strategy/content-strategy"
+        approval_required: true
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 180
+      - key: output_pack
+        skills:
+          - "04-copy/direct-response"
+          - "08-templates/weekly-review"
+        approval_required: false
+        retry_policy:
+          max_attempts: 1
+          backoff_seconds: 0
+        timeout_seconds: 120
+  - mode: content_calendar
+    description: "Calendario editorial sem gates para execucao rapida."
+    stages:
+      - key: topic_map
+        skills:
+          - "03-strategy/content-strategy"
+          - "03-strategy/keyword-research"
+        approval_required: false
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 120
+      - key: publish_plan
+        skills:
+          - "04-copy/seo-content"
+          - "04-copy/social-content"
+        approval_required: false
+        retry_policy:
+          max_attempts: 1
+          backoff_seconds: 0
+        timeout_seconds: 120

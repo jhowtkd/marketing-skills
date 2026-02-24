@@ -11,9 +11,11 @@ from vm_webapp.events import EventEnvelope
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
     append_event,
+    get_approval_view,
     get_event_by_id,
-    get_stream_version,
+    get_run,
     get_thread_view,
+    get_stream_version,
     list_unprocessed_events,
     mark_event_processed,
 )
@@ -26,8 +28,12 @@ def configure_workflow_executor(executor: Callable[..., dict[str, str]]) -> None
     _workflow_executor = executor
 
 
-def process_new_events(session: Session) -> None:
+def process_new_events(session: Session, *, max_events: int | None = None) -> int:
+    processed = 0
     for event in list_unprocessed_events(session):
+        if max_events is not None and processed >= max_events:
+            break
+
         if event.event_type == "AgentPlanStarted":
             payload = json.loads(event.payload_json)
             thread_id = payload["thread_id"]
@@ -58,8 +64,38 @@ def process_new_events(session: Session) -> None:
 
         if event.event_type == "ApprovalGranted":
             payload = json.loads(event.payload_json)
-            thread_id = event.thread_id or payload.get("thread_id")
-            if thread_id:
+            approval = get_approval_view(session, payload["approval_id"])
+            reason = approval.reason if approval is not None else ""
+            if reason.startswith("workflow_gate:"):
+                if _workflow_executor is None:
+                    raise ValueError("workflow runtime not configured")
+                parts = reason.split(":")
+                if len(parts) >= 3:
+                    run_id = parts[1]
+                    run = get_run(session, run_id)
+                    if run is not None:
+                        _workflow_executor(
+                            session=session,
+                            event_type="WorkflowRunResumed",
+                            payload={
+                                "thread_id": run.thread_id,
+                                "brand_id": run.brand_id,
+                                "project_id": run.product_id,
+                                "run_id": run.run_id,
+                                "mode": "plan_90d",
+                                "request_text": run.user_request,
+                                "skill_overrides": {},
+                            },
+                            actor_id="agent:vm-workflow",
+                            causation_id=event.event_id,
+                            correlation_id=event.correlation_id or event.event_id,
+                        )
+            else:
+                thread_id = event.thread_id or payload.get("thread_id")
+                if not thread_id:
+                    mark_event_processed(session, event.event_id)
+                    processed += 1
+                    continue
                 thread = get_thread_view(session, thread_id)
                 mode = "plan_90d"
                 if thread is not None and thread.modes_json:
@@ -80,42 +116,23 @@ def process_new_events(session: Session) -> None:
                     if row is not None:
                         apply_event_to_read_models(session, row)
 
-        if event.event_type == "WorkflowRunRequested":
+        if event.event_type in {
+            "WorkflowRunQueued",
+            "WorkflowRunRequested",
+            "WorkflowRunResumed",
+        }:
             payload = json.loads(event.payload_json)
             if _workflow_executor is None:
                 raise ValueError("workflow runtime not configured")
-            result = _workflow_executor(
-                thread_id=payload["thread_id"],
-                brand_id=payload["brand_id"],
-                project_id=payload["project_id"],
-                request_text=payload["request_text"],
-                mode=payload.get("mode", "plan_90d"),
-                actor_id="agent:vm-workflow",
+            _workflow_executor(
                 session=session,
+                event_type=event.event_type,
+                payload=payload,
+                actor_id="agent:vm-workflow",
+                causation_id=event.event_id,
+                correlation_id=event.correlation_id or event.event_id,
             )
-            expected = get_stream_version(session, f"thread:{payload['thread_id']}")
-            completed = append_event(
-                session,
-                EventEnvelope(
-                    event_id=f"evt-{uuid4().hex[:12]}",
-                    event_type="WorkflowRunCompleted",
-                    aggregate_type="thread",
-                    aggregate_id=payload["thread_id"],
-                    stream_id=f"thread:{payload['thread_id']}",
-                    expected_version=expected,
-                    actor_type="agent",
-                    actor_id="agent:vm-workflow",
-                    payload={
-                        "thread_id": payload["thread_id"],
-                        "run_id": result["run_id"],
-                    },
-                    thread_id=payload["thread_id"],
-                    brand_id=payload.get("brand_id"),
-                    project_id=payload.get("project_id"),
-                    causation_id=event.event_id,
-                    correlation_id=event.correlation_id or event.event_id,
-                ),
-            )
-            apply_event_to_read_models(session, completed)
 
         mark_event_processed(session, event.event_id)
+        processed += 1
+    return processed

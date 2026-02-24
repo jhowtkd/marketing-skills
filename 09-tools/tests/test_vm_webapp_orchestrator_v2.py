@@ -57,7 +57,7 @@ def test_orchestrator_executes_workflow_run_requested_and_publishes_timeline(
             session,
             EventEnvelope(
                 event_id="evt-run-request",
-                event_type="WorkflowRunRequested",
+                event_type="WorkflowRunQueued",
                 aggregate_type="thread",
                 aggregate_id="t1",
                 stream_id="thread:t1",
@@ -69,7 +69,9 @@ def test_orchestrator_executes_workflow_run_requested_and_publishes_timeline(
                     "brand_id": "b1",
                     "project_id": "p1",
                     "request_text": "Build workflow output",
-                    "mode": "plan_90d",
+                    "mode": "content_calendar",
+                    "run_id": "run-test-1",
+                    "skill_overrides": {},
                 },
                 thread_id="t1",
                 brand_id="b1",
@@ -82,4 +84,6 @@ def test_orchestrator_executes_workflow_run_requested_and_publishes_timeline(
         runs = list_runs_by_thread(session, "t1")
         timeline = list_timeline_items_view(session, thread_id="t1")
         assert runs
-        assert any(i.event_type == "WorkflowRunCompleted" for i in timeline)
+        assert any(
+            i.event_type in {"WorkflowRunStarted", "WorkflowRunCompleted"} for i in timeline
+        )
