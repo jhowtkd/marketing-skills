@@ -94,6 +94,7 @@ class FoundationRunnerService:
         )
 
         # Generate LLM-enhanced content if LLM is available
+        llm_used_successfully = False
         if self.llm is not None:
             # Build accumulated context from all artifacts in state
             accumulated_artifacts = self._load_all_artifacts_from_state(
@@ -117,6 +118,9 @@ class FoundationRunnerService:
                         fallback=current_content,
                     )
                     artifacts[candidate] = llm_content
+                    # Update accumulated_artifacts so brief uses fresh content
+                    accumulated_artifacts[candidate] = llm_content
+                    llm_used_successfully = llm_content != current_content
                     break
 
             # Generate final brief when keywords stage completes the pipeline
@@ -135,8 +139,8 @@ class FoundationRunnerService:
         output_payload = self._build_output_payload(
             state=state,
             stage_key=stage_key,
-            llm_enabled=self.llm is not None,
-            llm_model=self.llm_model if self.llm is not None else None,
+            llm_enabled=self.llm is not None and llm_used_successfully,
+            llm_model=self.llm_model if (self.llm is not None and llm_used_successfully) else None,
         )
         return FoundationStageResult(
             stage_key=stage_key,
