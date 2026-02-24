@@ -107,6 +107,24 @@ def test_service_runs_research_with_run_until_gate_then_manual_stages(
     assert calls == ["run_until_gate", "approve_stage"]
 
 
+def test_service_keeps_llm_handle_and_uses_default_model(tmp_path: Path) -> None:
+    class FakeLLM:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def chat(self, **kwargs):
+            self.calls.append(kwargs)
+            return "ok"
+
+    service = FoundationRunnerService(
+        workspace_root=tmp_path,
+        llm=FakeLLM(),
+        llm_model="kimi-for-coding",
+    )
+    assert service.llm is not None
+    assert service.llm_model == "kimi-for-coding"
+
+
 def test_service_isolates_foundation_thread_per_run(tmp_path: Path, monkeypatch) -> None:
     service = FoundationRunnerService(workspace_root=tmp_path)
     seen_thread_ids: list[str] = []

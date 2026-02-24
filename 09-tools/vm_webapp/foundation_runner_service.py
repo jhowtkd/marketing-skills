@@ -34,11 +34,15 @@ class FoundationRunnerService:
         *,
         workspace_root: Path,
         stack_path: str = FOUNDATION_STACK_PATH_DEFAULT,
+        llm: Any | None = None,
+        llm_model: str = "kimi-for-coding",
     ) -> None:
         self.workspace_root = Path(workspace_root)
         self.runtime_root = self.workspace_root / "foundation-runtime"
         self.output_root = self.workspace_root / "foundation-output"
         self.stack_path = stack_path
+        self.llm = llm
+        self.llm_model = llm_model
 
     def execute_stage(
         self,
