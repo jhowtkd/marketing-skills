@@ -11,7 +11,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
-from vm_webapp.repo import list_brands, list_products_by_brand, list_runs_by_thread
+from vm_webapp.repo import (
+    list_brands,
+    list_products_by_brand,
+    list_runs_by_thread,
+    list_stages,
+)
 from vm_webapp.stacking import build_context_pack
 
 
@@ -77,22 +82,35 @@ def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dic
 
 
 @router.get("/runs")
-def runs(thread_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+def runs(thread_id: str, request: Request) -> dict[str, list[dict[str, object]]]:
     with session_scope(request.app.state.engine) as session:
         rows = list_runs_by_thread(session, thread_id)
+        runs_payload = []
+        for row in rows:
+            stages = list_stages(session, row.run_id)
+            runs_payload.append(
+                {
+                    "run_id": row.run_id,
+                    "thread_id": row.thread_id,
+                    "brand_id": row.brand_id,
+                    "product_id": row.product_id,
+                    "status": row.status,
+                    "stack_path": row.stack_path,
+                    "created_at": row.created_at,
+                    "stages": [
+                        {
+                            "stage_id": stage.stage_id,
+                            "status": stage.status,
+                            "approval_required": stage.approval_required,
+                            "attempts": stage.attempts,
+                            "position": stage.position,
+                        }
+                        for stage in stages
+                    ],
+                }
+            )
     return {
-        "runs": [
-            {
-                "run_id": row.run_id,
-                "thread_id": row.thread_id,
-                "brand_id": row.brand_id,
-                "product_id": row.product_id,
-                "status": row.status,
-                "stack_path": row.stack_path,
-                "created_at": row.created_at,
-            }
-            for row in rows
-        ]
+        "runs": runs_payload
     }
 
 

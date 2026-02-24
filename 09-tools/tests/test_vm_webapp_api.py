@@ -163,6 +163,33 @@ def test_run_events_sse_streams_existing_events(tmp_path: Path) -> None:
         assert "run_started" in first
 
 
+def test_run_listing_includes_stages_for_panel(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    start = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": "t-ui",
+            "user_request": "crm",
+        },
+    )
+    assert start.status_code == 200
+    run_id = start.json()["run_id"]
+
+    res = client.get("/api/v1/runs", params={"thread_id": "t-ui"})
+    assert res.status_code == 200
+    assert any(r["run_id"] == run_id for r in res.json()["runs"])
+    assert "stages" in res.json()["runs"][0]
+
+
 def test_root_serves_ui() -> None:
     client = TestClient(create_app())
     res = client.get("/")

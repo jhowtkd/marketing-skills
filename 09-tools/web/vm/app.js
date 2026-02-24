@@ -3,6 +3,7 @@ const ENDPOINT_BRANDS = "/api/v1/brands";
 const ENDPOINT_PRODUCTS = "/api/v1/products";
 const ENDPOINT_CHAT = "/api/v1/chat";
 const ENDPOINT_RUN_FOUNDATION = "/api/v1/runs/foundation";
+const ENDPOINT_RUNS = "/api/v1/runs";
 const THREAD_STORAGE_KEY = "vm_webapp_thread_id";
 
 const brandSelect = document.getElementById("brand-select");
@@ -12,6 +13,10 @@ const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const startRunButton = document.getElementById("start-foundation-run");
 const runStatus = document.getElementById("run-status");
+const runsTimeline = document.getElementById("runs-timeline");
+
+let activeRunId = null;
+let runsEventSource = null;
 
 function getThreadId() {
   const existing = localStorage.getItem(THREAD_STORAGE_KEY);
@@ -29,6 +34,14 @@ function appendMessage(role, content) {
   wrapper.textContent = `${role}: ${content}`;
   chatMessages.appendChild(wrapper);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendRunEvent(event) {
+  const line = document.createElement("div");
+  line.className = "run-event";
+  const stage = event.stage_id ? ` (${event.stage_id})` : "";
+  line.textContent = `${event.type || "event"}${stage}`;
+  runsTimeline.prepend(line);
 }
 
 function setRunStatus(message, isError = false) {
@@ -80,6 +93,110 @@ async function loadProducts(brandId) {
   populateSelect(productSelect, body.products || [], "product_id", "name");
 }
 
+function renderRuns(runs) {
+  runsTimeline.innerHTML = "";
+  if (!runs.length) {
+    const empty = document.createElement("div");
+    empty.className = "placeholder";
+    empty.textContent = "No runs yet.";
+    runsTimeline.appendChild(empty);
+    return;
+  }
+
+  for (const run of runs) {
+    const runCard = document.createElement("div");
+    runCard.className = "run-card";
+
+    const title = document.createElement("div");
+    title.className = "run-title";
+    title.textContent = `${run.run_id} (${run.status})`;
+    runCard.appendChild(title);
+
+    const stageList = document.createElement("ul");
+    stageList.className = "stage-list";
+    for (const stage of run.stages || []) {
+      const item = document.createElement("li");
+      item.textContent = `${stage.stage_id}: ${stage.status}`;
+      if (stage.status === "waiting_approval") {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Approve";
+        button.addEventListener("click", async () => {
+          await approveRun(run.run_id);
+        });
+        item.append(" ");
+        item.appendChild(button);
+      }
+      stageList.appendChild(item);
+    }
+    runCard.appendChild(stageList);
+    runsTimeline.appendChild(runCard);
+  }
+}
+
+function connectRunEvents(runId) {
+  if (!runId) {
+    return;
+  }
+  if (runsEventSource) {
+    runsEventSource.close();
+  }
+  const eventsUrl = `${API_BASE}/runs/${encodeURIComponent(runId)}/events?max_events=500`; // /events
+  runsEventSource = new EventSource(eventsUrl); // new EventSource
+  runsEventSource.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      appendRunEvent(payload);
+      if (
+        payload.type === "stage_completed" ||
+        payload.type === "approval_required" ||
+        payload.type === "run_completed"
+      ) {
+        loadRuns().catch((error) => setRunStatus(error.message, true));
+      }
+    } catch (_error) {
+      appendRunEvent({ type: "event", stage_id: "" });
+    }
+  };
+  runsEventSource.onerror = () => {
+    setRunStatus("Run stream disconnected; retrying...", true);
+    runsEventSource.close();
+    runsEventSource = null;
+    setTimeout(() => {
+      if (activeRunId === runId) {
+        connectRunEvents(runId);
+      }
+    }, 1000);
+  };
+}
+
+async function loadRuns() {
+  const threadId = getThreadId();
+  const body = await fetchJson(`${ENDPOINT_RUNS}?thread_id=${encodeURIComponent(threadId)}`);
+  const runs = body.runs || [];
+  renderRuns(runs);
+  if (!runs.length) {
+    activeRunId = null;
+    setRunStatus("No active run.");
+    return;
+  }
+
+  const latest = runs[0];
+  setRunStatus(`Run ${latest.run_id} status: ${latest.status}`);
+  if (activeRunId !== latest.run_id) {
+    activeRunId = latest.run_id;
+    connectRunEvents(activeRunId);
+  }
+}
+
+async function approveRun(runId) {
+  const body = await fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}/approve`, {
+    method: "POST",
+  }); // /approve
+  setRunStatus(`Run ${body.run_id} status: ${body.status}`);
+  await loadRuns();
+}
+
 async function startFoundationRun(userRequest) {
   const payload = {
     brand_id: brandSelect.value,
@@ -93,6 +210,7 @@ async function startFoundationRun(userRequest) {
     body: JSON.stringify(payload),
   });
   setRunStatus(`Run ${body.run_id} status: ${body.status}`);
+  await loadRuns();
   return body;
 }
 
@@ -158,8 +276,9 @@ async function bootstrap() {
 
   try {
     await loadBrands();
+    await loadRuns();
   } catch (error) {
-    setRunStatus(`Failed to load brands: ${error.message}`, true);
+    setRunStatus(`Failed to initialize UI: ${error.message}`, true);
   }
 }
 
