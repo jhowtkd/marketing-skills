@@ -92,6 +92,25 @@ class FoundationRunnerService:
             stage_key=stage_key,
             before_artifacts=before_artifacts,
         )
+
+        # Generate LLM-enhanced content if LLM is available
+        if self.llm is not None:
+            prompt = self._build_stage_prompt(
+                stage_key=stage_key,
+                request_text=request_text,
+                previous_artifacts=artifacts,
+            )
+            llm_content = self._render_stage_markdown(
+                prompt=prompt,
+                fallback="",
+            )
+            # Replace the primary artifact with LLM-generated content
+            candidates = STAGE_ARTIFACT_CANDIDATES.get(stage_key, ())
+            for candidate in candidates:
+                if candidate in artifacts:
+                    artifacts[candidate] = llm_content
+                    break
+
         output_payload = self._build_output_payload(state=state, stage_key=stage_key)
         return FoundationStageResult(
             stage_key=stage_key,
@@ -99,6 +118,24 @@ class FoundationRunnerService:
             output_payload=output_payload,
             artifacts=artifacts,
         )
+
+    def _render_stage_markdown(
+        self,
+        *,
+        prompt: str,
+        fallback: str,
+    ) -> str:
+        if self.llm is None:
+            return fallback
+        try:
+            return self.llm.chat(
+                model=self.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=1200,
+            )
+        except Exception:
+            return fallback
 
     @staticmethod
     def _foundation_thread_id(thread_id: str, run_id: str) -> str:
