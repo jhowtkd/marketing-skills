@@ -70,6 +70,31 @@ def wait_for_run_status(
     raise AssertionError(f"run {run_id} did not reach one of {sorted(expected)}")
 
 
+def grant_pending_approvals_until_completed(
+    client: TestClient, run_id: str, *, timeout_s: float = 4.0
+) -> dict[str, object]:
+    deadline = time.time() + timeout_s
+    grants = 0
+    while time.time() < deadline:
+        detail = client.get(f"/api/v2/workflow-runs/{run_id}")
+        assert detail.status_code == 200
+        payload = detail.json()
+        if payload.get("status") == "completed":
+            return payload
+        if payload.get("status") == "waiting_approval":
+            pending = payload.get("pending_approvals") or []
+            assert pending
+            approval_id = pending[0]["approval_id"]
+            grant = client.post(
+                f"/api/v2/approvals/{approval_id}/grant",
+                headers={"Idempotency-Key": f"e2e-grant-{run_id}-{grants}"},
+            )
+            assert grant.status_code == 200
+            grants += 1
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} did not reach completed")
+
+
 def test_duplicate_idempotency_key_returns_same_event(tmp_path: Path) -> None:
     client = build_client(tmp_path)
     body = {"brand_id": "b1", "name": "Acme"}
@@ -150,8 +175,8 @@ def test_thread_workflow_request_generates_versioned_artifacts_and_timeline(
     ).json()
 
     assert r1["run_id"] != r2["run_id"]
-    wait_for_run_status(client, r1["run_id"], {"completed"})
-    wait_for_run_status(client, r2["run_id"], {"completed"})
+    grant_pending_approvals_until_completed(client, r1["run_id"])
+    grant_pending_approvals_until_completed(client, r2["run_id"])
 
     timeline = client.get(f"/api/v2/threads/{thread_id}/timeline").json()["items"]
     assert any(item["event_type"] == "WorkflowRunCompleted" for item in timeline)
@@ -190,3 +215,36 @@ def test_workflow_queue_is_idempotent_by_idempotency_key(tmp_path: Path) -> None
     assert one.status_code == 200
     assert two.status_code == 200
     assert one.json()["run_id"] == two.json()["run_id"]
+
+
+def test_any_mode_falls_back_to_foundation_and_completes_after_grant(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+    brand_id = client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "fb-b1"}, json={"name": "Acme"}
+    ).json()["brand_id"]
+    project_id = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "fb-p1"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    ).json()["project_id"]
+    thread_id = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "fb-t1"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()["thread_id"]
+
+    started = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "fb-run"},
+        json={"request_text": "Output for fallback flow", "mode": "content_calendar"},
+    )
+    assert started.status_code == 200
+    run_id = started.json()["run_id"]
+
+    detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
+    assert detail["requested_mode"] == "content_calendar"
+    assert detail["effective_mode"] == "foundation_stack"
+    assert detail["fallback_applied"] is True
+
+    completed = grant_pending_approvals_until_completed(client, run_id)
+    assert completed["status"] == "completed"

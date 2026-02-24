@@ -127,7 +127,7 @@ python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 -
 
 ## VM Web App Event-Driven Workspace (v2 Async)
 
-O VM Web App agora roda workflow assíncrono por thread com fila interna, etapas por perfil (`mode`) e gates críticos de aprovação.
+O VM Web App agora roda workflow assíncrono por thread com fila interna, execução Foundation-backed e gates críticos de aprovação.
 
 ### Subir localmente
 
@@ -141,9 +141,13 @@ Acesse: `http://127.0.0.1:8766`
 
 1. Crie `Brand -> Project -> Thread`.
 2. Escolha `mode` e, opcionalmente, passe `skill_overrides` no run.
-3. O run inicia como `queued` e evolui para `running`.
-4. Se etapa crítica exigir gate, o run fica em `waiting_approval`.
-5. Após aprovação, o run pode ser retomado e segue até `completed` ou `failed`.
+3. O runtime resolve contrato imutável por run:
+   - `requested_mode` = modo pedido pelo cliente.
+   - `effective_mode` = modo realmente executado (fallback atual: `foundation_stack`).
+   - `profile_version` e `fallback_applied`.
+4. O run inicia como `queued` e evolui para `running`.
+5. Se etapa crítica exigir gate, o run fica em `waiting_approval`.
+6. Após `ApprovalGranted`, o runtime auto-retoma sem `/resume` manual e segue até `completed` ou `failed`.
 
 ### Profiles de workflow
 
@@ -158,9 +162,9 @@ Acesse: `http://127.0.0.1:8766`
 ### Endpoints principais (v2)
 
 - `GET /api/v2/workflow-profiles`
-- `POST /api/v2/threads/{thread_id}/workflow-runs` -> retorna `{ run_id, status: "queued" }`
+- `POST /api/v2/threads/{thread_id}/workflow-runs` -> retorna `{ run_id, status, requested_mode, effective_mode }`
 - `GET /api/v2/workflow-runs/{run_id}`
-- `POST /api/v2/workflow-runs/{run_id}/resume`
+- `POST /api/v2/workflow-runs/{run_id}/resume` (controle idempotente de seguranca; em run terminal retorna status atual)
 - `GET /api/v2/workflow-runs/{run_id}/artifacts`
 - `GET /api/v2/workflow-runs/{run_id}/artifact-content?stage_dir=...&artifact_path=...`
 
