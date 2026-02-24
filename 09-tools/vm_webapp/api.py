@@ -26,7 +26,10 @@ from vm_webapp.orchestrator_v2 import process_new_events
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
     append_event,
+    close_thread,
+    create_thread as create_thread_row,
     get_event_by_id,
+    get_thread,
     list_approvals_view,
     list_brands,
     list_projects_view,
@@ -34,12 +37,25 @@ from vm_webapp.repo import (
     list_runs_by_thread,
     list_stages,
     list_tasks_view,
+    list_threads,
     list_timeline_items_view,
+    touch_thread_activity,
 )
 from vm_webapp.stacking import build_context_pack
 
 
 router = APIRouter()
+
+
+def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: str):
+    row = get_thread(session, thread_id=thread_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+    if row.brand_id != brand_id or row.product_id != product_id:
+        raise HTTPException(status_code=409, detail="thread context mismatch")
+    if row.status != "open":
+        raise HTTPException(status_code=409, detail=f"thread is {row.status}")
+    return row
 
 
 @router.get("/health")
@@ -96,7 +112,7 @@ class ProjectCreateRequest(BaseModel):
     due_date: str | None = None
 
 
-class ThreadCreateRequest(BaseModel):
+class ThreadCreateV2Request(BaseModel):
     thread_id: str
     project_id: str
     brand_id: str
@@ -171,7 +187,7 @@ def list_projects_v2(
 
 
 @router.post("/v2/threads")
-def create_thread_v2(payload: ThreadCreateRequest, request: Request) -> dict[str, str]:
+def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
         result = create_thread_command(
@@ -372,6 +388,12 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class ThreadCreateRequest(BaseModel):
+    brand_id: str
+    product_id: str
+    title: str | None = None
+
+
 class FoundationRunRequest(BaseModel):
     brand_id: str
     product_id: str
@@ -379,8 +401,72 @@ class FoundationRunRequest(BaseModel):
     user_request: str
 
 
+@router.get("/threads")
+def threads(brand_id: str, product_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_threads(session, brand_id=brand_id, product_id=product_id)
+    return {
+        "threads": [
+            {
+                "thread_id": row.thread_id,
+                "brand_id": row.brand_id,
+                "product_id": row.product_id,
+                "title": row.title,
+                "status": row.status,
+                "last_activity_at": row.last_activity_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/threads")
+def create_thread_api(payload: ThreadCreateRequest, request: Request) -> dict[str, str]:
+    thread_id = f"thread-{uuid4().hex[:12]}"
+    title = payload.title or "New Thread"
+    with session_scope(request.app.state.engine) as session:
+        row = create_thread_row(
+            session,
+            thread_id=thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+            title=title,
+        )
+    return {"thread_id": row.thread_id, "status": row.status, "title": row.title}
+
+
+@router.post("/threads/{thread_id}/close")
+def close_thread_api(thread_id: str, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        row = get_thread(session, thread_id=thread_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        close_thread(session, thread_id=thread_id)
+    return {"thread_id": thread_id, "status": "closed"}
+
+
+@router.get("/threads/{thread_id}/messages")
+def thread_messages(thread_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    chat_path = Path(request.app.state.workspace.root) / "threads" / thread_id / "chat.jsonl"
+    if not chat_path.exists():
+        return {"messages": []}
+    messages: list[dict[str, str]] = []
+    for line in chat_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            messages.append(json.loads(line))
+    return {"messages": messages}
+
+
 @router.post("/runs/foundation")
 def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        _require_open_thread(
+            session,
+            thread_id=payload.thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+        )
+
     stack_path = (
         Path(__file__).resolve().parents[2] / "06-stacks" / "foundation-stack" / "stack.yaml"
     )
@@ -394,6 +480,8 @@ def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dic
     )
     run_engine.run_until_gate(run.run_id)
     run = run_engine.get_run(run.run_id)
+    with session_scope(request.app.state.engine) as session:
+        touch_thread_activity(session, payload.thread_id)
     return {"run_id": run.run_id, "status": run.status}
 
 
@@ -481,6 +569,14 @@ def run_events(
 
 @router.post("/chat")
 def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        _require_open_thread(
+            session,
+            thread_id=payload.thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+        )
+
     workspace = request.app.state.workspace
     memory = request.app.state.memory
     llm = request.app.state.llm
@@ -557,6 +653,9 @@ def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
             )
         )
         fh.write("\n")
+
+    with session_scope(request.app.state.engine) as session:
+        touch_thread_activity(session, payload.thread_id)
 
     memory.upsert_doc(
         doc_id=f"chat:{payload.thread_id}:{uuid4().hex[:8]}",

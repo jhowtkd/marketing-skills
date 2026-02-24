@@ -1,7 +1,16 @@
 from pathlib import Path
 
 from vm_webapp.db import build_engine, init_db, session_scope
-from vm_webapp.repo import create_brand, create_product, get_product, list_brands
+from vm_webapp.repo import (
+    close_thread,
+    create_brand,
+    create_product,
+    create_thread,
+    get_product,
+    get_thread,
+    list_brands,
+    list_threads,
+)
 from vm_webapp.workspace import Workspace
 
 
@@ -75,3 +84,35 @@ def test_create_product_writes_essence(tmp_path: Path) -> None:
         product = get_product(session, product_id="p1")
         assert product is not None
         assert product.name == "Widget"
+
+
+def test_thread_roundtrip_and_close(tmp_path: Path) -> None:
+    engine = build_engine(tmp_path / "db.sqlite3")
+    init_db(engine)
+
+    with session_scope(engine) as session:
+        create_thread(
+            session,
+            thread_id="t1",
+            brand_id="b1",
+            product_id="p1",
+            title="Thread 1",
+        )
+        create_thread(
+            session,
+            thread_id="t2",
+            brand_id="b1",
+            product_id="p2",
+            title="Thread 2",
+        )
+
+    with session_scope(engine) as session:
+        rows = list_threads(session, brand_id="b1", product_id="p1")
+        assert len(rows) == 1
+        assert rows[0].thread_id == "t1"
+        assert rows[0].status == "open"
+
+        close_thread(session, thread_id="t1")
+        thread = get_thread(session, thread_id="t1")
+        assert thread is not None
+        assert thread.status == "closed"
