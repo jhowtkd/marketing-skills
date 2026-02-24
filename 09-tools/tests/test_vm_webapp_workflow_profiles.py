@@ -6,6 +6,7 @@ from vm_webapp.workflow_profiles import (
     DEFAULT_PROFILES_PATH,
     load_workflow_profiles,
     resolve_workflow_plan,
+    resolve_workflow_plan_with_contract,
 )
 
 
@@ -32,3 +33,18 @@ def test_load_workflow_profiles_rejects_invalid_shape(tmp_path: Path) -> None:
     broken.write_text("profiles:\n  - mode: bad\n    stages: [1,2,3]\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_workflow_profiles(broken)
+
+
+def test_resolve_workflow_plan_uses_foundation_effective_mode_when_forced() -> None:
+    profiles = load_workflow_profiles(DEFAULT_PROFILES_PATH)
+    resolved = resolve_workflow_plan_with_contract(
+        profiles,
+        requested_mode="content_calendar",
+        skill_overrides={},
+        force_foundation_fallback=True,
+        foundation_mode="foundation_stack",
+    )
+    assert resolved["requested_mode"] == "content_calendar"
+    assert resolved["effective_mode"] == "foundation_stack"
+    assert resolved["fallback_applied"] is True
+    assert resolved["profile_version"] == "v1"
