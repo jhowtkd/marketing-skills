@@ -117,6 +117,42 @@ def test_thread_lifecycle_and_messages_api(tmp_path: Path) -> None:
     assert closed.json()["status"] == "closed"
 
 
+def test_chat_and_run_reject_closed_thread(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    created = client.post("/api/v1/threads", json={"brand_id": "b1", "product_id": "p1"})
+    thread_id = created.json()["thread_id"]
+    client.post(f"/api/v1/threads/{thread_id}/close")
+
+    chat = client.post(
+        "/api/v1/chat",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": thread_id,
+            "message": "hello",
+        },
+    )
+    assert chat.status_code == 409
+
+    run = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": thread_id,
+            "user_request": "start",
+        },
+    )
+    assert run.status_code == 409
+
+
 def test_list_runs_by_thread(tmp_path: Path) -> None:
     app = create_app(
         settings=Settings(

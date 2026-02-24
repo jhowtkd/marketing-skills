@@ -148,6 +148,14 @@ def close_thread(session: Session, thread_id: str) -> None:
     )
 
 
+def touch_thread_activity(session: Session, thread_id: str) -> None:
+    session.execute(
+        update(Thread)
+        .where(Thread.thread_id == thread_id)
+        .values(last_activity_at=_now_iso(), updated_at=_now_iso())
+    )
+
+
 def get_run(session: Session, run_id: str) -> Run | None:
     return session.get(Run, run_id)
 

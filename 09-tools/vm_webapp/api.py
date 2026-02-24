@@ -20,11 +20,23 @@ from vm_webapp.repo import (
     list_runs_by_thread,
     list_stages,
     list_threads,
+    touch_thread_activity,
 )
 from vm_webapp.stacking import build_context_pack
 
 
 router = APIRouter()
+
+
+def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: str):
+    row = get_thread(session, thread_id=thread_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+    if row.brand_id != brand_id or row.product_id != product_id:
+        raise HTTPException(status_code=409, detail="thread context mismatch")
+    if row.status != "open":
+        raise HTTPException(status_code=409, detail=f"thread is {row.status}")
+    return row
 
 
 @router.get("/health")
@@ -131,6 +143,14 @@ def thread_messages(thread_id: str, request: Request) -> dict[str, list[dict[str
 
 @router.post("/runs/foundation")
 def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        _require_open_thread(
+            session,
+            thread_id=payload.thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+        )
+
     stack_path = (
         Path(__file__).resolve().parents[2] / "06-stacks" / "foundation-stack" / "stack.yaml"
     )
@@ -144,6 +164,8 @@ def start_foundation_run(payload: FoundationRunRequest, request: Request) -> dic
     )
     run_engine.run_until_gate(run.run_id)
     run = run_engine.get_run(run.run_id)
+    with session_scope(request.app.state.engine) as session:
+        touch_thread_activity(session, payload.thread_id)
     return {"run_id": run.run_id, "status": run.status}
 
 
@@ -231,6 +253,14 @@ def run_events(
 
 @router.post("/chat")
 def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        _require_open_thread(
+            session,
+            thread_id=payload.thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+        )
+
     workspace = request.app.state.workspace
     memory = request.app.state.memory
     llm = request.app.state.llm
@@ -307,6 +337,9 @@ def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
             )
         )
         fh.write("\n")
+
+    with session_scope(request.app.state.engine) as session:
+        touch_thread_activity(session, payload.thread_id)
 
     memory.upsert_doc(
         doc_id=f"chat:{payload.thread_id}:{uuid4().hex[:8]}",
