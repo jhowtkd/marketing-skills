@@ -234,6 +234,34 @@ def get_stream_version(session: Session, stream_id: str) -> int:
     return int(current or 0)
 
 
+def list_events_by_thread(session: Session, thread_id: str) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .order_by(EventLog.stream_version.asc())
+        )
+    )
+
+
+def list_unprocessed_events(session: Session) -> list[EventLog]:
+    return list(
+        session.scalars(
+            select(EventLog)
+            .where(EventLog.processed_at.is_(None))
+            .order_by(EventLog.event_pk.asc())
+        )
+    )
+
+
+def mark_event_processed(session: Session, event_id: str) -> None:
+    session.execute(
+        update(EventLog)
+        .where(EventLog.event_id == event_id)
+        .values(processed_at=_now_iso())
+    )
+
+
 def get_command_dedup(session: Session, *, idempotency_key: str) -> CommandDedup | None:
     return session.get(CommandDedup, idempotency_key)
 
