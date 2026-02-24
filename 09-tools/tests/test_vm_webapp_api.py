@@ -135,6 +135,34 @@ def test_approve_endpoint_continues_waiting_run(tmp_path: Path) -> None:
     assert res.json()["run_id"] == run_id
 
 
+def test_run_events_sse_streams_existing_events(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    ws = app.state.workspace
+    run_id = "run-abc"
+    events_path = ws.root / "runs" / run_id / "events.jsonl"
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    events_path.write_text(
+        '{"type":"run_started","run_id":"run-abc"}\n',
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    with client.stream(
+        "GET",
+        f"/api/v1/runs/{run_id}/events",
+        params={"from_start": "true", "max_events": 1},
+    ) as res:
+        assert res.status_code == 200
+        assert "text/event-stream" in res.headers.get("content-type", "")
+        first = next(res.iter_text())
+        assert "run_started" in first
+
+
 def test_root_serves_ui() -> None:
     client = TestClient(create_app())
     res = client.get("/")

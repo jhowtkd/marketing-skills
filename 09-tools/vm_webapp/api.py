@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
@@ -107,6 +109,40 @@ def approve_run(run_id: str, request: Request) -> dict[str, str]:
 
     run = run_engine.get_run(run_id)
     return {"run_id": run.run_id, "status": run.status}
+
+
+@router.get("/runs/{run_id}/events")
+def run_events(
+    run_id: str,
+    request: Request,
+    from_start: bool = False,
+    max_events: int = 100,
+) -> StreamingResponse:
+    workspace = request.app.state.workspace
+    events_path = Path(workspace.root) / "runs" / run_id / "events.jsonl"
+
+    def event_iter():
+        emitted = 0
+        offset = 0
+        if not from_start and events_path.exists():
+            offset = events_path.stat().st_size
+
+        while emitted < max_events:
+            if events_path.exists():
+                with events_path.open("r", encoding="utf-8") as fh:
+                    fh.seek(offset)
+                    for line in fh:
+                        event = line.strip()
+                        if not event:
+                            continue
+                        yield f"data: {event}\n\n"
+                        emitted += 1
+                        if emitted >= max_events:
+                            return
+                    offset = fh.tell()
+            time.sleep(0.1)
+
+    return StreamingResponse(event_iter(), media_type="text/event-stream")
 
 
 @router.post("/chat")
