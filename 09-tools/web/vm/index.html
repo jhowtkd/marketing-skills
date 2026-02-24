@@ -16,26 +16,33 @@
       <section class="panel grid">
         <label>
           Brand
-          <select>
-            <option>Acme</option>
-          </select>
+          <select id="brand-select"></select>
         </label>
         <label>
           Product
-          <select>
-            <option>Widget</option>
-          </select>
+          <select id="product-select"></select>
         </label>
       </section>
 
       <section class="panel">
         <h2>Chat</h2>
-        <div class="placeholder">Assistant output will appear here.</div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <form id="chat-form" class="chat-form">
+          <input
+            id="chat-input"
+            type="text"
+            placeholder="Type a message or /run foundation"
+            autocomplete="off"
+          />
+          <button type="submit">Send</button>
+        </form>
       </section>
 
       <section class="panel">
         <h2>Runs</h2>
-        <div class="placeholder">Run timeline and approval gates.</div>
+        <p id="run-status" class="placeholder">No active run.</p>
+        <button id="start-foundation-run" type="button">Start Foundation Run</button>
+        <div id="runs-timeline" class="runs-timeline"></div>
       </section>
     </main>
     <script src="/app.js"></script>
