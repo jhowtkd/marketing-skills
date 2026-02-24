@@ -12,10 +12,14 @@ from pydantic import BaseModel
 
 from vm_webapp.db import session_scope
 from vm_webapp.repo import (
+    close_thread,
+    create_thread as create_thread_row,
+    get_thread,
     list_brands,
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
+    list_threads,
 )
 from vm_webapp.stacking import build_context_pack
 
@@ -56,11 +60,73 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class ThreadCreateRequest(BaseModel):
+    brand_id: str
+    product_id: str
+    title: str | None = None
+
+
 class FoundationRunRequest(BaseModel):
     brand_id: str
     product_id: str
     thread_id: str
     user_request: str
+
+
+@router.get("/threads")
+def threads(brand_id: str, product_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_threads(session, brand_id=brand_id, product_id=product_id)
+    return {
+        "threads": [
+            {
+                "thread_id": row.thread_id,
+                "brand_id": row.brand_id,
+                "product_id": row.product_id,
+                "title": row.title,
+                "status": row.status,
+                "last_activity_at": row.last_activity_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/threads")
+def create_thread_api(payload: ThreadCreateRequest, request: Request) -> dict[str, str]:
+    thread_id = f"thread-{uuid4().hex[:12]}"
+    title = payload.title or "New Thread"
+    with session_scope(request.app.state.engine) as session:
+        row = create_thread_row(
+            session,
+            thread_id=thread_id,
+            brand_id=payload.brand_id,
+            product_id=payload.product_id,
+            title=title,
+        )
+    return {"thread_id": row.thread_id, "status": row.status, "title": row.title}
+
+
+@router.post("/threads/{thread_id}/close")
+def close_thread_api(thread_id: str, request: Request) -> dict[str, str]:
+    with session_scope(request.app.state.engine) as session:
+        row = get_thread(session, thread_id=thread_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        close_thread(session, thread_id=thread_id)
+    return {"thread_id": thread_id, "status": "closed"}
+
+
+@router.get("/threads/{thread_id}/messages")
+def thread_messages(thread_id: str, request: Request) -> dict[str, list[dict[str, str]]]:
+    chat_path = Path(request.app.state.workspace.root) / "threads" / thread_id / "chat.jsonl"
+    if not chat_path.exists():
+        return {"messages": []}
+    messages: list[dict[str, str]] = []
+    for line in chat_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            messages.append(json.loads(line))
+    return {"messages": messages}
 
 
 @router.post("/runs/foundation")
