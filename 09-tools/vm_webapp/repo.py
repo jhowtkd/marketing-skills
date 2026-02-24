@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from vm_webapp.models import Brand, Product, Run, Stage
+from vm_webapp.models import Brand, Product, Run, Stage, Thread
 from vm_webapp.workspace import Workspace
 
 
@@ -104,6 +104,48 @@ def create_run(
     session.add(run)
     session.flush()
     return run
+
+
+def create_thread(
+    session: Session,
+    *,
+    thread_id: str,
+    brand_id: str,
+    product_id: str,
+    title: str,
+) -> Thread:
+    thread = Thread(
+        thread_id=thread_id,
+        brand_id=brand_id,
+        product_id=product_id,
+        title=title,
+        status="open",
+    )
+    session.add(thread)
+    session.flush()
+    return thread
+
+
+def list_threads(session: Session, brand_id: str, product_id: str) -> list[Thread]:
+    return list(
+        session.scalars(
+            select(Thread)
+            .where(Thread.brand_id == brand_id, Thread.product_id == product_id)
+            .order_by(Thread.last_activity_at.desc())
+        )
+    )
+
+
+def get_thread(session: Session, thread_id: str) -> Thread | None:
+    return session.get(Thread, thread_id)
+
+
+def close_thread(session: Session, thread_id: str) -> None:
+    session.execute(
+        update(Thread)
+        .where(Thread.thread_id == thread_id)
+        .values(status="closed", updated_at=_now_iso())
+    )
 
 
 def get_run(session: Session, run_id: str) -> Run | None:
