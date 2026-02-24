@@ -50,3 +50,38 @@ profiles:
           max_attempts: 1
           backoff_seconds: 0
         timeout_seconds: 120
+  - mode: foundation_stack
+    description: "Pipeline foundation com gates a partir de brand-voice."
+    stages:
+      - key: research
+        skills:
+          - "01-research/research-framework"
+        approval_required: false
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 180
+      - key: brand-voice
+        skills:
+          - "03-strategy/brand-voice"
+        approval_required: true
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 180
+      - key: positioning
+        skills:
+          - "03-strategy/positioning-angles"
+        approval_required: true
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 180
+      - key: keywords
+        skills:
+          - "03-strategy/keyword-research"
+        approval_required: true
+        retry_policy:
+          max_attempts: 2
+          backoff_seconds: 1
+        timeout_seconds: 180

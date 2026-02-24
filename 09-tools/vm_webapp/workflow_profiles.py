@@ -8,6 +8,8 @@ import yaml
 
 
 DEFAULT_PROFILES_PATH = Path(__file__).with_name("workflow_profiles.yaml")
+FOUNDATION_MODE_DEFAULT = "foundation_stack"
+PROFILES_VERSION_DEFAULT = "v1"
 
 
 @dataclass(slots=True, frozen=True)
@@ -143,4 +145,30 @@ def resolve_workflow_plan(
         "mode": profile.mode,
         "description": profile.description,
         "stages": stages,
+    }
+
+
+def resolve_workflow_plan_with_contract(
+    profiles: dict[str, WorkflowModeProfile],
+    *,
+    requested_mode: str,
+    skill_overrides: dict[str, list[str]] | None,
+    force_foundation_fallback: bool,
+    foundation_mode: str = FOUNDATION_MODE_DEFAULT,
+) -> dict[str, Any]:
+    effective_mode = foundation_mode if force_foundation_fallback else requested_mode
+    if not force_foundation_fallback and effective_mode not in profiles:
+        effective_mode = foundation_mode
+
+    plan = resolve_workflow_plan(
+        profiles,
+        mode=effective_mode,
+        skill_overrides=skill_overrides or {},
+    )
+    return {
+        **plan,
+        "requested_mode": requested_mode,
+        "effective_mode": effective_mode,
+        "fallback_applied": requested_mode != effective_mode,
+        "profile_version": PROFILES_VERSION_DEFAULT,
     }

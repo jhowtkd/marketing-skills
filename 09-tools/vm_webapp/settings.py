@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     vm_workspace_root: Path = Path("runtime/vm")
     vm_db_path: Path = Path("runtime/vm/workspace.sqlite3")
     vm_workflow_profiles_path: Path | None = None
+    vm_workflow_force_foundation_fallback: bool = True
+    vm_workflow_foundation_mode: str = "foundation_stack"
 
     model_config = SettingsConfigDict(
         env_file=".env",

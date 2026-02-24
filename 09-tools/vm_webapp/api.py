@@ -45,6 +45,7 @@ from vm_webapp.repo import (
     list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
+    list_events_by_thread,
     list_stages,
     list_tasks_view,
     list_threads,
@@ -422,7 +423,7 @@ def start_workflow_run_v2(
         project_command_event(session, event_id=result.event_id)
         command_payload = json.loads(result.response_json)
         run_id = str(command_payload["run_id"])
-        request.app.state.workflow_runtime.ensure_queued_run(
+        queued = request.app.state.workflow_runtime.ensure_queued_run(
             session=session,
             run_id=run_id,
             thread_id=thread.thread_id,
@@ -432,7 +433,12 @@ def start_workflow_run_v2(
             mode=payload.mode,
             skill_overrides=payload.skill_overrides,
         )
-    return {"run_id": run_id, "status": "queued"}
+    return {
+        "run_id": run_id,
+        "status": str(queued.get("status", "queued")),
+        "requested_mode": str(queued.get("requested_mode", payload.mode)),
+        "effective_mode": str(queued.get("effective_mode", payload.mode)),
+    }
 
 
 @router.get("/v2/threads/{thread_id}/workflow-runs")
@@ -485,6 +491,7 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
             raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
         stage_rows = list_stages(session, run_id)
         approvals = list_approvals_view(session, thread_id=run.thread_id)
+        events = list_events_by_thread(session, run.thread_id)
 
     run_root = Path(request.app.state.workspace.root) / "runs" / run_id
     plan_payload: dict[str, object] = {"mode": "plan_90d", "stages": []}
@@ -518,10 +525,30 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
                 }
             )
 
+    stage_errors: dict[str, dict[str, object]] = {}
+    for event in events:
+        if event.event_type != "WorkflowRunStageFailed":
+            continue
+        payload = json.loads(event.payload_json)
+        if str(payload.get("run_id", "")) != run.run_id:
+            continue
+        stage_key = str(payload.get("stage_key", ""))
+        if not stage_key:
+            continue
+        stage_errors[stage_key] = {
+            "error_code": payload.get("error_code"),
+            "error_message": payload.get("error_message"),
+            "retryable": bool(payload.get("retryable", False)),
+        }
+
     stages_payload: list[dict[str, object]] = []
     for row in stage_rows:
         plan_stage = plan_stage_map.get(row.stage_id, {})
         manifest = manifests_by_stage.get(row.stage_id)
+        error_meta = stage_errors.get(
+            row.stage_id,
+            {"error_code": None, "error_message": None, "retryable": False},
+        )
         stages_payload.append(
             {
                 "stage_id": row.stage_id,
@@ -533,8 +560,17 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
                 if isinstance(plan_stage.get("skills", []), list)
                 else [],
                 "manifest": manifest,
+                "error_code": error_meta["error_code"],
+                "error_message": error_meta["error_message"],
+                "retryable": error_meta["retryable"],
             }
         )
+
+    requested_mode = str(plan_payload.get("requested_mode", plan_payload.get("mode", "plan_90d")))
+    effective_mode = str(plan_payload.get("effective_mode", plan_payload.get("mode", "plan_90d")))
+    fallback_applied = bool(
+        plan_payload.get("fallback_applied", requested_mode != effective_mode)
+    )
 
     return {
         "run_id": run.run_id,
@@ -543,7 +579,11 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
         "project_id": run.product_id,
         "status": run.status,
         "request_text": run.user_request,
-        "mode": str(plan_payload.get("mode", "plan_90d")),
+        "mode": effective_mode,
+        "requested_mode": requested_mode,
+        "effective_mode": effective_mode,
+        "profile_version": str(plan_payload.get("profile_version", "v1")),
+        "fallback_applied": fallback_applied,
         "stages": stages_payload,
         "pending_approvals": pending,
         "created_at": run.created_at,
@@ -561,8 +601,13 @@ def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
             actor_id="workspace-owner",
             idempotency_key=idem,
         )
-        project_command_event(session, event_id=result.event_id)
-    return {"run_id": run_id, "status": "running"}
+        if result.event_id.startswith("evt-"):
+            project_command_event(session, event_id=result.event_id)
+    payload = json.loads(result.response_json)
+    return {
+        "run_id": str(payload.get("run_id", run_id)),
+        "status": str(payload.get("status", "running")),
+    }
 
 
 @router.get("/v2/workflow-runs/{run_id}/artifact-content")

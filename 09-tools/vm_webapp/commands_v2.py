@@ -607,6 +607,18 @@ def resume_workflow_run_command(
     run = get_run(session, run_id)
     if run is None:
         raise ValueError(f"run not found: {run_id}")
+    if run.status in {"completed", "failed", "canceled"}:
+        noop_event_id = f"noop-{uuid4().hex[:12]}"
+        save_command_dedup(
+            session,
+            idempotency_key=idempotency_key,
+            command_name="resume_workflow_run",
+            event_id=noop_event_id,
+            response={"event_id": noop_event_id, "run_id": run_id, "status": run.status},
+        )
+        dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+        assert dedup is not None
+        return dedup
 
     stream_id = f"thread:{run.thread_id}"
     expected = get_stream_version(session, stream_id)
