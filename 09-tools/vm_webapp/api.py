@@ -18,7 +18,11 @@ from vm_webapp.commands_v2 import (
     create_project_command,
     create_thread_command,
     grant_approval_command,
+    remove_thread_mode_command,
+    rename_thread_command,
     start_agent_plan_command,
+    update_brand_command,
+    update_project_command,
 )
 from vm_webapp.db import session_scope
 from vm_webapp.events import EventEnvelope
@@ -29,15 +33,20 @@ from vm_webapp.repo import (
     close_thread,
     create_thread as create_thread_row,
     get_event_by_id,
+    get_brand_view,
+    get_project_view,
     get_thread,
+    get_thread_view,
     list_approvals_view,
     list_brands,
+    list_brands_view,
     list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
     list_stages,
     list_tasks_view,
     list_threads,
+    list_threads_view,
     list_timeline_items_view,
     touch_thread_activity,
 )
@@ -99,12 +108,12 @@ def project_command_event(session, *, event_id: str) -> None:
 
 
 class BrandCreateRequest(BaseModel):
-    brand_id: str
+    brand_id: str | None = None
     name: str
 
 
 class ProjectCreateRequest(BaseModel):
-    project_id: str
+    project_id: str | None = None
     brand_id: str
     name: str
     objective: str = ""
@@ -113,9 +122,24 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ThreadCreateV2Request(BaseModel):
-    thread_id: str
+    thread_id: str | None = None
     project_id: str
     brand_id: str
+    title: str
+
+
+class BrandUpdateRequest(BaseModel):
+    name: str
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str
+    objective: str = ""
+    channels: list[str] = Field(default_factory=list)
+    due_date: str | None = None
+
+
+class ThreadUpdateRequest(BaseModel):
     title: str
 
 
@@ -143,7 +167,39 @@ def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, 
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-    return {"event_id": result.event_id, "brand_id": payload.brand_id}
+        response_payload = json.loads(result.response_json)
+    return {"event_id": result.event_id, "brand_id": str(response_payload["brand_id"])}
+
+
+@router.get("/v2/brands")
+def list_brands_v2(request: Request) -> dict[str, list[dict[str, str]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_brands_view(session)
+    return {
+        "brands": [{"brand_id": row.brand_id, "name": row.name} for row in rows],
+    }
+
+
+@router.patch("/v2/brands/{brand_id}")
+def update_brand_v2(
+    brand_id: str, payload: BrandUpdateRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        if get_brand_view(session, brand_id) is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        result = update_brand_command(
+            session,
+            brand_id=brand_id,
+            name=payload.name,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        updated = get_brand_view(session, brand_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+    return {"event_id": result.event_id, "brand_id": updated.brand_id, "name": updated.name}
 
 
 @router.post("/v2/projects")
@@ -162,7 +218,43 @@ def create_project_v2(payload: ProjectCreateRequest, request: Request) -> dict[s
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-    return {"event_id": result.event_id, "project_id": payload.project_id}
+        response_payload = json.loads(result.response_json)
+    return {"event_id": result.event_id, "project_id": str(response_payload["project_id"])}
+
+
+@router.patch("/v2/projects/{project_id}")
+def update_project_v2(
+    project_id: str, payload: ProjectUpdateRequest, request: Request
+) -> dict[str, object]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        existing = get_project_view(session, project_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
+        result = update_project_command(
+            session,
+            project_id=project_id,
+            brand_id=existing.brand_id,
+            name=payload.name,
+            objective=payload.objective,
+            channels=payload.channels,
+            due_date=payload.due_date,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        updated = get_project_view(session, project_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
+    return {
+        "event_id": result.event_id,
+        "project_id": updated.project_id,
+        "brand_id": updated.brand_id,
+        "name": updated.name,
+        "objective": updated.objective,
+        "channels": json.loads(updated.channels_json),
+        "due_date": updated.due_date,
+    }
 
 
 @router.get("/v2/projects")
@@ -200,7 +292,52 @@ def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[s
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)
-    return {"event_id": result.event_id, "thread_id": payload.thread_id}
+        response_payload = json.loads(result.response_json)
+    return {"event_id": result.event_id, "thread_id": str(response_payload["thread_id"])}
+
+
+@router.get("/v2/threads")
+def list_threads_v2(
+    project_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_threads_view(session, project_id=project_id)
+    return {
+        "threads": [
+            {
+                "thread_id": row.thread_id,
+                "project_id": row.project_id,
+                "brand_id": row.brand_id,
+                "title": row.title,
+                "status": row.status,
+                "modes": json.loads(row.modes_json),
+                "last_activity_at": row.last_activity_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.patch("/v2/threads/{thread_id}")
+def update_thread_v2(
+    thread_id: str, payload: ThreadUpdateRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        if get_thread_view(session, thread_id) is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        result = rename_thread_command(
+            session,
+            thread_id=thread_id,
+            title=payload.title,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        updated = get_thread_view(session, thread_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+    return {"event_id": result.event_id, "thread_id": updated.thread_id, "title": updated.title}
 
 
 @router.post("/v2/threads/{thread_id}/modes")
@@ -218,6 +355,25 @@ def add_thread_mode_v2(
         )
         project_command_event(session, event_id=result.event_id)
     return {"event_id": result.event_id, "thread_id": thread_id}
+
+
+@router.post("/v2/threads/{thread_id}/modes/{mode}/remove")
+def remove_thread_mode_v2(
+    thread_id: str, mode: str, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        if get_thread_view(session, thread_id) is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        result = remove_thread_mode_command(
+            session,
+            thread_id=thread_id,
+            mode=mode,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+    return {"event_id": result.event_id, "thread_id": thread_id, "mode": mode}
 
 
 @router.get("/v2/threads/{thread_id}/timeline")

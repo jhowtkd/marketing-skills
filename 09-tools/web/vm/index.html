@@ -16,7 +16,6 @@
       <section class="panel" id="brand-workspace-panel">
         <h2>Brands</h2>
         <form id="brand-create-form" class="stack">
-          <input id="brand-id-input" placeholder="brand id" />
           <input id="brand-name-input" placeholder="brand name" />
           <button type="submit">Create Brand</button>
         </form>
@@ -26,7 +25,6 @@
       <section class="panel" id="project-workspace-panel">
         <h2>Projects</h2>
         <form id="project-create-form" class="stack">
-          <input id="project-id-input" placeholder="project id" />
           <input id="project-name-input" placeholder="project name" />
           <input id="project-objective-input" placeholder="objective" />
           <input id="project-channels-input" placeholder="channels (comma separated)" />
@@ -46,7 +44,14 @@
           <input id="thread-mode-input" placeholder="mode (e.g. plan_90d)" />
           <button type="submit">Add Mode</button>
         </form>
+        <p id="mode-help" class="muted">
+          Mode = contexto operacional da thread (ex.: plan_90d, content_calendar). Voce pode
+          adicionar, editar titulo da thread e remover modes ativos.
+        </p>
         <div id="threads-list" class="list"></div>
+
+        <h3>Modes</h3>
+        <div id="thread-modes-list" class="list"></div>
 
         <h3>Timeline</h3>
         <div id="timeline-list" class="list"></div>

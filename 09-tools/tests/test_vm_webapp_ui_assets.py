@@ -6,9 +6,13 @@ def test_vm_index_contains_event_driven_workspace_panels() -> None:
     assert 'id="brand-create-form"' in html
     assert 'id="project-create-form"' in html
     assert 'id="thread-create-button"' in html
+    assert 'id="mode-help"' in html
+    assert 'id="thread-modes-list"' in html
     assert 'id="timeline-list"' in html
     assert 'id="tasks-list"' in html
     assert 'id="approvals-list"' in html
+    assert 'id="brand-id-input"' not in html
+    assert 'id="project-id-input"' not in html
 
 
 def test_vm_app_js_targets_v2_event_driven_endpoints() -> None:
@@ -17,4 +21,7 @@ def test_vm_app_js_targets_v2_event_driven_endpoints() -> None:
     assert "/api/v2/projects" in js
     assert "/api/v2/threads" in js
     assert "/api/v2/threads/" in js and "/timeline" in js
+    assert "/modes/" in js and "/remove" in js
+    assert "PATCH" in js
+    assert "buildEntityId" in js
     assert "Idempotency-Key" in js

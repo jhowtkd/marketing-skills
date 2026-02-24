@@ -342,6 +342,10 @@ def list_brands_view(session: Session) -> list[BrandView]:
     return list(session.scalars(select(BrandView).order_by(BrandView.brand_id.asc())))
 
 
+def get_brand_view(session: Session, brand_id: str) -> BrandView | None:
+    return session.get(BrandView, brand_id)
+
+
 def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
     return list(
         session.scalars(
@@ -350,6 +354,10 @@ def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
             .order_by(ProjectView.project_id.asc())
         )
     )
+
+
+def get_project_view(session: Session, project_id: str) -> ProjectView | None:
+    return session.get(ProjectView, project_id)
 
 
 def get_event_by_id(session: Session, event_id: str) -> EventLog | None:

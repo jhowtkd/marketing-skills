@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
 from vm_webapp.db import session_scope
-from vm_webapp.models import ApprovalView, TaskView
+from vm_webapp.models import ApprovalView, BrandView, ProjectView, TaskView, ThreadView
 from vm_webapp.settings import Settings
 
 
@@ -146,3 +146,137 @@ def test_v2_collaboration_flow_comment_task_complete_and_approval(
         headers={"Idempotency-Key": "apr-1-grant"},
     )
     assert granted.status_code == 200
+
+
+def test_v2_auto_generates_hidden_ids_when_not_provided(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    created_brand = client.post(
+        "/api/v2/brands",
+        headers={"Idempotency-Key": "auto-brand"},
+        json={"name": "Acme"},
+    )
+    assert created_brand.status_code == 200
+    brand_id = created_brand.json()["brand_id"]
+    assert brand_id.startswith("b-")
+
+    created_project = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "auto-project"},
+        json={"brand_id": brand_id, "name": "Launch Q2"},
+    )
+    assert created_project.status_code == 200
+    project_id = created_project.json()["project_id"]
+    assert project_id.startswith("p-")
+
+    created_thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "auto-thread"},
+        json={"project_id": project_id, "brand_id": brand_id, "title": "Planning"},
+    )
+    assert created_thread.status_code == 200
+    assert created_thread.json()["thread_id"].startswith("t-")
+
+
+def test_v2_edit_entities_and_remove_mode(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/v2/brands",
+        headers={"Idempotency-Key": "seed-brand"},
+        json={"brand_id": "b1", "name": "Acme"},
+    )
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "seed-project"},
+        json={
+            "project_id": "p1",
+            "brand_id": "b1",
+            "name": "Plan",
+            "objective": "Old objective",
+            "channels": ["seo"],
+            "due_date": "2026-06-30",
+        },
+    )
+    client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "seed-thread"},
+        json={
+            "thread_id": "t1",
+            "project_id": "p1",
+            "brand_id": "b1",
+            "title": "Planning",
+        },
+    )
+    client.post(
+        "/api/v2/threads/t1/modes",
+        headers={"Idempotency-Key": "seed-mode-1"},
+        json={"mode": "plan_90d"},
+    )
+    client.post(
+        "/api/v2/threads/t1/modes",
+        headers={"Idempotency-Key": "seed-mode-2"},
+        json={"mode": "content_calendar"},
+    )
+
+    edited_brand = client.patch(
+        "/api/v2/brands/b1",
+        headers={"Idempotency-Key": "edit-brand"},
+        json={"name": "Acme Updated"},
+    )
+    assert edited_brand.status_code == 200
+
+    edited_project = client.patch(
+        "/api/v2/projects/p1",
+        headers={"Idempotency-Key": "edit-project"},
+        json={
+            "name": "Plan Updated",
+            "objective": "New objective",
+            "channels": ["seo", "email"],
+            "due_date": "2026-12-31",
+        },
+    )
+    assert edited_project.status_code == 200
+
+    edited_thread = client.patch(
+        "/api/v2/threads/t1",
+        headers={"Idempotency-Key": "edit-thread"},
+        json={"title": "Planning Updated"},
+    )
+    assert edited_thread.status_code == 200
+
+    removed_mode = client.post(
+        "/api/v2/threads/t1/modes/plan_90d/remove",
+        headers={"Idempotency-Key": "remove-mode"},
+    )
+    assert removed_mode.status_code == 200
+
+    with session_scope(app.state.engine) as session:
+        brand = session.get(BrandView, "b1")
+        project = session.get(ProjectView, "p1")
+        thread = session.get(ThreadView, "t1")
+        assert brand is not None
+        assert project is not None
+        assert thread is not None
+        assert brand.name == "Acme Updated"
+        assert project.name == "Plan Updated"
+        assert project.objective == "New objective"
+        assert thread.title == "Planning Updated"
+        assert "plan_90d" not in thread.modes_json
+        assert "content_calendar" in thread.modes_json
+
+    timeline = client.get("/api/v2/threads/t1/timeline")
+    assert timeline.status_code == 200
+    assert any(item["event_type"] == "ThreadModeRemoved" for item in timeline.json()["items"])

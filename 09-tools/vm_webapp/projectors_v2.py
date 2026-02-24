@@ -19,7 +19,7 @@ from vm_webapp.models import (
 def apply_event_to_read_models(session: Session, event: EventLog) -> None:
     payload = json.loads(event.payload_json)
 
-    if event.event_type == "BrandCreated":
+    if event.event_type in {"BrandCreated", "BrandUpdated"}:
         row = session.get(BrandView, payload["brand_id"])
         if row is None:
             row = BrandView(
@@ -33,7 +33,7 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             row.updated_at = event.occurred_at
         return
 
-    if event.event_type == "ProjectCreated":
+    if event.event_type in {"ProjectCreated", "ProjectUpdated"}:
         row = session.get(ProjectView, payload["project_id"])
         if row is None:
             row = ProjectView(
@@ -79,6 +79,22 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             modes.append(payload["mode"])
             row.modes_json = json.dumps(modes, ensure_ascii=False)
         row.last_activity_at = event.occurred_at
+
+    if event.event_type == "ThreadRenamed":
+        row = session.get(ThreadView, payload["thread_id"])
+        if row is not None:
+            row.title = payload["title"]
+            row.last_activity_at = event.occurred_at
+
+    if event.event_type == "ThreadModeRemoved":
+        row = session.get(ThreadView, payload["thread_id"])
+        if row is not None:
+            modes = json.loads(row.modes_json)
+            row.modes_json = json.dumps(
+                [value for value in modes if value != payload["mode"]],
+                ensure_ascii=False,
+            )
+            row.last_activity_at = event.occurred_at
 
     if event.event_type == "TaskCommentAdded":
         row = session.get(TaskView, payload["task_id"])

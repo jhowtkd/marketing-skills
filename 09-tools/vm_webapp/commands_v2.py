@@ -16,7 +16,157 @@ from vm_webapp.repo import (
 )
 
 
+def _auto_id(prefix: str) -> str:
+    return f"{prefix}-{uuid4().hex[:10]}"
+
+
 def create_brand_command(
+    session: Session,
+    *,
+    brand_id: str | None,
+    name: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    resolved_brand_id = brand_id or _auto_id("b")
+    stream_id = f"brand:{resolved_brand_id}"
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="BrandCreated",
+        aggregate_type="brand",
+        aggregate_id=resolved_brand_id,
+        stream_id=stream_id,
+        expected_version=0,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={"brand_id": resolved_brand_id, "name": name},
+        brand_id=resolved_brand_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_brand",
+        event_id=saved.event_id,
+        response={"event_id": saved.event_id, "brand_id": resolved_brand_id, "name": name},
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
+def create_project_command(
+    session: Session,
+    *,
+    project_id: str | None,
+    brand_id: str,
+    name: str,
+    objective: str,
+    channels: list[str],
+    due_date: str | None,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    resolved_project_id = project_id or _auto_id("p")
+    stream_id = f"project:{resolved_project_id}"
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="ProjectCreated",
+        aggregate_type="project",
+        aggregate_id=resolved_project_id,
+        stream_id=stream_id,
+        expected_version=0,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "project_id": resolved_project_id,
+            "brand_id": brand_id,
+            "name": name,
+            "objective": objective,
+            "channels": channels,
+            "due_date": due_date,
+        },
+        brand_id=brand_id,
+        project_id=resolved_project_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_project",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "project_id": resolved_project_id,
+            "brand_id": brand_id,
+        },
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
+def create_thread_command(
+    session: Session,
+    *,
+    thread_id: str | None,
+    project_id: str,
+    brand_id: str,
+    title: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    resolved_thread_id = thread_id or _auto_id("t")
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="ThreadCreated",
+        aggregate_type="thread",
+        aggregate_id=resolved_thread_id,
+        stream_id=f"thread:{resolved_thread_id}",
+        expected_version=0,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "thread_id": resolved_thread_id,
+            "project_id": project_id,
+            "brand_id": brand_id,
+            "title": title,
+        },
+        brand_id=brand_id,
+        project_id=project_id,
+        thread_id=resolved_thread_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_thread",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "thread_id": resolved_thread_id,
+            "project_id": project_id,
+            "brand_id": brand_id,
+        },
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
+def update_brand_command(
     session: Session,
     *,
     brand_id: str,
@@ -29,13 +179,14 @@ def create_brand_command(
         return dedup
 
     stream_id = f"brand:{brand_id}"
+    expected = get_stream_version(session, stream_id)
     event = EventEnvelope(
         event_id=f"evt-{uuid4().hex[:12]}",
-        event_type="BrandCreated",
+        event_type="BrandUpdated",
         aggregate_type="brand",
         aggregate_id=brand_id,
         stream_id=stream_id,
-        expected_version=0,
+        expected_version=expected,
         actor_type="human",
         actor_id=actor_id,
         payload={"brand_id": brand_id, "name": name},
@@ -45,7 +196,7 @@ def create_brand_command(
     save_command_dedup(
         session,
         idempotency_key=idempotency_key,
-        command_name="create_brand",
+        command_name="update_brand",
         event_id=saved.event_id,
         response={"event_id": saved.event_id, "brand_id": brand_id, "name": name},
     )
@@ -54,7 +205,7 @@ def create_brand_command(
     return dedup
 
 
-def create_project_command(
+def update_project_command(
     session: Session,
     *,
     project_id: str,
@@ -71,13 +222,14 @@ def create_project_command(
         return dedup
 
     stream_id = f"project:{project_id}"
+    expected = get_stream_version(session, stream_id)
     event = EventEnvelope(
         event_id=f"evt-{uuid4().hex[:12]}",
-        event_type="ProjectCreated",
+        event_type="ProjectUpdated",
         aggregate_type="project",
         aggregate_id=project_id,
         stream_id=stream_id,
-        expected_version=0,
+        expected_version=expected,
         actor_type="human",
         actor_id=actor_id,
         payload={
@@ -95,25 +247,19 @@ def create_project_command(
     save_command_dedup(
         session,
         idempotency_key=idempotency_key,
-        command_name="create_project",
+        command_name="update_project",
         event_id=saved.event_id,
-        response={
-            "event_id": saved.event_id,
-            "project_id": project_id,
-            "brand_id": brand_id,
-        },
+        response={"event_id": saved.event_id, "project_id": project_id},
     )
     dedup = get_command_dedup(session, idempotency_key=idempotency_key)
     assert dedup is not None
     return dedup
 
 
-def create_thread_command(
+def rename_thread_command(
     session: Session,
     *,
     thread_id: str,
-    project_id: str,
-    brand_id: str,
     title: str,
     actor_id: str,
     idempotency_key: str,
@@ -122,37 +268,27 @@ def create_thread_command(
     if dedup is not None:
         return dedup
 
+    stream_id = f"thread:{thread_id}"
+    expected = get_stream_version(session, stream_id)
     event = EventEnvelope(
         event_id=f"evt-{uuid4().hex[:12]}",
-        event_type="ThreadCreated",
+        event_type="ThreadRenamed",
         aggregate_type="thread",
         aggregate_id=thread_id,
-        stream_id=f"thread:{thread_id}",
-        expected_version=0,
+        stream_id=stream_id,
+        expected_version=expected,
         actor_type="human",
         actor_id=actor_id,
-        payload={
-            "thread_id": thread_id,
-            "project_id": project_id,
-            "brand_id": brand_id,
-            "title": title,
-        },
-        brand_id=brand_id,
-        project_id=project_id,
+        payload={"thread_id": thread_id, "title": title},
         thread_id=thread_id,
     )
     saved = append_event(session, event)
     save_command_dedup(
         session,
         idempotency_key=idempotency_key,
-        command_name="create_thread",
+        command_name="rename_thread",
         event_id=saved.event_id,
-        response={
-            "event_id": saved.event_id,
-            "thread_id": thread_id,
-            "project_id": project_id,
-            "brand_id": brand_id,
-        },
+        response={"event_id": saved.event_id, "thread_id": thread_id, "title": title},
     )
     dedup = get_command_dedup(session, idempotency_key=idempotency_key)
     assert dedup is not None
@@ -190,6 +326,45 @@ def add_thread_mode_command(
         session,
         idempotency_key=idempotency_key,
         command_name="add_thread_mode",
+        event_id=saved.event_id,
+        response={"event_id": saved.event_id, "thread_id": thread_id, "mode": mode},
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
+def remove_thread_mode_command(
+    session: Session,
+    *,
+    thread_id: str,
+    mode: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    stream_id = f"thread:{thread_id}"
+    expected = get_stream_version(session, stream_id)
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="ThreadModeRemoved",
+        aggregate_type="thread",
+        aggregate_id=thread_id,
+        stream_id=stream_id,
+        expected_version=expected,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={"thread_id": thread_id, "mode": mode},
+        thread_id=thread_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="remove_thread_mode",
         event_id=saved.event_id,
         response={"event_id": saved.event_id, "thread_id": thread_id, "mode": mode},
     )
