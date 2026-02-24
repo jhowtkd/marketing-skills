@@ -280,3 +280,51 @@ def test_v2_edit_entities_and_remove_mode(tmp_path: Path) -> None:
     timeline = client.get("/api/v2/threads/t1/timeline")
     assert timeline.status_code == 200
     assert any(item["event_type"] == "ThreadModeRemoved" for item in timeline.json()["items"])
+
+
+def test_v2_workflow_run_endpoints_create_and_list_artifacts(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "b"}, json={"name": "Acme"}
+    )
+    brands = client.get("/api/v2/brands").json()["brands"]
+    brand_id = brands[0]["brand_id"]
+
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    )
+    project_id = client.get("/api/v2/projects", params={"brand_id": brand_id}).json()[
+        "projects"
+    ][0]["project_id"]
+
+    thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()
+
+    started = client.post(
+        f"/api/v2/threads/{thread['thread_id']}/workflow-runs",
+        headers={"Idempotency-Key": "run-1"},
+        json={"request_text": "Generate plan assets", "mode": "plan_90d"},
+    )
+    assert started.status_code == 200
+    run_id = started.json()["run_id"]
+
+    listed = client.get(f"/api/v2/threads/{thread['thread_id']}/workflow-runs")
+    assert listed.status_code == 200
+    assert any(row["run_id"] == run_id for row in listed.json()["runs"])
+
+    artifacts = client.get(f"/api/v2/workflow-runs/{run_id}/artifacts")
+    assert artifacts.status_code == 200
+    assert artifacts.json()["stages"]
+    assert artifacts.json()["stages"][0]["artifacts"]

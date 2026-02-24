@@ -20,6 +20,7 @@ from vm_webapp.commands_v2 import (
     grant_approval_command,
     remove_thread_mode_command,
     rename_thread_command,
+    request_workflow_run_command,
     start_agent_plan_command,
     update_brand_command,
     update_project_command,
@@ -32,6 +33,7 @@ from vm_webapp.repo import (
     append_event,
     close_thread,
     create_thread as create_thread_row,
+    get_event_by_causation,
     get_event_by_id,
     get_brand_view,
     get_project_view,
@@ -145,6 +147,11 @@ class ThreadUpdateRequest(BaseModel):
 
 class ThreadModeAddRequest(BaseModel):
     mode: str
+
+
+class WorkflowRunRequest(BaseModel):
+    request_text: str
+    mode: str = "plan_90d"
 
 
 class TaskCommentRequest(BaseModel):
@@ -374,6 +381,80 @@ def remove_thread_mode_v2(
         )
         project_command_event(session, event_id=result.event_id)
     return {"event_id": result.event_id, "thread_id": thread_id, "mode": mode}
+
+
+@router.post("/v2/threads/{thread_id}/workflow-runs")
+def start_workflow_run_v2(
+    thread_id: str, payload: WorkflowRunRequest, request: Request
+) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        result = request_workflow_run_command(
+            session,
+            thread_id=thread_id,
+            brand_id=thread.brand_id,
+            project_id=thread.project_id,
+            request_text=payload.request_text,
+            mode=payload.mode,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        process_new_events(session)
+
+        completed = get_event_by_causation(
+            session,
+            thread_id=thread_id,
+            causation_id=result.event_id,
+            event_type="WorkflowRunCompleted",
+        )
+        run_id = ""
+        if completed is not None:
+            run_id = str(json.loads(completed.payload_json).get("run_id", ""))
+        runs = list_runs_by_thread(session, thread_id)
+        if not run_id and runs:
+            run_id = runs[0].run_id
+        if not run_id:
+            raise HTTPException(status_code=500, detail="workflow run was not created")
+        status = "completed"
+        for row in runs:
+            if row.run_id == run_id:
+                status = row.status
+                break
+    return {"run_id": run_id, "status": status}
+
+
+@router.get("/v2/threads/{thread_id}/workflow-runs")
+def list_workflow_runs_v2(
+    thread_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        rows = list_runs_by_thread(session, thread_id)
+    return {
+        "runs": [
+            {
+                "run_id": row.run_id,
+                "status": row.status,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/v2/workflow-runs/{run_id}/artifacts")
+def list_workflow_run_artifacts_v2(run_id: str, request: Request) -> dict[str, object]:
+    root = Path(request.app.state.workspace.root) / "runs" / run_id / "stages"
+    stages: list[dict[str, object]] = []
+    if root.exists():
+        for stage_dir in sorted(root.iterdir()):
+            manifest = stage_dir / "manifest.json"
+            if manifest.exists():
+                stages.append(json.loads(manifest.read_text(encoding="utf-8")))
+    return {"run_id": run_id, "stages": stages}
 
 
 @router.get("/v2/threads/{thread_id}/timeline")

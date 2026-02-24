@@ -364,6 +364,23 @@ def get_event_by_id(session: Session, event_id: str) -> EventLog | None:
     return session.scalar(select(EventLog).where(EventLog.event_id == event_id))
 
 
+def get_event_by_causation(
+    session: Session,
+    *,
+    thread_id: str,
+    causation_id: str,
+    event_type: str | None = None,
+) -> EventLog | None:
+    query = select(EventLog).where(
+        EventLog.thread_id == thread_id,
+        EventLog.causation_id == causation_id,
+    )
+    if event_type:
+        query = query.where(EventLog.event_type == event_type)
+    query = query.order_by(EventLog.event_pk.desc())
+    return session.scalar(query)
+
+
 def list_threads_view(session: Session, *, project_id: str) -> list[ThreadView]:
     return list(
         session.scalars(
