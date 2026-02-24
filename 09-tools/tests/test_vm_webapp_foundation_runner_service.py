@@ -125,6 +125,18 @@ def test_service_keeps_llm_handle_and_uses_default_model(tmp_path: Path) -> None
     assert service.llm_model == "kimi-for-coding"
 
 
+def test_stage_prompt_builder_has_contract_for_all_foundation_stages(tmp_path: Path) -> None:
+    service = FoundationRunnerService(workspace_root=tmp_path)
+    for stage in ("research", "brand-voice", "positioning", "keywords"):
+        prompt = service._build_stage_prompt(
+            stage_key=stage,
+            request_text="crm para clinicas",
+            previous_artifacts={"research/research-report.md": "insights"},
+        )
+        assert stage in prompt.lower()
+        assert "request" in prompt.lower()
+
+
 def test_service_isolates_foundation_thread_per_run(tmp_path: Path, monkeypatch) -> None:
     service = FoundationRunnerService(workspace_root=tmp_path)
     seen_thread_ids: list[str] = []
