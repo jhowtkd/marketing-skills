@@ -9,6 +9,14 @@ def test_vm_index_contains_chat_and_run_controls() -> None:
     assert 'id="runs-timeline"' in html
 
 
+def test_vm_index_contains_brand_workspace_thread_controls() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert 'id="brand-tabs"' in html
+    assert 'id="new-thread-button"' in html
+    assert 'id="threads-list"' in html
+    assert 'id="close-thread-button"' in html
+
+
 def test_vm_app_js_calls_expected_endpoints() -> None:
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
     assert "/api/v1/brands" in js
@@ -41,3 +49,20 @@ def test_vm_app_js_guards_duplicate_approve_requests_per_run_id() -> None:
     assert "if (approvingRunIds.has(runId))" in js
     assert "approvingRunIds.add(runId)" in js
     assert "approvingRunIds.delete(runId)" in js
+
+
+def test_vm_app_js_supports_threads_api_and_workspace_state() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "/api/v1/threads" in js
+    assert "/messages" in js
+    assert "/close" in js
+    assert "new-thread-button" in js
+    assert "loadThreads(" in js
+    assert "selectThread(" in js
+
+
+def test_vm_app_js_disables_chat_and_run_when_thread_is_missing_or_closed() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "chatInput.disabled = true" in js
+    assert "startRunButton.disabled = true" in js
+    assert 'activeThread.status === "closed"' in js

@@ -23,10 +23,27 @@ body {
   padding: 16px;
 }
 
-.grid {
-  display: grid;
+.toolbar {
+  display: flex;
   gap: 12px;
-  grid-template-columns: 1fr 1fr;
+  align-items: end;
+}
+
+.toolbar label {
+  flex: 1;
+}
+
+.workspace-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 280px 1fr 1fr;
+}
+
+.brand-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 label {
@@ -36,6 +53,10 @@ label {
 
 select {
   padding: 8px;
+}
+
+button {
+  padding: 8px 12px;
 }
 
 .placeholder {
@@ -97,4 +118,36 @@ select {
   font-size: 0.9rem;
   color: #4b5563;
   margin-bottom: 6px;
+}
+
+.threads-list {
+  margin-top: 10px;
+  min-height: 120px;
+  border: 1px solid #d5dbe7;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f9fbff;
+}
+
+.thread-item {
+  border: 1px solid #d5dbe7;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.thread-item.active {
+  border-color: #111827;
+  background: #f3f4f6;
+}
+
+@media (max-width: 1100px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

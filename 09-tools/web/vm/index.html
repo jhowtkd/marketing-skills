@@ -13,36 +13,44 @@
         <p>Brand and product workspace for stack runs.</p>
       </header>
 
-      <section class="panel grid">
-        <label>
-          Brand
-          <select id="brand-select"></select>
-        </label>
-        <label>
-          Product
-          <select id="product-select"></select>
-        </label>
+      <section class="panel">
+        <nav id="brand-tabs" class="brand-tabs"></nav>
+        <div class="toolbar">
+          <label>
+            Product
+            <select id="product-select"></select>
+          </label>
+          <button id="new-thread-button" type="button">Nova Thread</button>
+        </div>
       </section>
 
-      <section class="panel">
-        <h2>Chat</h2>
-        <div id="chat-messages" class="chat-messages"></div>
-        <form id="chat-form" class="chat-form">
-          <input
-            id="chat-input"
-            type="text"
-            placeholder="Type a message or /run foundation"
-            autocomplete="off"
-          />
-          <button type="submit">Send</button>
-        </form>
-      </section>
+      <section class="workspace-grid">
+        <aside class="panel">
+          <h2>Threads</h2>
+          <button id="close-thread-button" type="button">Encerrar Thread</button>
+          <div id="threads-list" class="threads-list"></div>
+        </aside>
 
-      <section class="panel">
-        <h2>Runs</h2>
-        <p id="run-status" class="placeholder">No active run.</p>
-        <button id="start-foundation-run" type="button">Start Foundation Run</button>
-        <div id="runs-timeline" class="runs-timeline"></div>
+        <section class="panel">
+          <h2>Chat</h2>
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="chat-form" class="chat-form">
+            <input
+              id="chat-input"
+              type="text"
+              placeholder="Type a message or /run foundation"
+              autocomplete="off"
+            />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Runs</h2>
+          <p id="run-status" class="placeholder">No active run.</p>
+          <button id="start-foundation-run" type="button">Start Foundation Run</button>
+          <div id="runs-timeline" class="runs-timeline"></div>
+        </section>
       </section>
     </main>
     <script src="/app.js"></script>

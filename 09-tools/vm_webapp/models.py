@@ -35,6 +35,21 @@ class Product(Base):
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
 
 
+class Thread(Base):
+    __tablename__ = "threads"
+
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    product_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+    last_activity_at: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=_now_iso
+    )
+
+
 class Run(Base):
     __tablename__ = "runs"
 

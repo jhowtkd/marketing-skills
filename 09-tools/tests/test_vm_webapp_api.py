@@ -12,6 +12,15 @@ from vm_webapp.repo import create_brand, create_product
 from vm_webapp.settings import Settings
 
 
+def _create_thread(client: TestClient, *, brand_id: str = "b1", product_id: str = "p1") -> str:
+    res = client.post(
+        "/api/v1/threads",
+        json={"brand_id": brand_id, "product_id": product_id},
+    )
+    assert res.status_code == 200
+    return res.json()["thread_id"]
+
+
 def test_api_health_and_list_brands() -> None:
     app = create_app()
     client = TestClient(app)
@@ -68,13 +77,14 @@ def test_start_foundation_run_returns_run_id_and_status(tmp_path: Path) -> None:
         )
     )
     client = TestClient(app)
+    thread_id = _create_thread(client)
 
     res = client.post(
         "/api/v1/runs/foundation",
         json={
             "brand_id": "b1",
             "product_id": "p1",
-            "thread_id": "t1",
+            "thread_id": thread_id,
             "user_request": "crm para clinicas",
         },
     )
@@ -82,6 +92,75 @@ def test_start_foundation_run_returns_run_id_and_status(tmp_path: Path) -> None:
     body = res.json()
     assert body["run_id"]
     assert body["status"] in {"running", "waiting_approval", "completed"}
+
+
+def test_thread_lifecycle_and_messages_api(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/v1/threads",
+        json={"brand_id": "b1", "product_id": "p1", "title": "Discovery"},
+    )
+    assert created.status_code == 200
+    thread_id = created.json()["thread_id"]
+
+    listed = client.get("/api/v1/threads", params={"brand_id": "b1", "product_id": "p1"})
+    assert listed.status_code == 200
+    assert any(t["thread_id"] == thread_id for t in listed.json()["threads"])
+
+    chat_path = tmp_path / "runtime" / "vm" / "threads" / thread_id / "chat.jsonl"
+    chat_path.parent.mkdir(parents=True, exist_ok=True)
+    chat_path.write_text('{"role":"user","content":"hello"}\n', encoding="utf-8")
+
+    messages = client.get(f"/api/v1/threads/{thread_id}/messages")
+    assert messages.status_code == 200
+    assert messages.json()["messages"][0]["content"] == "hello"
+
+    closed = client.post(f"/api/v1/threads/{thread_id}/close")
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "closed"
+
+
+def test_chat_and_run_reject_closed_thread(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    created = client.post("/api/v1/threads", json={"brand_id": "b1", "product_id": "p1"})
+    thread_id = created.json()["thread_id"]
+    client.post(f"/api/v1/threads/{thread_id}/close")
+
+    chat = client.post(
+        "/api/v1/chat",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": thread_id,
+            "message": "hello",
+        },
+    )
+    assert chat.status_code == 409
+
+    run = client.post(
+        "/api/v1/runs/foundation",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": thread_id,
+            "user_request": "start",
+        },
+    )
+    assert run.status_code == 409
 
 
 def test_list_runs_by_thread(tmp_path: Path) -> None:
@@ -92,19 +171,20 @@ def test_list_runs_by_thread(tmp_path: Path) -> None:
         )
     )
     client = TestClient(app)
+    thread_id = _create_thread(client)
 
     start = client.post(
         "/api/v1/runs/foundation",
         json={
             "brand_id": "b1",
             "product_id": "p1",
-            "thread_id": "thread-xyz",
+            "thread_id": thread_id,
             "user_request": "crm para clinicas",
         },
     )
     assert start.status_code == 200
 
-    res = client.get("/api/v1/runs", params={"thread_id": "thread-xyz"})
+    res = client.get("/api/v1/runs", params={"thread_id": thread_id})
     assert res.status_code == 200
     assert len(res.json()["runs"]) >= 1
 
@@ -117,13 +197,14 @@ def test_approve_endpoint_continues_waiting_run(tmp_path: Path) -> None:
         )
     )
     client = TestClient(app)
+    thread_id = _create_thread(client)
 
     start = client.post(
         "/api/v1/runs/foundation",
         json={
             "brand_id": "b1",
             "product_id": "p1",
-            "thread_id": "t1",
+            "thread_id": thread_id,
             "user_request": "crm",
         },
     )
@@ -171,20 +252,21 @@ def test_run_listing_includes_stages_for_panel(tmp_path: Path) -> None:
         )
     )
     client = TestClient(app)
+    thread_id = _create_thread(client)
 
     start = client.post(
         "/api/v1/runs/foundation",
         json={
             "brand_id": "b1",
             "product_id": "p1",
-            "thread_id": "t-ui",
+            "thread_id": thread_id,
             "user_request": "crm",
         },
     )
     assert start.status_code == 200
     run_id = start.json()["run_id"]
 
-    res = client.get("/api/v1/runs", params={"thread_id": "t-ui"})
+    res = client.get("/api/v1/runs", params={"thread_id": thread_id})
     assert res.status_code == 200
     assert any(r["run_id"] == run_id for r in res.json()["runs"])
     assert "stages" in res.json()["runs"][0]
@@ -234,13 +316,14 @@ def test_chat_uses_retrieved_context_in_prompt() -> None:
     fake_llm = FakeLLM()
     app = create_app(memory=FakeMemory(), llm=fake_llm)
     client = TestClient(app)
+    thread_id = _create_thread(client)
 
     res = client.post(
         "/api/v1/chat",
         json={
             "brand_id": "b1",
             "product_id": "p1",
-            "thread_id": "t1",
+            "thread_id": thread_id,
             "message": "Create landing copy.",
         },
     )
