@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
+from vm_webapp.event_worker import InProcessEventWorker
 from vm_webapp.llm import KimiClient
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.orchestrator_v2 import configure_workflow_executor
@@ -48,8 +49,10 @@ def create_app(
         workspace=workspace,
         memory=memory,
         llm=llm,
+        profiles_path=settings.vm_workflow_profiles_path,
     )
-    configure_workflow_executor(workflow_runtime.execute_thread_run)
+    event_worker = InProcessEventWorker(engine=engine)
+    configure_workflow_executor(workflow_runtime.process_event)
 
     app.state.settings = settings
     app.state.workspace = workspace
@@ -58,6 +61,7 @@ def create_app(
     app.state.llm = llm
     app.state.run_engine = run_engine
     app.state.workflow_runtime = workflow_runtime
+    app.state.event_worker = event_worker
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")

@@ -31,7 +31,7 @@ def test_workflow_runtime_creates_run_and_stage_artifacts(tmp_path: Path) -> Non
         brand_id="b1",
         project_id="p1",
         request_text="Create campaign workflow",
-        mode="plan_90d",
+        mode="content_calendar",
         actor_id="agent:vm-planner",
     )
 
@@ -53,7 +53,7 @@ def test_workflow_runtime_never_overwrites_previous_run(tmp_path: Path) -> None:
         brand_id="b1",
         project_id="p1",
         request_text="Run one",
-        mode="plan_90d",
+        mode="content_calendar",
         actor_id="agent:vm-planner",
     )
     second = runtime.execute_thread_run(
@@ -61,7 +61,7 @@ def test_workflow_runtime_never_overwrites_previous_run(tmp_path: Path) -> None:
         brand_id="b1",
         project_id="p1",
         request_text="Run two",
-        mode="plan_90d",
+        mode="content_calendar",
         actor_id="agent:vm-planner",
     )
 
