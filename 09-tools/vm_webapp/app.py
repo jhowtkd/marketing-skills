@@ -11,8 +11,10 @@ from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
 from vm_webapp.llm import KimiClient
 from vm_webapp.memory import MemoryIndex
+from vm_webapp.orchestrator_v2 import configure_workflow_executor
 from vm_webapp.run_engine import RunEngine
 from vm_webapp.settings import Settings
+from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
 
 
@@ -41,6 +43,13 @@ def create_app(
     if llm is None and settings.kimi_api_key:
         llm = KimiClient(base_url=settings.kimi_base_url, api_key=settings.kimi_api_key)
     run_engine = RunEngine(engine=engine, workspace=workspace, memory=memory, llm=llm)
+    workflow_runtime = WorkflowRuntimeV2(
+        engine=engine,
+        workspace=workspace,
+        memory=memory,
+        llm=llm,
+    )
+    configure_workflow_executor(workflow_runtime.execute_thread_run)
 
     app.state.settings = settings
     app.state.workspace = workspace
@@ -48,6 +57,7 @@ def create_app(
     app.state.memory = memory
     app.state.llm = llm
     app.state.run_engine = run_engine
+    app.state.workflow_runtime = workflow_runtime
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")

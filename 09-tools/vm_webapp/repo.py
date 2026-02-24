@@ -342,6 +342,10 @@ def list_brands_view(session: Session) -> list[BrandView]:
     return list(session.scalars(select(BrandView).order_by(BrandView.brand_id.asc())))
 
 
+def get_brand_view(session: Session, brand_id: str) -> BrandView | None:
+    return session.get(BrandView, brand_id)
+
+
 def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
     return list(
         session.scalars(
@@ -352,8 +356,29 @@ def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
     )
 
 
+def get_project_view(session: Session, project_id: str) -> ProjectView | None:
+    return session.get(ProjectView, project_id)
+
+
 def get_event_by_id(session: Session, event_id: str) -> EventLog | None:
     return session.scalar(select(EventLog).where(EventLog.event_id == event_id))
+
+
+def get_event_by_causation(
+    session: Session,
+    *,
+    thread_id: str,
+    causation_id: str,
+    event_type: str | None = None,
+) -> EventLog | None:
+    query = select(EventLog).where(
+        EventLog.thread_id == thread_id,
+        EventLog.causation_id == causation_id,
+    )
+    if event_type:
+        query = query.where(EventLog.event_type == event_type)
+    query = query.order_by(EventLog.event_pk.desc())
+    return session.scalar(query)
 
 
 def list_threads_view(session: Session, *, project_id: str) -> list[ThreadView]:

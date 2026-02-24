@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -16,6 +17,13 @@ from vm_webapp.repo import (
     list_unprocessed_events,
     mark_event_processed,
 )
+
+_workflow_executor: Callable[..., dict[str, str]] | None = None
+
+
+def configure_workflow_executor(executor: Callable[..., dict[str, str]]) -> None:
+    global _workflow_executor
+    _workflow_executor = executor
 
 
 def process_new_events(session: Session) -> None:
@@ -71,5 +79,43 @@ def process_new_events(session: Session) -> None:
                     row = get_event_by_id(session, envelope.event_id)
                     if row is not None:
                         apply_event_to_read_models(session, row)
+
+        if event.event_type == "WorkflowRunRequested":
+            payload = json.loads(event.payload_json)
+            if _workflow_executor is None:
+                raise ValueError("workflow runtime not configured")
+            result = _workflow_executor(
+                thread_id=payload["thread_id"],
+                brand_id=payload["brand_id"],
+                project_id=payload["project_id"],
+                request_text=payload["request_text"],
+                mode=payload.get("mode", "plan_90d"),
+                actor_id="agent:vm-workflow",
+                session=session,
+            )
+            expected = get_stream_version(session, f"thread:{payload['thread_id']}")
+            completed = append_event(
+                session,
+                EventEnvelope(
+                    event_id=f"evt-{uuid4().hex[:12]}",
+                    event_type="WorkflowRunCompleted",
+                    aggregate_type="thread",
+                    aggregate_id=payload["thread_id"],
+                    stream_id=f"thread:{payload['thread_id']}",
+                    expected_version=expected,
+                    actor_type="agent",
+                    actor_id="agent:vm-workflow",
+                    payload={
+                        "thread_id": payload["thread_id"],
+                        "run_id": result["run_id"],
+                    },
+                    thread_id=payload["thread_id"],
+                    brand_id=payload.get("brand_id"),
+                    project_id=payload.get("project_id"),
+                    causation_id=event.event_id,
+                    correlation_id=event.correlation_id or event.event_id,
+                ),
+            )
+            apply_event_to_read_models(session, completed)
 
         mark_event_processed(session, event.event_id)
