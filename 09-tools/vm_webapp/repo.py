@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from vm_webapp.events import EventEnvelope
-from vm_webapp.models import Brand, EventLog, Product, Run, Stage
+from vm_webapp.models import Brand, CommandDedup, EventLog, Product, Run, Stage
 from vm_webapp.workspace import Workspace
 
 
@@ -214,3 +214,26 @@ def list_events_by_stream(session: Session, stream_id: str) -> list[EventLog]:
             .order_by(EventLog.stream_version.asc())
         )
     )
+
+
+def get_command_dedup(session: Session, *, idempotency_key: str) -> CommandDedup | None:
+    return session.get(CommandDedup, idempotency_key)
+
+
+def save_command_dedup(
+    session: Session,
+    *,
+    idempotency_key: str,
+    command_name: str,
+    event_id: str,
+    response: dict[str, Any],
+) -> CommandDedup:
+    row = CommandDedup(
+        idempotency_key=idempotency_key,
+        command_name=command_name,
+        event_id=event_id,
+        response_json=json.dumps(response, ensure_ascii=False),
+    )
+    session.add(row)
+    session.flush()
+    return row

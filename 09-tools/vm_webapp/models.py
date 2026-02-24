@@ -83,3 +83,13 @@ class EventLog(Base):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
     processed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CommandDedup(Base):
+    __tablename__ = "command_dedup"
+
+    idempotency_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    command_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
