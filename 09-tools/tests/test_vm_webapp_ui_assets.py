@@ -25,3 +25,17 @@ def test_vm_app_js_targets_v2_event_driven_endpoints() -> None:
     assert "PATCH" in js
     assert "buildEntityId" in js
     assert "Idempotency-Key" in js
+
+
+def test_vm_index_contains_workflow_io_panel() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert 'id="workflow-run-form"' in html
+    assert 'id="workflow-request-input"' in html
+    assert 'id="workflow-runs-list"' in html
+    assert 'id="workflow-artifacts-list"' in html
+
+
+def test_vm_app_js_calls_workflow_run_endpoints() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "/api/v2/threads/" in js and "/workflow-runs" in js
+    assert "/api/v2/workflow-runs/" in js and "/artifacts" in js

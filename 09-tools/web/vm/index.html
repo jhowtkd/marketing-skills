@@ -61,6 +61,22 @@
 
         <h3>Approvals</h3>
         <div id="approvals-list" class="list"></div>
+
+        <section class="panel" id="workflow-io-panel">
+          <h3>Workflow Input / Output</h3>
+          <form id="workflow-run-form" class="stack">
+            <input
+              id="workflow-request-input"
+              placeholder="describe the workflow output you need"
+            />
+            <input id="workflow-mode-input" placeholder="mode (default plan_90d)" />
+            <button type="submit">Run Workflow</button>
+          </form>
+          <h4>Runs</h4>
+          <div id="workflow-runs-list" class="list"></div>
+          <h4>Artifacts</h4>
+          <div id="workflow-artifacts-list" class="list"></div>
+        </section>
       </section>
     </main>
     <script src="/app.js"></script>

@@ -22,10 +22,16 @@ const threadModesList = document.getElementById("thread-modes-list");
 const timelineList = document.getElementById("timeline-list");
 const tasksList = document.getElementById("tasks-list");
 const approvalsList = document.getElementById("approvals-list");
+const workflowRunForm = document.getElementById("workflow-run-form");
+const workflowRequestInput = document.getElementById("workflow-request-input");
+const workflowModeInput = document.getElementById("workflow-mode-input");
+const workflowRunsList = document.getElementById("workflow-runs-list");
+const workflowArtifactsList = document.getElementById("workflow-artifacts-list");
 
 let activeBrandId = null;
 let activeProjectId = null;
 let activeThreadId = null;
+let activeWorkflowRunId = null;
 
 const brandsState = [];
 const projectsState = [];
@@ -316,6 +322,8 @@ async function loadBrands() {
   renderTimeline([]);
   renderTasks([]);
   renderApprovals([]);
+  renderWorkflowRuns([]);
+  renderWorkflowArtifacts([]);
 }
 
 async function loadProjects(brandId) {
@@ -422,12 +430,88 @@ function renderApprovals(items) {
   });
 }
 
+function renderWorkflowRuns(items) {
+  clearAndRender(workflowRunsList, items, (run) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    const bar = document.createElement("div");
+    bar.className = "inline";
+
+    const label = document.createElement("div");
+    label.textContent = `${run.run_id} (${run.status})`;
+    bar.appendChild(label);
+
+    const openArtifacts = createActionButton("Artifacts", async () => {
+      activeWorkflowRunId = run.run_id;
+      await loadWorkflowArtifacts(run.run_id);
+    });
+    bar.appendChild(openArtifacts);
+
+    row.appendChild(bar);
+    return row;
+  });
+}
+
+function renderWorkflowArtifacts(stages) {
+  clearAndRender(workflowArtifactsList, stages, (stage) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    const title = document.createElement("div");
+    title.textContent = `${stage.stage_key} (${stage.status})`;
+    row.appendChild(title);
+    const list = document.createElement("div");
+    list.className = "muted";
+    list.textContent = (stage.artifacts || [])
+      .map((artifact) => artifact.path)
+      .join(", ");
+    row.appendChild(list);
+    return row;
+  });
+}
+
+async function loadWorkflowRuns() {
+  if (!activeThreadId) {
+    activeWorkflowRunId = null;
+    renderWorkflowRuns([]);
+    renderWorkflowArtifacts([]);
+    return;
+  }
+  const body = await fetchJson(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/workflow-runs`
+  );
+  const runs = body.runs || [];
+  renderWorkflowRuns(runs);
+  if (!runs.length) {
+    activeWorkflowRunId = null;
+    renderWorkflowArtifacts([]);
+    return;
+  }
+  if (!activeWorkflowRunId || !runs.some((row) => row.run_id === activeWorkflowRunId)) {
+    activeWorkflowRunId = runs[0].run_id;
+  }
+  await loadWorkflowArtifacts(activeWorkflowRunId);
+}
+
+async function loadWorkflowArtifacts(runId) {
+  if (!runId) {
+    renderWorkflowArtifacts([]);
+    return;
+  }
+  const body = await fetchJson(
+    `/api/v2/workflow-runs/${encodeURIComponent(runId)}/artifacts`
+  );
+  renderWorkflowArtifacts(body.stages || []);
+}
+
 async function loadThreadWorkspace() {
   if (!activeThreadId) {
+    activeWorkflowRunId = null;
     renderModes();
     renderTimeline([]);
     renderTasks([]);
     renderApprovals([]);
+    renderWorkflowRuns([]);
+    renderWorkflowArtifacts([]);
     return;
   }
 
@@ -440,6 +524,7 @@ async function loadThreadWorkspace() {
   renderTimeline(timeline.items || []);
   renderTasks(tasks.items || []);
   renderApprovals(approvals.items || []);
+  await loadWorkflowRuns();
 }
 
 brandForm.addEventListener("submit", async (event) => {
@@ -544,6 +629,30 @@ threadModeForm.addEventListener("submit", async (event) => {
   await postV2(`/api/v2/threads/${encodeURIComponent(activeThreadId)}/modes`, { mode }, "thread-mode");
   threadModeForm.reset();
   await loadThreads(activeProjectId);
+});
+
+workflowRunForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!activeThreadId) {
+    window.alert("Create/select a thread first.");
+    return;
+  }
+  const request_text = workflowRequestInput.value.trim();
+  if (!request_text) {
+    return;
+  }
+  const payload = {
+    request_text,
+    mode: workflowModeInput.value.trim() || "plan_90d",
+  };
+  const started = await postV2(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/workflow-runs`,
+    payload,
+    "workflow-run"
+  );
+  activeWorkflowRunId = started.run_id || null;
+  workflowRunForm.reset();
+  await loadWorkflowRuns();
 });
 
 loadBrands().catch((error) => {
