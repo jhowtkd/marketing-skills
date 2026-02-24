@@ -59,3 +59,10 @@ def test_vm_app_js_supports_threads_api_and_workspace_state() -> None:
     assert "new-thread-button" in js
     assert "loadThreads(" in js
     assert "selectThread(" in js
+
+
+def test_vm_app_js_disables_chat_and_run_when_thread_is_missing_or_closed() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "chatInput.disabled = true" in js
+    assert "startRunButton.disabled = true" in js
+    assert 'activeThread.status === "closed"' in js

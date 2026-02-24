@@ -175,9 +175,20 @@ function getActiveThread() {
   return activeThreads.find((thread) => thread.thread_id === activeThreadId) || null;
 }
 
+function syncWorkspaceActions(activeThread) {
+  if (!activeThread || activeThread.status === "closed") {
+    chatInput.disabled = true;
+    startRunButton.disabled = true;
+    return;
+  }
+  chatInput.disabled = false;
+  startRunButton.disabled = false;
+}
+
 async function loadThreads() {
   if (!activeBrandId || !productSelect.value) {
     renderThreads([]);
+    syncWorkspaceActions(null);
     renderMessages([]);
     return;
   }
@@ -189,6 +200,7 @@ async function loadThreads() {
     activeThreadId = threads[0] ? threads[0].thread_id : "";
   }
   renderThreads(threads);
+  syncWorkspaceActions(getActiveThread());
   await loadThreadMessages();
   await loadRuns();
 }
@@ -196,6 +208,7 @@ async function loadThreads() {
 function selectThread(threadId) {
   activeThreadId = threadId;
   renderThreads(activeThreads);
+  syncWorkspaceActions(getActiveThread());
   loadThreadMessages().catch((error) => appendMessage("system", error.message));
   loadRuns().catch((error) => setRunStatus(error.message, true));
 }
@@ -443,6 +456,7 @@ async function handleStartButtonClick() {
 }
 
 async function bootstrap() {
+  syncWorkspaceActions(null);
   productSelect.addEventListener("change", async () => {
     await loadThreads();
   });
