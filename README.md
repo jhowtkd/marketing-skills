@@ -125,6 +125,61 @@ python3 09-tools/pipeline_runner.py retry --project-id acme --thread-id th-001 -
 
 `--output-root` define onde os artefatos da execução serão gravados e esse caminho fica persistido no estado da thread.
 
+## VM Web App Event-Driven Workspace (v2 Async)
+
+O VM Web App agora roda workflow assíncrono por thread com fila interna, etapas por perfil (`mode`) e gates críticos de aprovação.
+
+### Subir localmente
+
+```bash
+uv run python -m vm_webapp serve --host 127.0.0.1 --port 8766
+```
+
+Acesse: `http://127.0.0.1:8766`
+
+### Fluxo operacional
+
+1. Crie `Brand -> Project -> Thread`.
+2. Escolha `mode` e, opcionalmente, passe `skill_overrides` no run.
+3. O run inicia como `queued` e evolui para `running`.
+4. Se etapa crítica exigir gate, o run fica em `waiting_approval`.
+5. Após aprovação, o run pode ser retomado e segue até `completed` ou `failed`.
+
+### Profiles de workflow
+
+- Arquivo versionado: `09-tools/vm_webapp/workflow_profiles.yaml`
+- Contrato por stage:
+  - `key`
+  - `skills[]`
+  - `approval_required`
+  - `retry_policy` (`max_attempts`, `backoff_seconds`)
+  - `timeout_seconds`
+
+### Endpoints principais (v2)
+
+- `GET /api/v2/workflow-profiles`
+- `POST /api/v2/threads/{thread_id}/workflow-runs` -> retorna `{ run_id, status: "queued" }`
+- `GET /api/v2/workflow-runs/{run_id}`
+- `POST /api/v2/workflow-runs/{run_id}/resume`
+- `GET /api/v2/workflow-runs/{run_id}/artifacts`
+- `GET /api/v2/workflow-runs/{run_id}/artifact-content?stage_dir=...&artifact_path=...`
+
+Observação: endpoints de escrita usam header `Idempotency-Key`.
+
+### Estrutura de artifacts por execução
+
+```
+runtime/vm/runs/<run_id>/
+├── run.json
+├── plan.json
+└── stages/
+    └── <ordem>-<stage_key>/
+        ├── manifest.json
+        ├── input.json
+        ├── output.json
+        └── artifacts/
+```
+
 ### Providers (premium-first com fallback)
 
 - Primário: Perplexity + Firecrawl.
@@ -148,7 +203,6 @@ python3 09-tools/onboard_web.py serve
 ```
 
 Acesse em `http://127.0.0.1:8765` — selecione IDEs, configure chaves premium, visualize diffs e aplique mudanças com um clique.
-```
 
 `--persist-keys` grava as chaves no profile do shell (`~/.zshrc`/`~/.bashrc`) para uso em novas sessões nessa máquina.
 
