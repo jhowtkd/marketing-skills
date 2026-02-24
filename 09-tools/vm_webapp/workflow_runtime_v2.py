@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from vm_webapp.artifacts import write_stage_outputs
 from vm_webapp.db import session_scope
 from vm_webapp.events import EventEnvelope, now_iso
+from vm_webapp.foundation_runner_service import FoundationRunnerService, FoundationStageResult
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
@@ -26,10 +27,25 @@ from vm_webapp.repo import (
 )
 from vm_webapp.workflow_profiles import (
     DEFAULT_PROFILES_PATH,
+    FOUNDATION_MODE_DEFAULT,
     load_workflow_profiles,
-    resolve_workflow_plan,
+    resolve_workflow_plan_with_contract,
 )
 from vm_webapp.workspace import Workspace
+
+
+class StageExecutionError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        error_code: str,
+        error_message: str,
+        retryable: bool,
+    ) -> None:
+        super().__init__(error_message)
+        self.error_code = error_code
+        self.error_message = error_message
+        self.retryable = retryable
 
 
 class WorkflowRuntimeV2:
@@ -41,6 +57,9 @@ class WorkflowRuntimeV2:
         memory: MemoryIndex,
         llm: Any,
         profiles_path: Path | None = None,
+        foundation_runner: FoundationRunnerService | None = None,
+        force_foundation_fallback: bool = True,
+        foundation_mode: str = FOUNDATION_MODE_DEFAULT,
     ) -> None:
         self.engine = engine
         self.workspace = workspace
@@ -48,6 +67,11 @@ class WorkflowRuntimeV2:
         self.llm = llm
         self.profiles_path = profiles_path or DEFAULT_PROFILES_PATH
         self.profiles = load_workflow_profiles(self.profiles_path)
+        self.foundation_runner = foundation_runner or FoundationRunnerService(
+            workspace_root=self.workspace.root
+        )
+        self.force_foundation_fallback = force_foundation_fallback
+        self.foundation_mode = foundation_mode
 
     def list_profiles(self) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []
@@ -85,12 +109,23 @@ class WorkflowRuntimeV2:
     ) -> dict[str, Any]:
         existing = get_run(session, run_id)
         if existing is not None:
-            return {"run_id": existing.run_id, "status": existing.status}
+            payload = {"run_id": existing.run_id, "status": existing.status}
+            existing_plan = self._load_run_plan_or_none(run_id)
+            if existing_plan is not None:
+                payload["requested_mode"] = str(
+                    existing_plan.get("requested_mode", existing_plan.get("mode", mode))
+                )
+                payload["effective_mode"] = str(
+                    existing_plan.get("effective_mode", existing_plan.get("mode", mode))
+                )
+            return payload
 
-        plan = resolve_workflow_plan(
+        resolved = resolve_workflow_plan_with_contract(
             self.profiles,
-            mode=mode,
+            requested_mode=mode,
             skill_overrides=skill_overrides or {},
+            force_foundation_fallback=self.force_foundation_fallback,
+            foundation_mode=self.foundation_mode,
         )
         create_run(
             session,
@@ -98,11 +133,11 @@ class WorkflowRuntimeV2:
             brand_id=brand_id,
             product_id=project_id,
             thread_id=thread_id,
-            stack_path="v2/workflow",
+            stack_path=str(resolved["effective_mode"]),
             user_request=request_text,
             status="queued",
         )
-        for index, stage in enumerate(plan["stages"]):
+        for index, stage in enumerate(resolved["stages"]):
             create_stage(
                 session,
                 run_id=run_id,
@@ -114,7 +149,7 @@ class WorkflowRuntimeV2:
 
         self._write_run_plan(
             run_id=run_id,
-            plan=plan,
+            plan=resolved,
             thread_id=thread_id,
             brand_id=brand_id,
             project_id=project_id,
@@ -127,9 +162,14 @@ class WorkflowRuntimeV2:
             thread_id=thread_id,
             brand_id=brand_id,
             project_id=project_id,
-            mode=mode,
+            mode=str(resolved["effective_mode"]),
         )
-        return {"run_id": run_id, "status": "queued"}
+        return {
+            "run_id": run_id,
+            "status": "queued",
+            "requested_mode": str(resolved["requested_mode"]),
+            "effective_mode": str(resolved["effective_mode"]),
+        }
 
     def process_event(
         self,
@@ -240,6 +280,7 @@ class WorkflowRuntimeV2:
 
         plan = self._load_run_plan(run_id)
         stage_map = {stage["key"]: stage for stage in plan["stages"]}
+        run_mode = self._effective_mode(plan)
 
         if run.status == "queued":
             update_run_status(session, run_id=run_id, status="running")
@@ -253,7 +294,7 @@ class WorkflowRuntimeV2:
                 payload={
                     "thread_id": run.thread_id,
                     "run_id": run.run_id,
-                    "mode": plan["mode"],
+                    "mode": run_mode,
                     "trigger_event_type": trigger_event_type,
                 },
                 causation_id=causation_id,
@@ -340,7 +381,7 @@ class WorkflowRuntimeV2:
                     thread_id=run.thread_id,
                     brand_id=run.brand_id,
                     project_id=run.product_id,
-                    mode=plan["mode"],
+                    mode=run_mode,
                 )
                 return {"run_id": run.run_id, "status": "waiting_approval"}
 
@@ -366,14 +407,23 @@ class WorkflowRuntimeV2:
                 manifest = self._execute_stage(
                     run_id=run.run_id,
                     thread_id=run.thread_id,
+                    project_id=run.product_id,
                     request_text=run.user_request,
-                    mode=plan["mode"],
+                    mode=run_mode,
                     stage_key=stage.stage_id,
                     stage_position=stage.position,
                     skills=list(stage_cfg["skills"]),
                     attempts=attempts,
                 )
             except Exception as exc:
+                default_retryable = attempts < int(stage_cfg["retry_policy"]["max_attempts"])
+                error_code = "stage_execution_error"
+                error_message = str(exc)
+                retryable = default_retryable
+                if isinstance(exc, StageExecutionError):
+                    error_code = exc.error_code
+                    error_message = exc.error_message
+                    retryable = exc.retryable and default_retryable
                 update_stage_status(
                     session,
                     stage_pk=stage.stage_pk,
@@ -393,9 +443,9 @@ class WorkflowRuntimeV2:
                         "run_id": run.run_id,
                         "stage_key": stage.stage_id,
                         "attempt": attempts,
-                        "error_code": "stage_execution_error",
-                        "error_message": str(exc),
-                        "retryable": attempts < int(stage_cfg["retry_policy"]["max_attempts"]),
+                        "error_code": error_code,
+                        "error_message": error_message,
+                        "retryable": retryable,
                     },
                     causation_id=causation_id,
                     correlation_id=correlation_id,
@@ -417,7 +467,7 @@ class WorkflowRuntimeV2:
                     thread_id=run.thread_id,
                     brand_id=run.brand_id,
                     project_id=run.product_id,
-                    mode=plan["mode"],
+                    mode=run_mode,
                 )
                 return {"run_id": run.run_id, "status": "failed"}
 
@@ -463,7 +513,7 @@ class WorkflowRuntimeV2:
             thread_id=run.thread_id,
             brand_id=run.brand_id,
             project_id=run.product_id,
-            mode=plan["mode"],
+            mode=run_mode,
         )
         return {"run_id": run.run_id, "status": "completed"}
 
@@ -472,6 +522,7 @@ class WorkflowRuntimeV2:
         *,
         run_id: str,
         thread_id: str,
+        project_id: str,
         request_text: str,
         mode: str,
         stage_key: str,
@@ -479,22 +530,31 @@ class WorkflowRuntimeV2:
         skills: list[str],
         attempts: int,
     ) -> dict[str, Any]:
-        for skill in skills:
-            if skill.startswith("fail:"):
-                raise RuntimeError(f"simulated stage failure from skill `{skill}`")
-
-        markdown = self._render_stage_markdown(
+        result = self.foundation_runner.execute_stage(
             run_id=run_id,
-            stage_key=stage_key,
+            thread_id=thread_id,
+            project_id=project_id,
             request_text=request_text,
-            mode=mode,
-            skills=skills,
+            stage_key=stage_key,
         )
-        output_payload = {
-            "summary": f"stage {stage_key} completed",
-            "skills": skills,
-            "mode": mode,
-        }
+        if result.error_code:
+            raise StageExecutionError(
+                error_code=result.error_code,
+                error_message=result.error_message or result.error_code,
+                retryable=result.retryable,
+            )
+
+        output_payload = dict(result.output_payload)
+        output_payload.setdefault("summary", f"stage {stage_key} completed")
+        output_payload.setdefault("skills", skills)
+        output_payload.setdefault("mode", mode)
+
+        artifacts = dict(result.artifacts)
+        if not artifacts:
+            artifacts = {
+                "result.json": json.dumps(output_payload, ensure_ascii=False, indent=2)
+            }
+
         manifest = write_stage_outputs(
             stage_dir=self._stage_dir(run_id, stage_position, stage_key),
             run_id=run_id,
@@ -508,60 +568,75 @@ class WorkflowRuntimeV2:
                 "skills": skills,
             },
             output_payload=output_payload,
-            artifacts={
-                "result.md": markdown,
-                "result.json": json.dumps(output_payload, ensure_ascii=False, indent=2),
-            },
+            artifacts=artifacts,
             event_id=f"evt-stage-{run_id}-{stage_key}-{attempts}",
             status="completed",
         )
-        self.memory.upsert_doc(
-            doc_id=f"workflow:{run_id}:{stage_key}",
-            text=markdown,
-            meta={
-                "thread_id": thread_id,
-                "run_id": run_id,
-                "stage_key": stage_key,
-                "skills": ",".join(skills),
-                "kind": "workflow_stage_output",
-            },
-        )
+        memory_text = self._memory_text_from_stage_result(result)
+        if memory_text:
+            skills_field = result.output_payload.get("skills", skills)
+            if isinstance(skills_field, list):
+                skills_csv = ",".join(str(item) for item in skills_field)
+            else:
+                skills_csv = ",".join(skills)
+            self.memory.upsert_doc(
+                doc_id=f"workflow:{run_id}:{stage_key}",
+                text=memory_text,
+                meta={
+                    "thread_id": thread_id,
+                    "run_id": run_id,
+                    "stage_key": stage_key,
+                    "skills": skills_csv,
+                    "mode": str(result.output_payload.get("mode", mode)),
+                    "kind": "workflow_stage_output",
+                },
+            )
         return manifest
 
-    def _render_stage_markdown(
-        self,
-        *,
-        run_id: str,
-        stage_key: str,
-        request_text: str,
-        mode: str,
-        skills: list[str],
-    ) -> str:
-        if self.llm is None:
-            bullets = "\n".join(f"- {skill}" for skill in skills)
-            return (
-                f"# Stage {stage_key}\n\n"
-                f"Run: `{run_id}`\n"
-                f"Mode: `{mode}`\n\n"
-                f"Request:\n{request_text}\n\n"
-                f"Skills:\n{bullets}\n\n"
-                "Output generated by in-process workflow runtime.\n"
-            )
-        prompt = (
-            "You are executing a workflow stage.\n"
-            f"Run ID: {run_id}\n"
-            f"Stage: {stage_key}\n"
-            f"Mode: {mode}\n"
-            f"Request: {request_text}\n"
-            f"Skills: {', '.join(skills)}\n"
-            "Return concise markdown with actionable output."
-        )
-        return self.llm.chat(
-            model="kimi-for-coding",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=900,
-        )
+    @staticmethod
+    def _memory_text_from_stage_result(result: FoundationStageResult) -> str:
+        for path, content in result.artifacts.items():
+            if path.endswith(".md") and content.strip():
+                return content
+        for content in result.artifacts.values():
+            if content.strip():
+                return content
+        summary = result.output_payload.get("summary")
+        return str(summary) if isinstance(summary, str) else ""
+
+    @staticmethod
+    def _effective_mode(plan: dict[str, Any]) -> str:
+        effective = plan.get("effective_mode")
+        if isinstance(effective, str) and effective:
+            return effective
+        mode = plan.get("mode")
+        if isinstance(mode, str) and mode:
+            return mode
+        return FOUNDATION_MODE_DEFAULT
+
+    def _load_run_plan_or_none(self, run_id: str) -> dict[str, Any] | None:
+        path = self._run_plan_path(run_id)
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _resolve_profile_version(self, plan: dict[str, Any]) -> str:
+        value = plan.get("profile_version")
+        if isinstance(value, str) and value:
+            return value
+        return "v1"
+
+    def _resolve_requested_mode(self, plan: dict[str, Any]) -> str:
+        value = plan.get("requested_mode")
+        if isinstance(value, str) and value:
+            return value
+        return self._effective_mode(plan)
+
+    def _resolve_fallback_applied(self, plan: dict[str, Any]) -> bool:
+        value = plan.get("fallback_applied")
+        if isinstance(value, bool):
+            return value
+        return self._resolve_requested_mode(plan) != self._effective_mode(plan)
 
     def _append_thread_event(
         self,
@@ -626,16 +701,21 @@ class WorkflowRuntimeV2:
         request_text: str,
         skill_overrides: dict[str, list[str]],
     ) -> None:
+        effective_mode = self._effective_mode(plan)
         payload = {
             "run_id": run_id,
             "thread_id": thread_id,
             "brand_id": brand_id,
             "project_id": project_id,
             "request_text": request_text,
-            "mode": plan["mode"],
-            "description": plan["description"],
+            "mode": effective_mode,
+            "requested_mode": self._resolve_requested_mode(plan),
+            "effective_mode": effective_mode,
+            "profile_version": self._resolve_profile_version(plan),
+            "fallback_applied": self._resolve_fallback_applied(plan),
+            "description": plan.get("description", ""),
             "skill_overrides": skill_overrides,
-            "stages": plan["stages"],
+            "stages": plan.get("stages", []),
             "created_at": now_iso(),
         }
         self._write_json(self._run_plan_path(run_id), payload)

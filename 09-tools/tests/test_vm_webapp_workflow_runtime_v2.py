@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from vm_webapp.db import build_engine, init_db, session_scope
@@ -5,6 +6,20 @@ from vm_webapp.memory import MemoryIndex
 from vm_webapp.models import ThreadView
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
+
+
+def build_runtime(tmp_path: Path, *, force_foundation: bool) -> WorkflowRuntimeV2:
+    engine = build_engine(tmp_path / "db.sqlite3")
+    init_db(engine)
+    workspace = Workspace(root=tmp_path / "runtime" / "vm")
+    memory = MemoryIndex(root=tmp_path / "zvec")
+    return WorkflowRuntimeV2(
+        engine=engine,
+        workspace=workspace,
+        memory=memory,
+        llm=None,
+        force_foundation_fallback=force_foundation,
+    )
 
 
 def test_workflow_runtime_creates_run_and_stage_artifacts(tmp_path: Path) -> None:
@@ -66,3 +81,23 @@ def test_workflow_runtime_never_overwrites_previous_run(tmp_path: Path) -> None:
     )
 
     assert first["run_id"] != second["run_id"]
+
+
+def test_runtime_persists_requested_and_effective_mode_snapshot(tmp_path: Path) -> None:
+    runtime = build_runtime(tmp_path, force_foundation=True)
+    result = runtime.execute_thread_run(
+        thread_id="t1",
+        brand_id="b1",
+        project_id="p1",
+        request_text="Build assets",
+        mode="content_calendar",
+        actor_id="agent:test",
+    )
+    plan = json.loads(
+        (tmp_path / "runtime" / "vm" / "runs" / result["run_id"] / "plan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert plan["requested_mode"] == "content_calendar"
+    assert plan["effective_mode"] == "foundation_stack"
+    assert plan["profile_version"] == "v1"
