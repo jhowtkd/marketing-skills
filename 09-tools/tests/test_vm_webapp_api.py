@@ -280,6 +280,32 @@ def test_root_serves_ui() -> None:
     assert "VM Web App" in res.text
 
 
+def test_chat_returns_placeholder_when_llm_missing(tmp_path: Path) -> None:
+    """Verify chat returns placeholder when LLM is not configured."""
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+            kimi_api_key="",  # No LLM configured
+        )
+    )
+    client = TestClient(app)
+    thread_id = _create_thread(client)
+
+    res = client.post(
+        "/api/v1/chat",
+        json={
+            "brand_id": "b1",
+            "product_id": "p1",
+            "thread_id": thread_id,
+            "message": "Hello",
+        },
+    )
+    assert res.status_code == 200
+    # Should return placeholder when LLM is not configured
+    assert "(llm not configured)" in res.json()["assistant_message"].lower()
+
+
 def test_chat_uses_retrieved_context_in_prompt() -> None:
     class FakeMemory:
         def search(self, query: str, *, filters: dict, top_k: int) -> list[Hit]:

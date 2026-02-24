@@ -52,6 +52,7 @@ def create_app(
         profiles_path=settings.vm_workflow_profiles_path,
         force_foundation_fallback=settings.vm_workflow_force_foundation_fallback,
         foundation_mode=settings.vm_workflow_foundation_mode,
+        llm_model=settings.kimi_model,
     )
     event_worker = InProcessEventWorker(engine=engine)
     configure_workflow_executor(workflow_runtime.process_event)

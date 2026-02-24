@@ -46,6 +46,13 @@ def test_vm_app_js_calls_workflow_run_endpoints() -> None:
     assert "/api/v2/workflow-profiles" in js
 
 
+def test_readme_mentions_kimi_env_vars_for_vm_webapp() -> None:
+    content = Path("README.md").read_text(encoding="utf-8")
+    assert "KIMI_API_KEY" in content
+    assert "KIMI_MODEL" in content
+    assert "KIMI_BASE_URL" in content
+
+
 def test_ui_assets_include_effective_mode_and_stage_status_labels() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
