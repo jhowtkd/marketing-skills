@@ -70,12 +70,21 @@
               placeholder="describe the workflow output you need"
             />
             <input id="workflow-mode-input" placeholder="mode (default plan_90d)" />
+            <textarea
+              id="workflow-overrides-input"
+              placeholder='skill overrides JSON (e.g. {"strategy_draft":["04-copy/direct-response"]})'
+            ></textarea>
             <button type="submit">Run Workflow</button>
           </form>
+          <h4>Profile Preview</h4>
+          <div id="workflow-profile-preview-list" class="list"></div>
           <h4>Runs</h4>
           <div id="workflow-runs-list" class="list"></div>
+          <h4>Run Detail</h4>
+          <div id="workflow-run-detail-list" class="list"></div>
           <h4>Artifacts</h4>
           <div id="workflow-artifacts-list" class="list"></div>
+          <pre id="workflow-artifact-preview" class="item muted">Select an artifact to preview.</pre>
         </section>
       </section>
     </main>

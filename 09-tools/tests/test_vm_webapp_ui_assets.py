@@ -31,11 +31,16 @@ def test_vm_index_contains_workflow_io_panel() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     assert 'id="workflow-run-form"' in html
     assert 'id="workflow-request-input"' in html
+    assert 'id="workflow-overrides-input"' in html
+    assert 'id="workflow-profile-preview-list"' in html
     assert 'id="workflow-runs-list"' in html
     assert 'id="workflow-artifacts-list"' in html
+    assert 'id="workflow-artifact-preview"' in html
 
 
 def test_vm_app_js_calls_workflow_run_endpoints() -> None:
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
     assert "/api/v2/threads/" in js and "/workflow-runs" in js
     assert "/api/v2/workflow-runs/" in js and "/artifacts" in js
+    assert "/api/v2/workflow-runs/" in js and "/resume" in js
+    assert "/api/v2/workflow-profiles" in js

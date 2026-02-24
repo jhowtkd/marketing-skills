@@ -1,6 +1,7 @@
 const ENDPOINT_BRANDS = "/api/v2/brands";
 const ENDPOINT_PROJECTS = "/api/v2/projects";
 const ENDPOINT_THREADS = "/api/v2/threads";
+const ENDPOINT_WORKFLOW_PROFILES = "/api/v2/workflow-profiles";
 
 const brandForm = document.getElementById("brand-create-form");
 const brandNameInput = document.getElementById("brand-name-input");
@@ -22,20 +23,28 @@ const threadModesList = document.getElementById("thread-modes-list");
 const timelineList = document.getElementById("timeline-list");
 const tasksList = document.getElementById("tasks-list");
 const approvalsList = document.getElementById("approvals-list");
+
 const workflowRunForm = document.getElementById("workflow-run-form");
 const workflowRequestInput = document.getElementById("workflow-request-input");
 const workflowModeInput = document.getElementById("workflow-mode-input");
+const workflowOverridesInput = document.getElementById("workflow-overrides-input");
+const workflowProfilePreviewList = document.getElementById("workflow-profile-preview-list");
 const workflowRunsList = document.getElementById("workflow-runs-list");
+const workflowRunDetailList = document.getElementById("workflow-run-detail-list");
 const workflowArtifactsList = document.getElementById("workflow-artifacts-list");
+const workflowArtifactPreview = document.getElementById("workflow-artifact-preview");
 
 let activeBrandId = null;
 let activeProjectId = null;
 let activeThreadId = null;
 let activeWorkflowRunId = null;
 
+let workflowPollTimer = null;
+
 const brandsState = [];
 const projectsState = [];
 const threadsState = [];
+const workflowProfilesState = [];
 
 function buildEntityId(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -87,8 +96,7 @@ function clearAndRender(container, rows, renderItem) {
     return;
   }
   for (const row of rows) {
-    const node = renderItem(row);
-    container.appendChild(node);
+    container.appendChild(renderItem(row));
   }
 }
 
@@ -105,11 +113,26 @@ function getActiveThreadRow() {
   return threadsState.find((row) => row.thread_id === activeThreadId) || null;
 }
 
+function getSelectedMode() {
+  return workflowModeInput.value.trim() || "plan_90d";
+}
+
+function parseWorkflowOverrides() {
+  const raw = workflowOverridesInput.value.trim();
+  if (!raw) {
+    return {};
+  }
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Overrides must be an object mapping stage key to array of skills.");
+  }
+  return parsed;
+}
+
 function renderBrands() {
   clearAndRender(brandsList, brandsState, (row) => {
     const wrapper = document.createElement("div");
     wrapper.className = "item";
-
     const bar = document.createElement("div");
     bar.className = "inline";
 
@@ -119,7 +142,6 @@ function renderBrands() {
       activeThreadId = null;
       await loadProjects(activeBrandId);
     });
-
     const edit = createActionButton("Edit", async () => {
       const nextName = window.prompt("Brand name", row.name);
       if (!nextName || nextName.trim() === row.name) {
@@ -133,7 +155,6 @@ function renderBrands() {
       row.name = updated.name || nextName.trim();
       renderBrands();
     });
-
     bar.appendChild(select);
     bar.appendChild(edit);
     wrapper.appendChild(bar);
@@ -146,7 +167,6 @@ function renderProjects() {
   clearAndRender(projectsList, rows, (row) => {
     const wrapper = document.createElement("div");
     wrapper.className = "item";
-
     const bar = document.createElement("div");
     bar.className = "inline";
 
@@ -155,7 +175,6 @@ function renderProjects() {
       activeThreadId = null;
       await loadThreads(activeProjectId);
     });
-
     const edit = createActionButton("Edit", async () => {
       const nextName = window.prompt("Project name", row.name);
       if (!nextName) {
@@ -196,7 +215,6 @@ function renderProjects() {
       row.due_date = updated.due_date ?? payload.due_date;
       renderProjects();
     });
-
     bar.appendChild(select);
     bar.appendChild(edit);
     wrapper.appendChild(bar);
@@ -209,17 +227,18 @@ function renderThreads() {
   clearAndRender(threadsList, rows, (row) => {
     const wrapper = document.createElement("div");
     wrapper.className = "item";
-
     const bar = document.createElement("div");
     bar.className = "inline";
+    const modes =
+      Array.isArray(row.modes) && row.modes.length ? ` [${row.modes.join(", ")}]` : "";
 
-    const modes = Array.isArray(row.modes) && row.modes.length ? ` [${row.modes.join(", ")}]` : "";
     const select = createActionButton(`${row.thread_id} - ${row.title}${modes}`, async () => {
       activeThreadId = row.thread_id;
+      activeWorkflowRunId = null;
       renderModes();
       await loadThreadWorkspace();
+      restartWorkflowPolling();
     });
-
     const edit = createActionButton("Edit", async () => {
       const nextTitle = window.prompt("Thread title", row.title);
       if (!nextTitle || nextTitle.trim() === row.title) {
@@ -233,7 +252,6 @@ function renderThreads() {
       row.title = updated.title || nextTitle.trim();
       renderThreads();
     });
-
     bar.appendChild(select);
     bar.appendChild(edit);
     wrapper.appendChild(bar);
@@ -247,10 +265,8 @@ function renderModes() {
   clearAndRender(threadModesList, modes, (mode) => {
     const row = document.createElement("div");
     row.className = "item";
-
     const bar = document.createElement("div");
     bar.className = "inline";
-
     const label = document.createElement("div");
     label.className = "muted";
     label.textContent = mode;
@@ -275,7 +291,6 @@ function renderModes() {
       );
       await loadThreads(activeProjectId);
     });
-
     const remove = createActionButton("Remove", async () => {
       if (!activeThreadId) {
         return;
@@ -287,87 +302,12 @@ function renderModes() {
       );
       await loadThreads(activeProjectId);
     });
-
     bar.appendChild(label);
     bar.appendChild(edit);
     bar.appendChild(remove);
     row.appendChild(bar);
     return row;
   });
-}
-
-async function loadBrands() {
-  const body = await fetchJson(ENDPOINT_BRANDS);
-  brandsState.length = 0;
-  brandsState.push(...(body.brands || []));
-
-  if (!activeBrandId || !brandsState.some((row) => row.brand_id === activeBrandId)) {
-    activeBrandId = brandsState[0]?.brand_id || null;
-  }
-
-  renderBrands();
-
-  if (activeBrandId) {
-    await loadProjects(activeBrandId);
-    return;
-  }
-
-  projectsState.length = 0;
-  threadsState.length = 0;
-  activeProjectId = null;
-  activeThreadId = null;
-  renderProjects();
-  renderThreads();
-  renderModes();
-  renderTimeline([]);
-  renderTasks([]);
-  renderApprovals([]);
-  renderWorkflowRuns([]);
-  renderWorkflowArtifacts([]);
-}
-
-async function loadProjects(brandId) {
-  if (!brandId) {
-    projectsState.length = 0;
-    activeProjectId = null;
-    renderProjects();
-    await loadThreads(null);
-    return;
-  }
-
-  const body = await fetchJson(`${ENDPOINT_PROJECTS}?brand_id=${encodeURIComponent(brandId)}`);
-  projectsState.length = 0;
-  projectsState.push(...(body.projects || []));
-
-  if (!activeProjectId || !projectsState.some((row) => row.project_id === activeProjectId)) {
-    activeProjectId = projectsState[0]?.project_id || null;
-  }
-
-  renderProjects();
-  await loadThreads(activeProjectId);
-}
-
-async function loadThreads(projectId) {
-  if (!projectId) {
-    threadsState.length = 0;
-    activeThreadId = null;
-    renderThreads();
-    renderModes();
-    await loadThreadWorkspace();
-    return;
-  }
-
-  const body = await fetchJson(`${ENDPOINT_THREADS}?project_id=${encodeURIComponent(projectId)}`);
-  threadsState.length = 0;
-  threadsState.push(...(body.threads || []));
-
-  if (!activeThreadId || !threadsState.some((row) => row.thread_id === activeThreadId)) {
-    activeThreadId = threadsState[0]?.thread_id || null;
-  }
-
-  renderThreads();
-  renderModes();
-  await loadThreadWorkspace();
 }
 
 function renderTimeline(items) {
@@ -389,23 +329,28 @@ function renderTasks(items) {
 
     const actions = document.createElement("div");
     actions.className = "inline";
-
     const commentButton = createActionButton("Comment", async () => {
       const message = window.prompt("Comment for task:", "Need stronger KPI rationale");
       if (!message) {
         return;
       }
-      await postV2(`/api/v2/tasks/${encodeURIComponent(task.task_id)}/comment`, { message }, "task-comment");
+      await postV2(
+        `/api/v2/tasks/${encodeURIComponent(task.task_id)}/comment`,
+        { message },
+        "task-comment"
+      );
+      await loadThreadWorkspace();
+    });
+    const completeButton = createActionButton("Complete", async () => {
+      await postV2(
+        `/api/v2/tasks/${encodeURIComponent(task.task_id)}/complete`,
+        {},
+        "task-complete"
+      );
       await loadThreadWorkspace();
     });
     actions.appendChild(commentButton);
-
-    const completeButton = createActionButton("Complete", async () => {
-      await postV2(`/api/v2/tasks/${encodeURIComponent(task.task_id)}/complete`, {}, "task-complete");
-      await loadThreadWorkspace();
-    });
     actions.appendChild(completeButton);
-
     row.appendChild(actions);
     return row;
   });
@@ -418,14 +363,38 @@ function renderApprovals(items) {
     const text = document.createElement("div");
     text.textContent = `${approval.approval_id} (${approval.status})`;
     row.appendChild(text);
-
     if (approval.status !== "granted") {
       const grantButton = createActionButton("Grant", async () => {
-        await postV2(`/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`, {}, "approval-grant");
+        await postV2(
+          `/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`,
+          {},
+          "approval-grant"
+        );
         await loadThreadWorkspace();
       });
       row.appendChild(grantButton);
     }
+    return row;
+  });
+}
+
+function renderWorkflowProfilePreview() {
+  const selectedMode = getSelectedMode();
+  const selected = workflowProfilesState.find((item) => item.mode === selectedMode);
+  if (!selected) {
+    clearAndRender(workflowProfilePreviewList, [], () => document.createElement("div"));
+    return;
+  }
+  clearAndRender(workflowProfilePreviewList, selected.stages || [], (stage) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    const title = document.createElement("div");
+    title.textContent = `${stage.key} ${stage.approval_required ? "(approval)" : ""}`;
+    const details = document.createElement("div");
+    details.className = "muted";
+    details.textContent = (stage.skills || []).join(", ");
+    row.appendChild(title);
+    row.appendChild(details);
     return row;
   });
 }
@@ -436,20 +405,84 @@ function renderWorkflowRuns(items) {
     row.className = "item";
     const bar = document.createElement("div");
     bar.className = "inline";
-
     const label = document.createElement("div");
-    label.textContent = `${run.run_id} (${run.status})`;
+    label.textContent = `${run.run_id} (${run.status}) ${run.completed_stages || 0}/${run.total_stages || 0}`;
     bar.appendChild(label);
 
-    const openArtifacts = createActionButton("Artifacts", async () => {
+    const openDetail = createActionButton("Details", async () => {
       activeWorkflowRunId = run.run_id;
+      await loadWorkflowRunDetail(run.run_id);
       await loadWorkflowArtifacts(run.run_id);
     });
-    bar.appendChild(openArtifacts);
+    bar.appendChild(openDetail);
 
+    if (run.status === "waiting_approval") {
+      const resume = createActionButton("Resume", async () => {
+        await postV2(
+          `/api/v2/workflow-runs/${encodeURIComponent(run.run_id)}/resume`,
+          {},
+          "workflow-resume"
+        );
+        await loadWorkflowRunDetail(run.run_id);
+      });
+      bar.appendChild(resume);
+    }
     row.appendChild(bar);
     return row;
   });
+}
+
+function renderWorkflowRunDetail(detail) {
+  if (!detail) {
+    clearAndRender(workflowRunDetailList, [], () => document.createElement("div"));
+    return;
+  }
+  const stages = Array.isArray(detail.stages) ? detail.stages : [];
+  clearAndRender(workflowRunDetailList, stages, (stage) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    const title = document.createElement("div");
+    title.textContent = `${stage.stage_id} (${stage.status}) attempts=${stage.attempts}`;
+    row.appendChild(title);
+    const skills = document.createElement("div");
+    skills.className = "muted";
+    skills.textContent = (stage.skills || []).join(", ");
+    row.appendChild(skills);
+    return row;
+  });
+
+  const pendingApprovals = detail.pending_approvals || [];
+  for (const approval of pendingApprovals) {
+    const row = document.createElement("div");
+    row.className = "item";
+    const label = document.createElement("div");
+    label.textContent = `Pending approval: ${approval.approval_id}`;
+    row.appendChild(label);
+    const actions = document.createElement("div");
+    actions.className = "inline";
+    actions.appendChild(
+      createActionButton("Grant", async () => {
+        await postV2(
+          `/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`,
+          {},
+          "workflow-detail-grant"
+        );
+        await loadWorkflowRunDetail(detail.run_id);
+      })
+    );
+    actions.appendChild(
+      createActionButton("Resume", async () => {
+        await postV2(
+          `/api/v2/workflow-runs/${encodeURIComponent(detail.run_id)}/resume`,
+          {},
+          "workflow-detail-resume"
+        );
+        await loadWorkflowRunDetail(detail.run_id);
+      })
+    );
+    row.appendChild(actions);
+    workflowRunDetailList.appendChild(row);
+  }
 }
 
 function renderWorkflowArtifacts(stages) {
@@ -459,21 +492,37 @@ function renderWorkflowArtifacts(stages) {
     const title = document.createElement("div");
     title.textContent = `${stage.stage_key} (${stage.status})`;
     row.appendChild(title);
-    const list = document.createElement("div");
-    list.className = "muted";
-    list.textContent = (stage.artifacts || [])
-      .map((artifact) => artifact.path)
-      .join(", ");
-    row.appendChild(list);
+    const bar = document.createElement("div");
+    bar.className = "inline";
+    for (const artifact of stage.artifacts || []) {
+      bar.appendChild(
+        createActionButton(artifact.path, async () => {
+          await loadWorkflowArtifactContent(stage.stage_dir, artifact.path);
+        })
+      );
+    }
+    row.appendChild(bar);
     return row;
   });
+}
+
+async function loadWorkflowProfiles() {
+  const body = await fetchJson(ENDPOINT_WORKFLOW_PROFILES);
+  workflowProfilesState.length = 0;
+  workflowProfilesState.push(...(body.profiles || []));
+  if (!workflowModeInput.value.trim() && workflowProfilesState.length) {
+    workflowModeInput.value = workflowProfilesState[0].mode;
+  }
+  renderWorkflowProfilePreview();
 }
 
 async function loadWorkflowRuns() {
   if (!activeThreadId) {
     activeWorkflowRunId = null;
     renderWorkflowRuns([]);
+    renderWorkflowRunDetail(null);
     renderWorkflowArtifacts([]);
+    workflowArtifactPreview.textContent = "Select an artifact to preview.";
     return;
   }
   const body = await fetchJson(
@@ -483,24 +532,121 @@ async function loadWorkflowRuns() {
   renderWorkflowRuns(runs);
   if (!runs.length) {
     activeWorkflowRunId = null;
+    renderWorkflowRunDetail(null);
     renderWorkflowArtifacts([]);
+    workflowArtifactPreview.textContent = "Select an artifact to preview.";
     return;
   }
   if (!activeWorkflowRunId || !runs.some((row) => row.run_id === activeWorkflowRunId)) {
     activeWorkflowRunId = runs[0].run_id;
   }
+  await loadWorkflowRunDetail(activeWorkflowRunId);
   await loadWorkflowArtifacts(activeWorkflowRunId);
+}
+
+async function loadWorkflowRunDetail(runId) {
+  if (!runId) {
+    renderWorkflowRunDetail(null);
+    return;
+  }
+  const detail = await fetchJson(`/api/v2/workflow-runs/${encodeURIComponent(runId)}`);
+  renderWorkflowRunDetail(detail);
 }
 
 async function loadWorkflowArtifacts(runId) {
   if (!runId) {
     renderWorkflowArtifacts([]);
+    workflowArtifactPreview.textContent = "Select an artifact to preview.";
     return;
   }
   const body = await fetchJson(
     `/api/v2/workflow-runs/${encodeURIComponent(runId)}/artifacts`
   );
   renderWorkflowArtifacts(body.stages || []);
+}
+
+async function loadWorkflowArtifactContent(stageDir, artifactPath) {
+  if (!activeWorkflowRunId) {
+    return;
+  }
+  const query = new URLSearchParams({
+    stage_dir: stageDir,
+    artifact_path: artifactPath,
+  });
+  const body = await fetchJson(
+    `/api/v2/workflow-runs/${encodeURIComponent(activeWorkflowRunId)}/artifact-content?${query.toString()}`
+  );
+  workflowArtifactPreview.textContent = body.content || "";
+}
+
+async function loadBrands() {
+  const body = await fetchJson(ENDPOINT_BRANDS);
+  brandsState.length = 0;
+  brandsState.push(...body.brands || []);
+
+  if (!activeBrandId || !brandsState.some((row) => row.brand_id === activeBrandId)) {
+    activeBrandId = brandsState[0]?.brand_id || null;
+  }
+  renderBrands();
+  if (activeBrandId) {
+    await loadProjects(activeBrandId);
+    return;
+  }
+
+  projectsState.length = 0;
+  threadsState.length = 0;
+  activeProjectId = null;
+  activeThreadId = null;
+  renderProjects();
+  renderThreads();
+  renderModes();
+  renderTimeline([]);
+  renderTasks([]);
+  renderApprovals([]);
+  renderWorkflowRuns([]);
+  renderWorkflowRunDetail(null);
+  renderWorkflowArtifacts([]);
+}
+
+async function loadProjects(brandId) {
+  if (!brandId) {
+    projectsState.length = 0;
+    activeProjectId = null;
+    renderProjects();
+    await loadThreads(null);
+    return;
+  }
+  const body = await fetchJson(`${ENDPOINT_PROJECTS}?brand_id=${encodeURIComponent(brandId)}`);
+  projectsState.length = 0;
+  projectsState.push(...(body.projects || []));
+
+  if (!activeProjectId || !projectsState.some((row) => row.project_id === activeProjectId)) {
+    activeProjectId = projectsState[0]?.project_id || null;
+  }
+  renderProjects();
+  await loadThreads(activeProjectId);
+}
+
+async function loadThreads(projectId) {
+  if (!projectId) {
+    threadsState.length = 0;
+    activeThreadId = null;
+    renderThreads();
+    renderModes();
+    await loadThreadWorkspace();
+    return;
+  }
+  const body = await fetchJson(`${ENDPOINT_THREADS}?project_id=${encodeURIComponent(projectId)}`);
+  threadsState.length = 0;
+  threadsState.push(...(body.threads || []));
+
+  if (!activeThreadId || !threadsState.some((row) => row.thread_id === activeThreadId)) {
+    activeThreadId = threadsState[0]?.thread_id || null;
+  }
+  renderThreads();
+  renderModes();
+  await loadThreadWorkspace();
+  restartWorkflowPolling();
 }
 
 async function loadThreadWorkspace() {
@@ -511,7 +657,9 @@ async function loadThreadWorkspace() {
     renderTasks([]);
     renderApprovals([]);
     renderWorkflowRuns([]);
+    renderWorkflowRunDetail(null);
     renderWorkflowArtifacts([]);
+    workflowArtifactPreview.textContent = "Select an artifact to preview.";
     return;
   }
 
@@ -527,16 +675,34 @@ async function loadThreadWorkspace() {
   await loadWorkflowRuns();
 }
 
+function restartWorkflowPolling() {
+  if (workflowPollTimer) {
+    window.clearInterval(workflowPollTimer);
+    workflowPollTimer = null;
+  }
+  if (!activeThreadId) {
+    return;
+  }
+  workflowPollTimer = window.setInterval(async () => {
+    if (!activeThreadId) {
+      return;
+    }
+    try {
+      await loadWorkflowRuns();
+    } catch (error) {
+      console.error(error);
+    }
+  }, 2000);
+}
+
 brandForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = brandNameInput.value.trim();
   if (!name) {
     return;
   }
-
   const response = await postV2(ENDPOINT_BRANDS, { name }, "brand-create");
   const brand_id = response.brand_id || buildEntityId("b");
-
   brandsState.unshift({ brand_id, name });
   activeBrandId = brand_id;
   activeProjectId = null;
@@ -552,17 +718,14 @@ projectForm.addEventListener("submit", async (event) => {
     window.alert("Create/select a brand first.");
     return;
   }
-
   const name = projectNameInput.value.trim();
   if (!name) {
     return;
   }
-
   const channels = projectChannelsInput.value
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-
   const payload = {
     brand_id: activeBrandId,
     name,
@@ -570,10 +733,8 @@ projectForm.addEventListener("submit", async (event) => {
     channels,
     due_date: projectDueDateInput.value.trim() || null,
   };
-
   const response = await postV2(ENDPOINT_PROJECTS, payload, "project-create");
   const project_id = response.project_id || buildEntityId("p");
-
   projectsState.unshift({ project_id, ...payload });
   activeProjectId = project_id;
   activeThreadId = null;
@@ -587,7 +748,6 @@ threadCreateButton.addEventListener("click", async () => {
     window.alert("Create/select brand and project first.");
     return;
   }
-
   const title = threadTitleInput.value.trim() || "Planning Thread";
   const response = await postV2(
     ENDPOINT_THREADS,
@@ -598,7 +758,6 @@ threadCreateButton.addEventListener("click", async () => {
     },
     "thread-create"
   );
-
   const thread_id = response.thread_id || buildEntityId("t");
   threadsState.unshift({
     thread_id,
@@ -612,6 +771,7 @@ threadCreateButton.addEventListener("click", async () => {
   renderThreads();
   renderModes();
   await loadThreadWorkspace();
+  restartWorkflowPolling();
 });
 
 threadModeForm.addEventListener("submit", async (event) => {
@@ -620,15 +780,21 @@ threadModeForm.addEventListener("submit", async (event) => {
     window.alert("Create/select a thread first.");
     return;
   }
-
   const mode = threadModeInput.value.trim();
   if (!mode) {
     return;
   }
-
-  await postV2(`/api/v2/threads/${encodeURIComponent(activeThreadId)}/modes`, { mode }, "thread-mode");
+  await postV2(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/modes`,
+    { mode },
+    "thread-mode"
+  );
   threadModeForm.reset();
   await loadThreads(activeProjectId);
+});
+
+workflowModeInput.addEventListener("change", () => {
+  renderWorkflowProfilePreview();
 });
 
 workflowRunForm.addEventListener("submit", async (event) => {
@@ -641,9 +807,17 @@ workflowRunForm.addEventListener("submit", async (event) => {
   if (!request_text) {
     return;
   }
+  let skill_overrides = {};
+  try {
+    skill_overrides = parseWorkflowOverrides();
+  } catch (error) {
+    window.alert(error.message || "Invalid overrides JSON.");
+    return;
+  }
   const payload = {
     request_text,
-    mode: workflowModeInput.value.trim() || "plan_90d",
+    mode: getSelectedMode(),
+    skill_overrides,
   };
   const started = await postV2(
     `/api/v2/threads/${encodeURIComponent(activeThreadId)}/workflow-runs`,
@@ -651,10 +825,15 @@ workflowRunForm.addEventListener("submit", async (event) => {
     "workflow-run"
   );
   activeWorkflowRunId = started.run_id || null;
-  workflowRunForm.reset();
+  workflowRequestInput.value = "";
   await loadWorkflowRuns();
+  restartWorkflowPolling();
 });
 
-loadBrands().catch((error) => {
-  console.error(error);
-});
+Promise.all([loadWorkflowProfiles(), loadBrands()])
+  .then(() => {
+    restartWorkflowPolling();
+  })
+  .catch((error) => {
+    console.error(error);
+  });
