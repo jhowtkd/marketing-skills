@@ -132,7 +132,12 @@ class FoundationRunnerService:
                 )
                 artifacts["final/foundation-brief.md"] = brief_md
 
-        output_payload = self._build_output_payload(state=state, stage_key=stage_key)
+        output_payload = self._build_output_payload(
+            state=state,
+            stage_key=stage_key,
+            llm_enabled=self.llm is not None,
+            llm_model=self.llm_model if self.llm is not None else None,
+        )
         return FoundationStageResult(
             stage_key=stage_key,
             pipeline_status=str(state.get("status", "running")),
@@ -318,7 +323,13 @@ class FoundationRunnerService:
         )
 
     @staticmethod
-    def _build_output_payload(*, state: dict[str, Any], stage_key: str) -> dict[str, Any]:
+    def _build_output_payload(
+        *,
+        state: dict[str, Any],
+        stage_key: str,
+        llm_enabled: bool = False,
+        llm_model: str | None = None,
+    ) -> dict[str, Any]:
         stage_state: dict[str, Any] = {}
         stages = state.get("stages")
         if isinstance(stages, dict):
@@ -332,4 +343,8 @@ class FoundationRunnerService:
             "stage_status": stage_state.get("status"),
             "attempts": stage_state.get("attempts"),
             "run_date": state.get("run_date"),
+            "llm": {
+                "enabled": llm_enabled,
+                "model": llm_model,
+            },
         }

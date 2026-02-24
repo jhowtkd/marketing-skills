@@ -66,6 +66,7 @@ def write_stage_outputs(
         "status": status,
         "event_id": event_id,
         "artifacts": manifest_items,
+        "output": output_payload,
     }
     _write_text_atomic(
         stage_dir / "manifest.json",
