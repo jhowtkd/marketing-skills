@@ -354,21 +354,18 @@ def test_v2_workflow_run_endpoints_queue_resume_and_list_artifacts(tmp_path: Pat
     run_id = started.json()["run_id"]
 
     detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
-    if detail["status"] == "waiting_approval":
-        approvals = detail["pending_approvals"]
-        assert approvals
-        approval_id = approvals[0]["approval_id"]
+    approvals = 0
+    while detail["status"] == "waiting_approval":
+        pending = detail["pending_approvals"]
+        assert pending
+        approval_id = pending[0]["approval_id"]
         granted = client.post(
             f"/api/v2/approvals/{approval_id}/grant",
-            headers={"Idempotency-Key": "run-approval-1"},
+            headers={"Idempotency-Key": f"run-approval-{approvals}"},
         )
         assert granted.status_code == 200
-        resumed = client.post(
-            f"/api/v2/workflow-runs/{run_id}/resume",
-            headers={"Idempotency-Key": "run-resume-1"},
-        )
-        assert resumed.status_code == 200
-        detail = wait_for_run_status(client, run_id, {"completed"})
+        approvals += 1
+        detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
 
     artifacts = client.get(f"/api/v2/workflow-runs/{run_id}/artifacts")
     assert artifacts.status_code == 200
@@ -378,3 +375,76 @@ def test_v2_workflow_run_endpoints_queue_resume_and_list_artifacts(tmp_path: Pat
     listed = client.get(f"/api/v2/threads/{thread['thread_id']}/workflow-runs")
     assert listed.status_code == 200
     assert any(row["run_id"] == run_id for row in listed.json()["runs"])
+
+
+def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "idem-b"}, json={"name": "Acme"}
+    )
+    brand_id = client.get("/api/v2/brands").json()["brands"][0]["brand_id"]
+
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "idem-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    )
+    project_id = client.get("/api/v2/projects", params={"brand_id": brand_id}).json()[
+        "projects"
+    ][0]["project_id"]
+
+    thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "idem-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()
+
+    started = client.post(
+        f"/api/v2/threads/{thread['thread_id']}/workflow-runs",
+        headers={"Idempotency-Key": "idem-run"},
+        json={"request_text": "Generate plan assets", "mode": "content_calendar"},
+    )
+    assert started.status_code == 200
+    run_id = started.json()["run_id"]
+
+    deadline = time.time() + 4.0
+    approvals = 0
+    while time.time() < deadline:
+        detail = client.get(f"/api/v2/workflow-runs/{run_id}")
+        assert detail.status_code == 200
+        payload = detail.json()
+        if payload["status"] == "completed":
+            break
+        if payload["status"] == "waiting_approval":
+            pending = payload["pending_approvals"]
+            assert pending
+            granted = client.post(
+                f"/api/v2/approvals/{pending[0]['approval_id']}/grant",
+                headers={"Idempotency-Key": f"idem-approval-{approvals}"},
+            )
+            assert granted.status_code == 200
+            approvals += 1
+        time.sleep(0.05)
+    else:
+        raise AssertionError("run did not complete in time")
+
+    resumed_1 = client.post(
+        f"/api/v2/workflow-runs/{run_id}/resume",
+        headers={"Idempotency-Key": "idem-resume-1"},
+    )
+    resumed_2 = client.post(
+        f"/api/v2/workflow-runs/{run_id}/resume",
+        headers={"Idempotency-Key": "idem-resume-2"},
+    )
+
+    assert resumed_1.status_code == 200
+    assert resumed_2.status_code == 200
+    assert resumed_1.json()["status"] == "completed"
+    assert resumed_2.json()["status"] == "completed"

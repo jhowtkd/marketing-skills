@@ -561,8 +561,13 @@ def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
             actor_id="workspace-owner",
             idempotency_key=idem,
         )
-        project_command_event(session, event_id=result.event_id)
-    return {"run_id": run_id, "status": "running"}
+        if result.event_id.startswith("evt-"):
+            project_command_event(session, event_id=result.event_id)
+    payload = json.loads(result.response_json)
+    return {
+        "run_id": str(payload.get("run_id", run_id)),
+        "status": str(payload.get("status", "running")),
+    }
 
 
 @router.get("/v2/workflow-runs/{run_id}/artifact-content")
