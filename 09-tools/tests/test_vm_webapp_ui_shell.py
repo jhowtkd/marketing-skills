@@ -11,5 +11,6 @@ def test_root_serves_stitch_shell_contract() -> None:
     assert 'id="vm-shell-left"' in html
     assert 'id="vm-shell-main"' in html
     assert 'id="vm-shell-right"' in html
-    assert "cdn.tailwindcss.com" in html
-    assert "VM Web App" in html
+    assert "Share+Tech+Mono" in html
+    assert 'class="scanlines"' in html
+    assert "VM Web App Event-Driven Workspace" in html
