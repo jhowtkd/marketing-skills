@@ -32,6 +32,7 @@ def create_app(
     *,
     memory: Any | None = None,
     llm: Any | None = None,
+    enable_in_process_worker: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
     validate_startup_contract(settings)
@@ -56,7 +57,7 @@ def create_app(
         foundation_mode=settings.vm_workflow_foundation_mode,
         llm_model=settings.kimi_model,
     )
-    event_worker = InProcessEventWorker(engine=engine)
+    event_worker = InProcessEventWorker(engine=engine) if enable_in_process_worker else None
     configure_workflow_executor(workflow_runtime.process_event)
 
     app.state.settings = settings
@@ -67,7 +68,7 @@ def create_app(
     app.state.run_engine = run_engine
     app.state.workflow_runtime = workflow_runtime
     app.state.event_worker = event_worker
-    app.state.worker_mode = "in_process"
+    app.state.worker_mode = "in_process" if event_worker is not None else "external"
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
