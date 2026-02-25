@@ -33,6 +33,33 @@ const workflowRunsList = document.getElementById("workflow-runs-list");
 const workflowRunDetailList = document.getElementById("workflow-run-detail-list");
 const workflowArtifactsList = document.getElementById("workflow-artifacts-list");
 const workflowArtifactPreview = document.getElementById("workflow-artifact-preview");
+const uiErrorBanner = document.getElementById("ui-error-banner");
+
+const TIMELINE_EVENT_STYLE = {
+  ApprovalRequested: { icon: "gavel", tone: "amber" },
+  ApprovalGranted: { icon: "verified", tone: "green" },
+  TaskCreated: { icon: "task_alt", tone: "blue" },
+  WorkflowRunFailed: { icon: "error", tone: "red" },
+};
+const TIMELINE_TONE_CLASS = {
+  amber: "text-amber-700 bg-amber-100",
+  green: "text-green-700 bg-green-100",
+  blue: "text-blue-700 bg-blue-100",
+  red: "text-red-700 bg-red-100",
+  slate: "text-slate-700 bg-slate-200",
+};
+
+function setUiError(message) {
+  if (!uiErrorBanner) return;
+  uiErrorBanner.textContent = message;
+  uiErrorBanner.classList.remove("hidden");
+}
+
+function clearUiError() {
+  if (!uiErrorBanner) return;
+  uiErrorBanner.textContent = "";
+  uiErrorBanner.classList.add("hidden");
+}
 
 let activeBrandId = null;
 let activeProjectId = null;
@@ -59,8 +86,10 @@ async function fetchJson(url, options) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = body.detail || `Request failed (${response.status})`;
+    setUiError(detail);
     throw new Error(detail);
   }
+  clearUiError();
   return body;
 }
 
@@ -312,9 +341,23 @@ function renderModes() {
 
 function renderTimeline(items) {
   clearAndRender(timelineList, items, (itemRow) => {
+    const style = TIMELINE_EVENT_STYLE[itemRow.event_type] || {
+      icon: "schedule",
+      tone: "slate",
+    };
+    const toneClass = TIMELINE_TONE_CLASS[style.tone] || TIMELINE_TONE_CLASS.slate;
     const node = document.createElement("div");
     node.className = "item";
-    node.textContent = `${itemRow.event_type} @ ${itemRow.occurred_at}`;
+    const bar = document.createElement("div");
+    bar.className = "inline items-center";
+    const icon = document.createElement("span");
+    icon.className = `material-icons-outlined rounded-full p-1 text-sm ${toneClass}`;
+    icon.textContent = style.icon;
+    const text = document.createElement("div");
+    text.textContent = `${itemRow.event_type} @ ${itemRow.occurred_at}`;
+    bar.appendChild(icon);
+    bar.appendChild(text);
+    node.appendChild(bar);
     return node;
   });
 }
