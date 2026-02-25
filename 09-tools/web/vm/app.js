@@ -33,6 +33,20 @@ const workflowRunsList = document.getElementById("workflow-runs-list");
 const workflowRunDetailList = document.getElementById("workflow-run-detail-list");
 const workflowArtifactsList = document.getElementById("workflow-artifacts-list");
 const workflowArtifactPreview = document.getElementById("workflow-artifact-preview");
+const uiErrorBanner = document.getElementById("ui-error-banner");
+
+const TIMELINE_EVENT_STYLE = {
+  ApprovalRequested: { icon: "gavel", tone: "amber" },
+  ApprovalGranted: { icon: "verified", tone: "green" },
+  TaskCreated: { icon: "task_alt", tone: "blue" },
+  WorkflowRunFailed: { icon: "error", tone: "red" },
+};
+
+function setUiError(message) {
+  if (!uiErrorBanner) return;
+  uiErrorBanner.textContent = message;
+  uiErrorBanner.classList.remove("hidden");
+}
 
 let activeBrandId = null;
 let activeProjectId = null;

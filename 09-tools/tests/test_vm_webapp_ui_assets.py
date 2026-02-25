@@ -2,6 +2,15 @@ import re
 from pathlib import Path
 
 
+def test_vm_app_js_has_timeline_style_map_and_error_banner_hooks() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "TIMELINE_EVENT_STYLE" in js
+    assert "ui-error-banner" in js
+    assert "function setUiError" in js
+    assert 'id="ui-error-banner"' in html
+
+
 def test_vm_index_uses_stitch_shell_and_cdn_dependencies() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     assert "https://cdn.tailwindcss.com?plugins=forms,typography" in html
