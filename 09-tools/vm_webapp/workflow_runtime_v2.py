@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -27,6 +28,10 @@ from vm_webapp.repo import (
     update_run_status,
     update_stage_status,
 )
+from vm_webapp.context_resolver import resolve_hierarchical_context
+from vm_webapp.tooling.executor import ToolExecutor
+from vm_webapp.learning import LearningIngestor
+from vm_webapp.observability import MetricsCollector
 from vm_webapp.resilience import ResiliencePolicy, FallbackChain
 from vm_webapp.workflow_profiles import (
     DEFAULT_PROFILES_PATH,
@@ -76,6 +81,15 @@ class WorkflowRuntimeV2:
             llm=llm,
             llm_model=llm_model,
         )
+        self.tool_executor = ToolExecutor(
+            workspace_root=self.workspace.root,
+            llm=llm,
+        )
+        self.learning_ingestor = LearningIngestor(
+            workspace_root=self.workspace.root,
+            memory=memory,
+        )
+        self.metrics = MetricsCollector()
         self.force_foundation_fallback = force_foundation_fallback
         self.foundation_mode = foundation_mode
         self._run_locks_guard = threading.Lock()
@@ -315,6 +329,16 @@ class WorkflowRuntimeV2:
             stage_map = {stage["key"]: stage for stage in plan["stages"]}
             run_mode = self._effective_mode(plan)
 
+            # Task 4: Resolve and snapshot context
+            run_context = resolve_hierarchical_context(
+                session,
+                brand_id=run.brand_id,
+                # For now assume campaign_id and task_id might come from plan or run
+                campaign_id=plan.get("campaign_id"),
+                task_id=plan.get("task_id"),
+            )
+            self._write_run_context_snapshot(run_id=run_id, context=run_context)
+
             if initial_status == "queued":
                 self._append_thread_event(
                     session=session,
@@ -447,6 +471,11 @@ class WorkflowRuntimeV2:
                         skills=list(stage_cfg["skills"]),
                         attempts=attempts,
                         llm_model=current_model,
+                        context=run_context,
+                        session=session,
+                        actor_id=actor_id,
+                        causation_id=causation_id,
+                        correlation_id=correlation_id,
                     )
                 except Exception as exc:
                     error_code = "stage_execution_error"
@@ -567,6 +596,13 @@ class WorkflowRuntimeV2:
                 )
 
             update_run_status(session, run_id=run_id, status="completed")
+
+            # Task 12: Observability metrics
+            self.metrics.record_count("workflow_run_completed")
+
+            # Task 10: Learning Ingestion
+            self.learning_ingestor.ingest_run(run_id=run_id)
+
             self._append_thread_event(
                 session=session,
                 thread_id=run.thread_id,
@@ -603,7 +639,45 @@ class WorkflowRuntimeV2:
         skills: list[str],
         attempts: int,
         llm_model: str | None = None,
+        context: dict[str, Any] | None = None,
+        session: Session | None = None,
+        actor_id: str | None = None,
+        causation_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
+        start_time = time.time()
+        self.metrics.record_count(f"workflow_stage_attempt:{stage_key}")
+
+        # Task 8: Tool Executor integration
+        tool_result = self.tool_executor.execute(
+            stage_key=stage_key,
+            context=context or {},
+        )
+
+        # Audit logging for tool call
+        if session and actor_id and causation_id and correlation_id:
+            self._append_thread_event(
+                session=session,
+                thread_id=thread_id,
+                brand_id=None,  # Will resolve inside or pass if needed
+                project_id=project_id,
+                actor_id=actor_id,
+                event_type="ToolInvoked",
+                payload=tool_result.audit_payload,
+                causation_id=causation_id,
+                correlation_id=correlation_id,
+            )
+
+        if tool_result.error_code:
+            raise StageExecutionError(
+                error_code=tool_result.error_code,
+                error_message=tool_result.error_message or tool_result.error_code,
+                retryable=tool_result.retryable,
+            )
+
+        # Legacy foundation runner fallback if tool didn't provide enough or as primary path
+        # For now, let's assume tool_executor is primary for these new stages
+        
         result = self.foundation_runner.execute_stage(
             run_id=run_id,
             thread_id=thread_id,
@@ -647,6 +721,12 @@ class WorkflowRuntimeV2:
             event_id=f"evt-stage-{run_id}-{stage_key}-{attempts}",
             status="completed",
         )
+        
+        # Task 12: Observability metrics
+        latency = time.time() - start_time
+        self.metrics.record_latency(f"workflow_stage_latency:{stage_key}", latency)
+        self.metrics.record_count(f"workflow_stage_completed:{stage_key}")
+
         memory_text = self._memory_text_from_stage_result(result)
         if memory_text:
             skills_field = result.output_payload.get("skills", skills)
@@ -840,6 +920,10 @@ class WorkflowRuntimeV2:
             "manifest_paths": manifest_paths,
         }
         self._write_json(self._run_summary_path(run_id), payload)
+
+    def _write_run_context_snapshot(self, run_id: str, context: dict[str, Any]) -> None:
+        path = self._run_root(run_id) / "context.json"
+        self._write_json(path, context)
 
     @staticmethod
     def _approval_id(run_id: str, stage_key: str) -> str:
