@@ -1,0 +1,71 @@
+services:
+  - type: web
+    name: vm-webapp-api
+    runtime: python
+    plan: starter
+    buildCommand: uv sync --frozen
+    startCommand: uv run python -m vm_webapp serve --host 0.0.0.0 --port $PORT
+    autoDeploy: false
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: VM_ENABLE_MANAGED_MODE
+        value: "true"
+      - key: VM_DB_URL
+        fromDatabase:
+          name: vm-webapp-db
+          property: connectionString
+      - key: VM_REDIS_URL
+        fromService:
+          type: redis
+          name: vm-webapp-redis
+          property: connectionString
+      - key: VM_WORKSPACE_ROOT
+        value: /var/data/vm
+      - key: KIMI_MODEL
+        value: kimi-for-coding
+      - key: KIMI_BASE_URL
+        value: https://api.kimi.com/coding/v1
+      - key: KIMI_API_KEY
+        sync: false
+
+  - type: worker
+    name: vm-webapp-worker
+    runtime: python
+    plan: starter
+    buildCommand: uv sync --frozen
+    startCommand: uv run python -m vm_webapp worker --poll-interval-ms 500
+    autoDeploy: false
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: VM_ENABLE_MANAGED_MODE
+        value: "true"
+      - key: VM_DB_URL
+        fromDatabase:
+          name: vm-webapp-db
+          property: connectionString
+      - key: VM_REDIS_URL
+        fromService:
+          type: redis
+          name: vm-webapp-redis
+          property: connectionString
+      - key: VM_WORKSPACE_ROOT
+        value: /var/data/vm
+      - key: KIMI_MODEL
+        value: kimi-for-coding
+      - key: KIMI_BASE_URL
+        value: https://api.kimi.com/coding/v1
+      - key: KIMI_API_KEY
+        sync: false
+
+  - type: redis
+    name: vm-webapp-redis
+    plan: starter
+    ipAllowList: []
+
+databases:
+  - name: vm-webapp-db
+    databaseName: vm_webapp
+    user: vm_webapp
+    plan: basic-256mb

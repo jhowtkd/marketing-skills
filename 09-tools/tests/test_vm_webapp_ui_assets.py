@@ -197,3 +197,38 @@ def test_readme_and_architecture_document_new_platform_contracts() -> None:
     assert "Resiliência" in readme
     assert "CircuitBreaker" in arch
     assert "FallbackChain" in arch
+def test_readme_mentions_managed_first_runbook_and_worker_command() -> None:
+    content = Path("README.md").read_text(encoding="utf-8")
+    assert "docs/runbooks/vm-webapp-managed-first.md" in content
+    assert "deploy/render/vm-webapp-render.yaml" in content
+    assert "uv run python -m vm_webapp worker --poll-interval-ms 500" in content
+
+
+def test_managed_first_runbook_and_render_contract_files_exist() -> None:
+    runbook = Path("docs/runbooks/vm-webapp-managed-first.md")
+    render_contract = Path("deploy/render/vm-webapp-render.yaml")
+    architecture = Path("ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert runbook.exists()
+    assert render_contract.exists()
+    assert "Managed-First" in architecture
+
+    runbook_content = runbook.read_text(encoding="utf-8")
+    assert "Readiness" in runbook_content
+    assert "Rollback" in runbook_content
+    assert "worker" in runbook_content.lower()
+
+    render_content = render_contract.read_text(encoding="utf-8")
+    assert "type: web" in render_content
+    assert "type: worker" in render_content
+
+
+def test_hardening_release_checklist_exists_and_mentions_migrations_secrets_and_probes() -> None:
+    checklist = Path(
+        "docs/plans/2026-02-25-vm-webapp-managed-first-hardening-release-checklist.md"
+    )
+    assert checklist.exists()
+    content = checklist.read_text(encoding="utf-8").lower()
+    assert "migration" in content
+    assert "secret" in content
+    assert "probe" in content

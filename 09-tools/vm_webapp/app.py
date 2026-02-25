@@ -11,10 +11,12 @@ from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
 from vm_webapp.event_worker import InProcessEventWorker
 from vm_webapp.llm import KimiClient
+from vm_webapp.logging_config import configure_structured_logging, request_id_middleware
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.orchestrator_v2 import configure_workflow_executor
 from vm_webapp.run_engine import RunEngine
 from vm_webapp.settings import Settings
+from vm_webapp.startup_checks import validate_startup_contract
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
 
@@ -31,14 +33,18 @@ def create_app(
     *,
     memory: Any | None = None,
     llm: Any | None = None,
+    enable_in_process_worker: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
+    validate_startup_contract(settings)
 
     app = FastAPI(title="VM Web App")
+    configure_structured_logging(level=str(getattr(settings, "log_level", "INFO")))
+    app.middleware("http")(request_id_middleware)
     app.add_exception_handler(ValueError, value_error_to_http)
 
     workspace = Workspace(root=settings.vm_workspace_root)
-    engine = build_engine(settings.vm_db_path)
+    engine = build_engine(settings.vm_db_path, db_url=settings.vm_db_url)
     init_db(engine)
     memory = memory or MemoryIndex(root=workspace.root / "zvec")
     if llm is None and settings.kimi_api_key:
@@ -54,7 +60,7 @@ def create_app(
         foundation_mode=settings.vm_workflow_foundation_mode,
         llm_model=settings.kimi_model,
     )
-    event_worker = InProcessEventWorker(engine=engine)
+    event_worker = InProcessEventWorker(engine=engine) if enable_in_process_worker else None
     configure_workflow_executor(workflow_runtime.process_event)
 
     app.state.settings = settings
@@ -65,6 +71,7 @@ def create_app(
     app.state.run_engine = run_engine
     app.state.workflow_runtime = workflow_runtime
     app.state.event_worker = event_worker
+    app.state.worker_mode = "in_process" if event_worker is not None else "external"
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")

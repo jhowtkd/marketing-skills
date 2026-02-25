@@ -11,7 +11,15 @@ from sqlalchemy.orm import Session
 from vm_webapp.models import Base
 
 
-def build_engine(db_path: Path) -> Engine:
+def build_engine(db_path: Path | None = None, *, db_url: str | None = None) -> Engine:
+    if db_url:
+        kwargs = {"pool_pre_ping": True}
+        if db_url.startswith("sqlite"):
+            kwargs = {"connect_args": {"check_same_thread": False}}
+        return create_engine(db_url, **kwargs)
+
+    if db_path is None:
+        raise ValueError("db_path or db_url must be provided")
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return create_engine(f"sqlite+pysqlite:///{db_path}")
 

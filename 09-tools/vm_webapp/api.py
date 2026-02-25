@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from vm_webapp.commands_v2 import (
     add_comment_command,
@@ -55,10 +57,12 @@ from vm_webapp.repo import (
     list_timeline_items_view,
     touch_thread_activity,
 )
+from vm_webapp.observability import render_prometheus
 from vm_webapp.stacking import build_context_pack
 
 
 router = APIRouter()
+api_logger = logging.getLogger("vm_webapp.api")
 
 
 def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: str):
@@ -75,6 +79,56 @@ def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: 
 @router.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+def _database_dependency_status(request: Request) -> dict[str, str]:
+    try:
+        with session_scope(request.app.state.engine) as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "error"}
+
+
+def _worker_dependency_status(request: Request) -> dict[str, str]:
+    worker = getattr(request.app.state, "event_worker", None)
+    mode = getattr(
+        request.app.state,
+        "worker_mode",
+        "in_process" if worker is not None else "external",
+    )
+    if mode == "in_process":
+        status = "ok" if worker is not None else "missing"
+    else:
+        status = "ok"
+    return {"status": status, "mode": str(mode)}
+
+
+@router.get("/v2/health/live")
+def health_live(request: Request) -> dict[str, str]:
+    request_id = getattr(request.state, "request_id", "")
+    correlation_id = getattr(request.state, "correlation_id", "")
+    if request_id:
+        api_logger.debug(
+            "health_live request_id=%s correlation_id=%s",
+            request_id,
+            correlation_id,
+        )
+    return {"status": "live"}
+
+
+@router.get("/v2/health/ready")
+def health_ready(request: Request) -> dict[str, object]:
+    dependencies = {
+        "database": _database_dependency_status(request),
+        "worker": _worker_dependency_status(request),
+    }
+    status = (
+        "ready"
+        if all(dep.get("status") == "ok" for dep in dependencies.values())
+        else "not_ready"
+    )
+    return {"status": status, "dependencies": dependencies}
 
 
 @router.get("/brands")
@@ -485,6 +539,14 @@ def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, obje
 @router.get("/v2/metrics")
 def metrics_v2(request: Request) -> dict[str, object]:
     return request.app.state.workflow_runtime.metrics.snapshot()
+
+
+@router.get("/v2/metrics/prometheus")
+def metrics_prometheus(request: Request) -> PlainTextResponse:
+    metrics = request.app.state.workflow_runtime.metrics
+    metrics.record_count("http_request_total:metrics_prometheus")
+    payload = render_prometheus(metrics.snapshot())
+    return PlainTextResponse(payload, media_type="text/plain; version=0.0.4")
 
 
 @router.post("/v2/threads/{thread_id}/workflow-runs")
