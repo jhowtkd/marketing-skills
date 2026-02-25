@@ -153,3 +153,13 @@ def test_vm_index_main_and_right_columns_keep_all_runtime_anchors_in_retro_layou
         re.S,
     )
     assert "Task_Board" in html
+
+
+def test_vm_retro_theme_tokens_and_action_button_hooks_exist() -> None:
+    css = Path("09-tools/web/vm/styles.css").read_text(encoding="utf-8")
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "--terminal-bg" in css
+    assert ".scanlines" in css
+    assert ".vm-terminal-btn" in css
+    assert "createActionButton(label, onClick, variant" in js
+    assert "vm-terminal-btn" in js

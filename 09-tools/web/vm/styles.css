@@ -7,6 +7,10 @@
   --line: #c8d7f3;
   --accent: #1f5eff;
   --accent-soft: #d8e5ff;
+  --terminal-bg: #000;
+  --terminal-ink: #fff;
+  --terminal-dim: #1a1a1a;
+  --terminal-line: #ffffff66;
   font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
 }
 
@@ -137,3 +141,43 @@ button.ghost {
 }
 
 body[data-dev-mode="1"] .vm-dev-only { display: block; }
+
+/* Retro Terminal Theme */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  z-index: 9999;
+}
+
+.vm-terminal-btn {
+  border: 1px solid var(--terminal-ink);
+  background: transparent;
+  color: var(--terminal-ink);
+  text-transform: uppercase;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.vm-terminal-btn:hover {
+  background: var(--terminal-ink);
+  color: var(--terminal-bg);
+}
+
+.vm-terminal-btn--danger {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.vm-terminal-btn--danger:hover {
+  background: #ff4444;
+  color: #fff;
+}
