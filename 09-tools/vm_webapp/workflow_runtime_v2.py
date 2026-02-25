@@ -62,6 +62,7 @@ class WorkflowRuntimeV2:
         foundation_runner: FoundationRunnerService | None = None,
         force_foundation_fallback: bool = True,
         foundation_mode: str = FOUNDATION_MODE_DEFAULT,
+        llm_model: str = "kimi-for-coding",
     ) -> None:
         self.engine = engine
         self.workspace = workspace
@@ -70,12 +71,15 @@ class WorkflowRuntimeV2:
         self.profiles_path = profiles_path or DEFAULT_PROFILES_PATH
         self.profiles = load_workflow_profiles(self.profiles_path)
         self.foundation_runner = foundation_runner or FoundationRunnerService(
-            workspace_root=self.workspace.root
+            workspace_root=self.workspace.root,
+            llm=llm,
+            llm_model=llm_model,
         )
         self.force_foundation_fallback = force_foundation_fallback
         self.foundation_mode = foundation_mode
         self._run_locks_guard = threading.Lock()
         self._run_locks: dict[str, threading.Lock] = {}
+        self.llm_model = llm_model
 
     def list_profiles(self) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []

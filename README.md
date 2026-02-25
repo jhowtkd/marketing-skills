@@ -231,3 +231,34 @@ python3 09-tools/onboard.py run --dry-run --ide codex,cursor,kimi,antigravity
 python3 09-tools/onboard.py run --ide codex,cursor --decision codex=apply --decision cursor=skip
 python3 09-tools/onboard.py run --yes --apply-keys --shell-file ~/.zshrc
 ```
+
+### Configuração LLM para VM Web App
+
+O VM Web App suporta execução com LLM real (Kimi) para geração de artefatos Foundation e chat. Quando configurado, os estágios `research`, `brand-voice`, `positioning`, `keywords` e o `final foundation brief` são gerados via LLM em vez de placeholders estáticos.
+
+**Variáveis de ambiente (.env):**
+
+```bash
+KIMI_API_KEY=your_key_here
+KIMI_MODEL=kimi-for-coding
+KIMI_BASE_URL=https://api.kimi.com/coding/v1
+```
+
+**Comportamento:**
+- **LLM ativo:** Quando `KIMI_API_KEY` está configurado, os artefatos de cada estágio são gerados via LLM com prompts especializados.
+- **LLM inativo:** Se `KIMI_API_KEY` estiver vazio/ausente, o sistema usa conteúdo estático/fallback do executor Foundation.
+- **Fallback seguro:** Se o LLM falhar (timeout, erro de API), o sistema preserva o conteúdo original do executor sem sobrescrever com vazio.
+- **Metadados:** Cada manifest de stage inclui `output.llm.enabled` e `output.llm.model` para auditoria.
+
+**Exemplo de .env completo:**
+
+```bash
+# LLM Provider
+KIMI_API_KEY=sk-...
+KIMI_MODEL=kimi-for-coding
+KIMI_BASE_URL=https://api.kimi.com/coding/v1
+
+# VM Web App
+VM_WORKSPACE_ROOT=runtime/vm
+VM_DB_PATH=runtime/vm/workspace.sqlite3
+```

@@ -139,3 +139,85 @@ def test_execute_queued_run_noops_when_run_already_running(tmp_path: Path) -> No
     assert result == {"run_id": "run-1", "status": "running"}
     assert stages[0].status == "pending"
     assert stages[0].attempts == 0
+
+
+def test_runtime_stage_output_includes_llm_metadata(tmp_path: Path) -> None:
+    """Verify LLM metadata is exposed in stage outputs."""
+    class FakeLLM:
+        def chat(self, **kwargs):
+            return "AI generated"
+
+    engine = build_engine(tmp_path / "db.sqlite3")
+    init_db(engine)
+    workspace = Workspace(root=tmp_path / "runtime" / "vm")
+    memory = MemoryIndex(root=tmp_path / "zvec")
+
+    runtime = WorkflowRuntimeV2(
+        engine=engine,
+        workspace=workspace,
+        memory=memory,
+        llm=FakeLLM(),
+        llm_model="kimi-for-coding",
+    )
+    result = runtime.execute_thread_run(
+        thread_id="t1",
+        brand_id="b1",
+        project_id="p1",
+        request_text="Test LLM metadata",
+        mode="foundation_stack",
+        actor_id="agent:test",
+    )
+
+    # Load manifest from first stage
+    run_root = tmp_path / "runtime" / "vm" / "runs" / result["run_id"]
+    stage_dirs = list((run_root / "stages").glob("*"))
+    assert stage_dirs
+    manifest_path = stage_dirs[0] / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert "output" in manifest
+    assert "llm" in manifest["output"]
+    # enabled reflects actual usage, not just configuration
+    assert manifest["output"]["llm"]["enabled"] is True
+    assert manifest["output"]["llm"]["model"] == "kimi-for-coding"
+
+
+def test_runtime_stage_output_llm_disabled_when_llm_fails(tmp_path: Path) -> None:
+    """Verify LLM metadata shows disabled when LLM returns fallback content."""
+    class FailingLLM:
+        def chat(self, **kwargs):
+            raise RuntimeError("LLM service unavailable")
+
+    engine = build_engine(tmp_path / "db.sqlite3")
+    init_db(engine)
+    workspace = Workspace(root=tmp_path / "runtime" / "vm")
+    memory = MemoryIndex(root=tmp_path / "zvec")
+
+    runtime = WorkflowRuntimeV2(
+        engine=engine,
+        workspace=workspace,
+        memory=memory,
+        llm=FailingLLM(),
+        llm_model="kimi-for-coding",
+    )
+    result = runtime.execute_thread_run(
+        thread_id="t1",
+        brand_id="b1",
+        project_id="p1",
+        request_text="Test LLM failure",
+        mode="foundation_stack",
+        actor_id="agent:test",
+    )
+
+    # Load manifest from first stage
+    run_root = tmp_path / "runtime" / "vm" / "runs" / result["run_id"]
+    stage_dirs = list((run_root / "stages").glob("*"))
+    assert stage_dirs
+    manifest_path = stage_dirs[0] / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert "output" in manifest
+    assert "llm" in manifest["output"]
+    # When LLM fails and fallback is used, enabled should be False
+    assert manifest["output"]["llm"]["enabled"] is False
+    assert manifest["output"]["llm"]["model"] is None
