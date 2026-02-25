@@ -35,8 +35,8 @@ def test_vm_index_uses_stitch_shell_and_cdn_dependencies() -> None:
 
 def test_vm_index_places_anchor_ids_in_left_center_right_columns() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
-    assert re.search(r'id="vm-shell-left".*id="brands-list".*id="projects-list"', html, re.S)
-    assert re.search(r'id="vm-shell-main".*id="threads-list".*id="timeline-list".*id="workflow-run-form".*id="workflow-run-detail-list"', html, re.S)
+    assert re.search(r'id="vm-shell-left".*id="brands-list".*id="projects-list".*id="threads-list"', html, re.S)
+    assert re.search(r'id="vm-shell-main".*id="timeline-list".*id="workflow-run-form".*id="workflow-run-detail-list"', html, re.S)
     assert re.search(r'id="vm-shell-right".*id="tasks-list".*id="approvals-list".*id="workflow-artifacts-list".*id="workflow-artifact-preview"', html, re.S)
 
 
@@ -125,3 +125,48 @@ def test_vm_index_contains_studio_progress_anchors() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     assert "id=\"studio-stage-progress\"" in html
     assert "id=\"studio-status-text\"" in html
+
+
+def test_vm_index_contains_retro_terminal_head_and_shell_chrome() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "Share+Tech+Mono" in html
+    assert "JetBrains+Mono" in html
+    assert "fonts.googleapis.com/icon?family=Material+Icons" in html
+    assert 'class="scanlines"' in html
+    assert "SYS.VER.3.0.0 [MONOCHROME]" in html
+
+
+def test_vm_index_left_column_uses_retro_panels_with_brand_project_thread_ids() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert re.search(
+        r'id="vm-shell-left".*id="brand-create-form".*id="brands-list".*id="project-create-form".*id="projects-list".*id="thread-create-button".*id="threads-list"',
+        html,
+        re.S,
+    )
+    assert "Initialize Brand" in html
+    assert "Execute Project" in html
+
+
+def test_vm_index_main_and_right_columns_keep_all_runtime_anchors_in_retro_layout() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert re.search(
+        r'id="vm-shell-main".*id="studio-toolbar".*id="studio-create-plan-button".*id="studio-devmode-toggle".*id="studio-artifact-preview".*id="studio-stage-progress".*id="thread-mode-form".*id="thread-modes-list".*id="timeline-list".*id="workflow-run-form".*id="workflow-run-detail-list"',
+        html,
+        re.S,
+    )
+    assert re.search(
+        r'id="vm-shell-right".*id="tasks-list".*id="approvals-list".*id="workflow-artifacts-list".*id="workflow-artifact-preview"',
+        html,
+        re.S,
+    )
+    assert "Task_Board" in html
+
+
+def test_vm_retro_theme_tokens_and_action_button_hooks_exist() -> None:
+    css = Path("09-tools/web/vm/styles.css").read_text(encoding="utf-8")
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "--terminal-bg" in css
+    assert ".scanlines" in css
+    assert ".vm-terminal-btn" in css
+    assert "createActionButton(label, onClick, variant" in js
+    assert "vm-terminal-btn" in js

@@ -5,148 +5,123 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>VM Web App Event-Driven Workspace</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="min-h-screen bg-gray-50">
+  <body class="min-h-screen bg-black text-white" style="font-family: 'Share Tech Mono', monospace;">
+    <div class="scanlines"></div>
+    <div class="absolute top-0 right-0 p-1 text-[10px] opacity-70">SYS.VER.3.0.0 [MONOCHROME]</div>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-screen">
       <!-- Left Column: Navigation -->
-      <aside id="vm-shell-left" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Navigation">
-        <section class="panel bg-white rounded-lg shadow p-4" id="brand-workspace-panel">
-          <h2 class="text-lg font-semibold mb-3">Brands</h2>
-          <form id="brand-create-form" class="stack space-y-2">
-            <input id="brand-name-input" placeholder="brand name" class="w-full border rounded px-3 py-2" />
-            <button type="submit" class="w-full bg-blue-600 text-white rounded px-3 py-2">Create Brand</button>
+      <aside id="vm-shell-left" class="col-span-12 lg:col-span-3 space-y-6 overflow-y-auto" aria-label="Workspace Navigation">
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Brands</div>
+          <form id="brand-create-form" class="p-4 pt-8 space-y-4">
+            <input id="brand-name-input" placeholder="brand name" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <button type="submit" class="w-full border border-white bg-transparent text-white px-3 py-2 hover:bg-white hover:text-black transition-colors">Initialize Brand</button>
           </form>
-          <div id="brands-list" class="list mt-4 space-y-2"></div>
+          <div id="brands-list" class="space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4" id="project-workspace-panel">
-          <h2 class="text-lg font-semibold mb-3">Projects</h2>
-          <form id="project-create-form" class="stack space-y-2">
-            <input id="project-name-input" placeholder="project name" class="w-full border rounded px-3 py-2" />
-            <input id="project-objective-input" placeholder="objective" class="w-full border rounded px-3 py-2" />
-            <input id="project-channels-input" placeholder="channels (comma separated)" class="w-full border rounded px-3 py-2" />
-            <input id="project-due-date-input" placeholder="YYYY-MM-DD" class="w-full border rounded px-3 py-2" />
-            <button type="submit" class="w-full bg-blue-600 text-white rounded px-3 py-2">Create Project</button>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Projects</div>
+          <form id="project-create-form" class="p-4 pt-8 space-y-2">
+            <input id="project-name-input" placeholder="project name" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <input id="project-objective-input" placeholder="objective" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <input id="project-channels-input" placeholder="channels (comma separated)" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <input id="project-due-date-input" placeholder="YYYY-MM-DD" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <button type="submit" class="w-full border border-white bg-transparent text-white px-3 py-2 hover:bg-white hover:text-black transition-colors">Execute Project</button>
           </form>
-          <div id="projects-list" class="list mt-4 space-y-2"></div>
+          <div id="projects-list" class="space-y-2"></div>
+        </section>
+
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Threads</div>
+          <div class="p-4 pt-8 space-y-2">
+            <input id="thread-title-input" placeholder="thread title" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+            <button id="thread-create-button" type="button" class="w-full border border-white bg-transparent text-white px-3 py-2 hover:bg-white hover:text-black transition-colors">NEW</button>
+          </div>
+          <div id="threads-list" class="space-y-2"></div>
         </section>
       </aside>
 
       <!-- Main Column: Content -->
-      <main id="vm-shell-main" class="lg:col-span-6 space-y-4 overflow-y-auto" aria-label="Workspace Content">
-        <div id="ui-error-banner" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="status" aria-live="polite"></div>
-        <header class="panel hero bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow p-6">
-          <h1 class="text-2xl font-bold">VM Web App Event-Driven Workspace</h1>
-          <p class="mt-2 opacity-90">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
+      <main id="vm-shell-main" class="col-span-12 lg:col-span-6 space-y-6 overflow-y-auto" aria-label="Workspace Content">
+        <div id="ui-error-banner" class="hidden border border-white bg-black text-white px-4 py-3" role="status" aria-live="polite"></div>
+        <header class="border border-white bg-black p-4">
+          <h1 class="text-xl font-bold">VM Web App Event-Driven Workspace</h1>
+          <p class="mt-2 opacity-70 text-sm">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
         </header>
 
-        <section id="studio-toolbar" class="panel bg-white rounded-lg shadow p-4">
-          <div class="flex items-center justify-between gap-3">
+        <section id="studio-toolbar" class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Studio</div>
+          <div class="p-4 pt-8 flex items-center justify-between gap-3">
             <div>
-              <h2 class="text-lg font-semibold">Studio</h2>
-              <p id="studio-status-text" class="text-sm text-gray-600">Select a plan to begin.</p>
+              <p id="studio-status-text" class="text-sm text-gray-400">Select a plan to begin.</p>
             </div>
             <div class="flex items-center gap-2">
-              <button
-                id="studio-create-plan-button"
-                type="button"
-                class="bg-green-600 text-white rounded px-4 py-2"
-              >
-                Create plan
-              </button>
-              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input id="studio-devmode-toggle" type="checkbox" class="rounded" />
-                Dev mode
+              <button id="studio-create-plan-button" type="button" class="border border-white bg-transparent text-white px-4 py-2 hover:bg-white hover:text-black transition-colors">Create plan</button>
+              <label class="inline-flex items-center gap-2 text-sm">
+                <input id="studio-devmode-toggle" type="checkbox" class="accent-white" />
+                <span class="text-gray-400">Dev mode</span>
               </label>
             </div>
           </div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-2">Preview</h3>
-          <pre
-            id="studio-artifact-preview"
-            class="item muted p-3 bg-gray-100 rounded text-sm"
-          >No preview yet.</pre>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Preview</div>
+          <pre id="studio-artifact-preview" class="p-4 pt-8 text-sm text-gray-300">No preview yet.</pre>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-2">Progress</h3>
-          <div id="studio-stage-progress" class="list space-y-2"></div>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Progress</div>
+          <div id="studio-stage-progress" class="p-4 pt-8 space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4" id="thread-workspace-panel">
-          <h2 class="text-lg font-semibold mb-3">Threads</h2>
-          <div class="inline flex gap-2 mb-3">
-            <input id="thread-title-input" placeholder="thread title" class="flex-1 border rounded px-3 py-2" />
-            <button id="thread-create-button" type="button" class="bg-blue-600 text-white rounded px-4 py-2">New Thread</button>
-          </div>
-          <div class="vm-dev-only">
-            <form id="thread-mode-form" class="inline flex gap-2 mb-3">
-              <input id="thread-mode-input" placeholder="mode (e.g. plan_90d)" class="flex-1 border rounded px-3 py-2" />
-              <button type="submit" class="bg-gray-600 text-white rounded px-4 py-2">Add Mode</button>
+        <section class="vm-dev-only border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">DEV_MODE</div>
+          <div class="p-4 pt-8">
+            <form id="thread-mode-form" class="flex gap-2 mb-3">
+              <input id="thread-mode-input" placeholder="mode (e.g. plan_90d)" class="flex-1 bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+              <button type="submit" class="border border-white bg-transparent text-white px-4 py-2 hover:bg-white hover:text-black transition-colors">Add Mode</button>
             </form>
-            <p id="mode-help" class="muted text-sm text-gray-600 mb-4">
-              Mode = contexto operacional da thread (ex.: plan_90d, content_calendar). Voce pode
-              adicionar, editar titulo da thread e remover modes ativos.
+            <p id="mode-help" class="text-sm text-gray-400 mb-4">
+              Mode = contexto operacional da thread (ex.: plan_90d, content_calendar).
             </p>
-          </div>
-          <div id="threads-list" class="list space-y-2 mb-4"></div>
-
-          <div class="vm-dev-only">
-            <h3 class="font-semibold mb-2">Modes</h3>
-            <div id="thread-modes-list" class="list space-y-2 mb-4"></div>
-
-            <h3 class="font-semibold mb-2">Timeline</h3>
-            <div id="timeline-list" class="list space-y-2 mb-4"></div>
-          </div>
-
-          <div class="vm-dev-only">
-            <section class="panel bg-gray-50 rounded-lg p-4" id="workflow-io-panel">
-              <h3 class="font-semibold mb-3">Workflow Input / Output</h3>
-              <form id="workflow-run-form" class="stack space-y-2">
-                <input
-                  id="workflow-request-input"
-                  placeholder="describe the workflow output you need"
-                  class="w-full border rounded px-3 py-2"
-                />
-                <input id="workflow-mode-input" placeholder="mode (default plan_90d)" class="w-full border rounded px-3 py-2" />
-                <textarea
-                  id="workflow-overrides-input"
-                  placeholder='skill overrides JSON (e.g. {"strategy_draft":["04-copy/direct-response"]})'
-                  class="w-full border rounded px-3 py-2 h-20"
-                ></textarea>
-                <button type="submit" class="w-full bg-green-600 text-white rounded px-3 py-2">Run Workflow</button>
-              </form>
-              <h4 class="font-medium mt-4 mb-2">Profile Preview</h4>
-              <div id="workflow-profile-preview-list" class="list space-y-2"></div>
-              <h4 class="font-medium mt-4 mb-2">Runs</h4>
-              <div id="workflow-runs-list" class="list space-y-2"></div>
-              <h4 class="font-medium mt-4 mb-2">Run Detail</h4>
-              <div id="workflow-run-detail-list" class="list space-y-2"></div>
-            </section>
+            <div id="thread-modes-list" class="space-y-2 mb-4"></div>
+            <div id="timeline-list" class="space-y-2 mb-4"></div>
+            <form id="workflow-run-form" class="space-y-2">
+              <input id="workflow-request-input" placeholder="describe the workflow output you need" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+              <input id="workflow-mode-input" placeholder="mode (default plan_90d)" class="w-full bg-black border border-white px-3 py-2 text-white placeholder-gray-500" />
+              <textarea id="workflow-overrides-input" placeholder='skill overrides JSON' class="w-full bg-black border border-white px-3 py-2 h-20 text-white placeholder-gray-500"></textarea>
+              <button type="submit" class="w-full border border-white bg-transparent text-white px-3 py-2 hover:bg-white hover:text-black transition-colors">Run Workflow</button>
+            </form>
+            <div id="workflow-profile-preview-list" class="space-y-2 mt-4"></div>
+            <div id="workflow-runs-list" class="space-y-2 mt-4"></div>
+            <div id="workflow-run-detail-list" class="space-y-2 mt-4"></div>
+            <h4 class="font-medium mt-4 mb-2">Run Detail</h4>
           </div>
         </section>
       </main>
 
       <!-- Right Column: Operations -->
-      <aside id="vm-shell-right" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Operations">
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Tasks</h3>
-          <div id="tasks-list" class="list space-y-2"></div>
+      <aside id="vm-shell-right" class="col-span-12 lg:col-span-3 space-y-6 overflow-y-auto" aria-label="Workspace Operations">
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Task_Board</div>
+          <div id="tasks-list" class="p-4 pt-8 space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Approvals</h3>
-          <div id="approvals-list" class="list space-y-2"></div>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Approvals</div>
+          <div id="approvals-list" class="p-4 pt-8 space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Artifacts</h3>
-          <div id="workflow-artifacts-list" class="list space-y-2"></div>
-          <pre id="workflow-artifact-preview" class="item muted mt-4 p-3 bg-gray-100 rounded text-sm">Select an artifact to preview.</pre>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Artifacts</div>
+          <div id="workflow-artifacts-list" class="p-4 pt-8 space-y-2"></div>
+          <pre id="workflow-artifact-preview" class="p-4 text-sm text-gray-300">Select an artifact to preview.</pre>
         </section>
       </aside>
     </div>

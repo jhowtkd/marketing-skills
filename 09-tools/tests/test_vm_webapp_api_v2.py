@@ -7,6 +7,7 @@ from vm_webapp.app import create_app
 from vm_webapp.db import session_scope
 from vm_webapp.models import ApprovalView, BrandView, ProjectView, TaskView, ThreadView
 from vm_webapp.settings import Settings
+from vm_webapp.workflow_runtime_v2 import FoundationStageResult
 
 
 def test_v2_create_and_list_brand_and_project(tmp_path: Path) -> None:
@@ -496,3 +497,89 @@ def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path
     assert resumed_2.status_code == 200
     assert resumed_1.json()["status"] == "completed"
     assert resumed_2.json()["status"] == "completed"
+
+
+def test_api_approval_cycle_moves_to_next_gate_without_failed_run(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    brand_id = client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "cycle-b"}, json={"name": "Acme"}
+    ).json()["brand_id"]
+    project_id = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "cycle-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    ).json()["project_id"]
+    thread_id = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "cycle-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()["thread_id"]
+
+    run_id = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "cycle-run"},
+        json={"request_text": "Generate plan assets", "mode": "content_calendar"},
+    ).json()["run_id"]
+
+    detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
+    assert detail["status"] == "waiting_approval"
+    pending = detail["pending_approvals"]
+    assert pending
+    approval_id = pending[0]["approval_id"]
+
+    runtime = client.app.state.workflow_runtime
+    execute_calls = {"count": 0}
+
+    def _reentrant_execute_stage(**kwargs):
+        execute_calls["count"] += 1
+        if execute_calls["count"] == 1:
+            with session_scope(client.app.state.engine) as nested_session:
+                runtime.process_event(
+                    session=nested_session,
+                    event_type="WorkflowRunResumed",
+                    payload={
+                        "thread_id": thread_id,
+                        "brand_id": brand_id,
+                        "project_id": project_id,
+                        "run_id": run_id,
+                        "request_text": "Generate plan assets",
+                    },
+                    actor_id="agent:vm-workflow",
+                    causation_id="evt-api-reentrant",
+                    correlation_id="evt-api-reentrant",
+                )
+            return FoundationStageResult(
+                stage_key=str(kwargs["stage_key"]),
+                pipeline_status="waiting_approval",
+                output_payload={"summary": "ok", "mode": "foundation_stack"},
+                artifacts={"strategy/brand-voice-guide.md": "# Brand voice"},
+            )
+
+        return FoundationStageResult(
+            stage_key=str(kwargs["stage_key"]),
+            pipeline_status="failed",
+            output_payload={},
+            artifacts={},
+            error_code="foundation_execution_error",
+            error_message="Stage brand-voice cannot be approved while current_stage is positioning",
+            retryable=False,
+        )
+
+    runtime.foundation_runner.execute_stage = _reentrant_execute_stage
+
+    granted = client.post(
+        f"/api/v2/approvals/{approval_id}/grant",
+        headers={"Idempotency-Key": "cycle-grant"},
+    )
+    assert granted.status_code == 200
+
+    final = wait_for_run_status(client, run_id, {"waiting_approval", "completed", "failed"})
+    assert final["status"] in {"waiting_approval", "completed"}
+    assert all(stage["error_code"] is None for stage in final["stages"])

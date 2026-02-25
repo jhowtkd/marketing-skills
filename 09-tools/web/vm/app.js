@@ -217,10 +217,11 @@ function clearAndRender(container, rows, renderItem) {
   }
 }
 
-function createActionButton(label, onClick) {
+function createActionButton(label, onClick, variant = "default") {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "ghost";
+  const variantClass = variant === "danger" ? "vm-terminal-btn--danger" : "";
+  button.className = `vm-terminal-btn ${variantClass}`.trim();
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
