@@ -4,6 +4,7 @@ from pathlib import Path
 from vm_webapp.db import build_engine, init_db, session_scope
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.models import ThreadView
+from vm_webapp.repo import list_stages, update_run_status
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
 
@@ -101,3 +102,40 @@ def test_runtime_persists_requested_and_effective_mode_snapshot(tmp_path: Path) 
     assert plan["requested_mode"] == "content_calendar"
     assert plan["effective_mode"] == "foundation_stack"
     assert plan["profile_version"] == "v1"
+
+
+def test_execute_queued_run_noops_when_run_already_running(tmp_path: Path) -> None:
+    runtime = build_runtime(tmp_path, force_foundation=True)
+
+    with session_scope(runtime.engine) as session:
+        runtime.ensure_queued_run(
+            session=session,
+            run_id="run-1",
+            thread_id="t1",
+            brand_id="b1",
+            project_id="p1",
+            request_text="Build assets",
+            mode="content_calendar",
+            skill_overrides={},
+        )
+        update_run_status(session, run_id="run-1", status="running")
+
+    def _unexpected_execute_stage(**_kwargs):
+        raise AssertionError("stage execution should not run when run status is already running")
+
+    runtime.foundation_runner.execute_stage = _unexpected_execute_stage
+
+    with session_scope(runtime.engine) as session:
+        result = runtime.execute_queued_run(
+            session=session,
+            run_id="run-1",
+            actor_id="agent:test",
+            causation_id="evt-test",
+            correlation_id="evt-test",
+            trigger_event_type="WorkflowRunResumed",
+        )
+        stages = list_stages(session, "run-1")
+
+    assert result == {"run_id": "run-1", "status": "running"}
+    assert stages[0].status == "pending"
+    assert stages[0].attempts == 0

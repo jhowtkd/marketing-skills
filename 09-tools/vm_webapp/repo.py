@@ -191,6 +191,23 @@ def update_run_status(session: Session, run_id: str, status: str) -> None:
     )
 
 
+def claim_run_for_execution(
+    session: Session,
+    *,
+    run_id: str,
+    allowed_statuses: tuple[str, ...],
+    target_status: str = "running",
+) -> bool:
+    if not allowed_statuses:
+        return False
+    result = session.execute(
+        update(Run)
+        .where(Run.run_id == run_id, Run.status.in_(allowed_statuses))
+        .values(status=target_status, updated_at=_now_iso())
+    )
+    return int(result.rowcount or 0) > 0
+
+
 def create_stage(
     session: Session,
     *,

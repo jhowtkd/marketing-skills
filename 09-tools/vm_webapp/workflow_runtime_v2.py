@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -16,6 +17,7 @@ from vm_webapp.memory import MemoryIndex
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.repo import (
     append_event,
+    claim_run_for_execution,
     create_run,
     create_stage,
     get_approval_view,
@@ -72,6 +74,8 @@ class WorkflowRuntimeV2:
         )
         self.force_foundation_fallback = force_foundation_fallback
         self.foundation_mode = foundation_mode
+        self._run_locks_guard = threading.Lock()
+        self._run_locks: dict[str, threading.Lock] = {}
 
     def list_profiles(self) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []
@@ -277,178 +281,225 @@ class WorkflowRuntimeV2:
             raise ValueError(f"run not found: {run_id}")
         if run.status in {"completed", "failed", "canceled"}:
             return {"run_id": run.run_id, "status": run.status}
+        run_lock = self._acquire_run_lock(run_id)
+        if run_lock is None:
+            current = get_run(session, run_id)
+            if current is None:
+                raise ValueError(f"run not found: {run_id}")
+            return {"run_id": current.run_id, "status": current.status}
+        try:
+            initial_status = run.status
+            if initial_status == "running":
+                return {"run_id": run.run_id, "status": "running"}
+            if initial_status not in {"queued", "waiting_approval"}:
+                return {"run_id": run.run_id, "status": initial_status}
 
-        plan = self._load_run_plan(run_id)
-        stage_map = {stage["key"]: stage for stage in plan["stages"]}
-        run_mode = self._effective_mode(plan)
-
-        if run.status == "queued":
-            update_run_status(session, run_id=run_id, status="running")
-            self._append_thread_event(
-                session=session,
-                thread_id=run.thread_id,
-                brand_id=run.brand_id,
-                project_id=run.product_id,
-                actor_id=actor_id,
-                event_type="WorkflowRunStarted",
-                payload={
-                    "thread_id": run.thread_id,
-                    "run_id": run.run_id,
-                    "mode": run_mode,
-                    "trigger_event_type": trigger_event_type,
-                },
-                causation_id=causation_id,
-                correlation_id=correlation_id,
+            claimed = claim_run_for_execution(
+                session,
+                run_id=run_id,
+                allowed_statuses=(initial_status,),
+                target_status="running",
             )
+            if not claimed:
+                current = get_run(session, run_id)
+                if current is None:
+                    raise ValueError(f"run not found: {run_id}")
+                return {"run_id": current.run_id, "status": current.status}
 
-        if run.status == "waiting_approval":
-            update_run_status(session, run_id=run_id, status="running")
+            plan = self._load_run_plan(run_id)
+            stage_map = {stage["key"]: stage for stage in plan["stages"]}
+            run_mode = self._effective_mode(plan)
 
-        for stage in list_stages(session, run_id):
-            if stage.status == "completed":
-                continue
-            stage_cfg = stage_map.get(stage.stage_id)
-            if stage_cfg is None:
-                continue
-
-            approval_id = self._approval_id(run_id, stage.stage_id)
-            task_id = self._task_id(run_id, stage.stage_id)
-            approval = get_approval_view(session, approval_id)
-            if stage_cfg["approval_required"] and (
-                approval is None or approval.status != "granted"
-            ):
-                if stage.status != "waiting_approval":
-                    update_stage_status(
-                        session,
-                        stage_pk=stage.stage_pk,
-                        status="waiting_approval",
-                        attempts=stage.attempts,
-                    )
-                    update_run_status(session, run_id=run_id, status="waiting_approval")
-                    self._append_thread_event(
-                        session=session,
-                        thread_id=run.thread_id,
-                        brand_id=run.brand_id,
-                        project_id=run.product_id,
-                        actor_id=actor_id,
-                        event_type="WorkflowRunWaitingApproval",
-                        payload={
-                            "thread_id": run.thread_id,
-                            "run_id": run.run_id,
-                            "stage_key": stage.stage_id,
-                            "approval_id": approval_id,
-                            "task_id": task_id,
-                        },
-                        causation_id=causation_id,
-                        correlation_id=correlation_id,
-                    )
-                    self._append_thread_event(
-                        session=session,
-                        thread_id=run.thread_id,
-                        brand_id=run.brand_id,
-                        project_id=run.product_id,
-                        actor_id=actor_id,
-                        event_type="TaskCreated",
-                        payload={
-                            "thread_id": run.thread_id,
-                            "run_id": run.run_id,
-                            "task_id": task_id,
-                            "title": f"Review stage {stage.stage_id}",
-                            "stage_key": stage.stage_id,
-                        },
-                        causation_id=causation_id,
-                        correlation_id=correlation_id,
-                    )
-                    self._append_thread_event(
-                        session=session,
-                        thread_id=run.thread_id,
-                        brand_id=run.brand_id,
-                        project_id=run.product_id,
-                        actor_id=actor_id,
-                        event_type="ApprovalRequested",
-                        payload={
-                            "thread_id": run.thread_id,
-                            "approval_id": approval_id,
-                            "reason": f"workflow_gate:{run_id}:{stage.stage_id}",
-                            "required_role": "editor",
-                        },
-                        causation_id=causation_id,
-                        correlation_id=correlation_id,
-                    )
-                self._write_run_summary(
-                    run_id=run_id,
-                    status="waiting_approval",
-                    thread_id=run.thread_id,
-                    brand_id=run.brand_id,
-                    project_id=run.product_id,
-                    mode=run_mode,
-                )
-                return {"run_id": run.run_id, "status": "waiting_approval"}
-
-            attempts = stage.attempts + 1
-            self._append_thread_event(
-                session=session,
-                thread_id=run.thread_id,
-                brand_id=run.brand_id,
-                project_id=run.product_id,
-                actor_id=actor_id,
-                event_type="WorkflowRunStageStarted",
-                payload={
-                    "thread_id": run.thread_id,
-                    "run_id": run.run_id,
-                    "stage_key": stage.stage_id,
-                    "attempt": attempts,
-                    "skills": list(stage_cfg["skills"]),
-                },
-                causation_id=causation_id,
-                correlation_id=correlation_id,
-            )
-            try:
-                manifest = self._execute_stage(
-                    run_id=run.run_id,
-                    thread_id=run.thread_id,
-                    project_id=run.product_id,
-                    request_text=run.user_request,
-                    mode=run_mode,
-                    stage_key=stage.stage_id,
-                    stage_position=stage.position,
-                    skills=list(stage_cfg["skills"]),
-                    attempts=attempts,
-                )
-            except Exception as exc:
-                default_retryable = attempts < int(stage_cfg["retry_policy"]["max_attempts"])
-                error_code = "stage_execution_error"
-                error_message = str(exc)
-                retryable = default_retryable
-                if isinstance(exc, StageExecutionError):
-                    error_code = exc.error_code
-                    error_message = exc.error_message
-                    retryable = exc.retryable and default_retryable
-                update_stage_status(
-                    session,
-                    stage_pk=stage.stage_pk,
-                    status="failed",
-                    attempts=attempts,
-                )
-                update_run_status(session, run_id=run_id, status="failed")
+            if initial_status == "queued":
                 self._append_thread_event(
                     session=session,
                     thread_id=run.thread_id,
                     brand_id=run.brand_id,
                     project_id=run.product_id,
                     actor_id=actor_id,
-                    event_type="WorkflowRunStageFailed",
+                    event_type="WorkflowRunStarted",
+                    payload={
+                        "thread_id": run.thread_id,
+                        "run_id": run.run_id,
+                        "mode": run_mode,
+                        "trigger_event_type": trigger_event_type,
+                    },
+                    causation_id=causation_id,
+                    correlation_id=correlation_id,
+                )
+
+            for stage in list_stages(session, run_id):
+                if stage.status == "completed":
+                    continue
+                stage_cfg = stage_map.get(stage.stage_id)
+                if stage_cfg is None:
+                    continue
+
+                approval_id = self._approval_id(run_id, stage.stage_id)
+                task_id = self._task_id(run_id, stage.stage_id)
+                approval = get_approval_view(session, approval_id)
+                if stage_cfg["approval_required"] and (
+                    approval is None or approval.status != "granted"
+                ):
+                    if stage.status != "waiting_approval":
+                        update_stage_status(
+                            session,
+                            stage_pk=stage.stage_pk,
+                            status="waiting_approval",
+                            attempts=stage.attempts,
+                        )
+                        update_run_status(session, run_id=run_id, status="waiting_approval")
+                        self._append_thread_event(
+                            session=session,
+                            thread_id=run.thread_id,
+                            brand_id=run.brand_id,
+                            project_id=run.product_id,
+                            actor_id=actor_id,
+                            event_type="WorkflowRunWaitingApproval",
+                            payload={
+                                "thread_id": run.thread_id,
+                                "run_id": run.run_id,
+                                "stage_key": stage.stage_id,
+                                "approval_id": approval_id,
+                                "task_id": task_id,
+                            },
+                            causation_id=causation_id,
+                            correlation_id=correlation_id,
+                        )
+                        self._append_thread_event(
+                            session=session,
+                            thread_id=run.thread_id,
+                            brand_id=run.brand_id,
+                            project_id=run.product_id,
+                            actor_id=actor_id,
+                            event_type="TaskCreated",
+                            payload={
+                                "thread_id": run.thread_id,
+                                "run_id": run.run_id,
+                                "task_id": task_id,
+                                "title": f"Review stage {stage.stage_id}",
+                                "stage_key": stage.stage_id,
+                            },
+                            causation_id=causation_id,
+                            correlation_id=correlation_id,
+                        )
+                        self._append_thread_event(
+                            session=session,
+                            thread_id=run.thread_id,
+                            brand_id=run.brand_id,
+                            project_id=run.product_id,
+                            actor_id=actor_id,
+                            event_type="ApprovalRequested",
+                            payload={
+                                "thread_id": run.thread_id,
+                                "approval_id": approval_id,
+                                "reason": f"workflow_gate:{run_id}:{stage.stage_id}",
+                                "required_role": "editor",
+                            },
+                            causation_id=causation_id,
+                            correlation_id=correlation_id,
+                        )
+                    self._write_run_summary(
+                        run_id=run_id,
+                        status="waiting_approval",
+                        thread_id=run.thread_id,
+                        brand_id=run.brand_id,
+                        project_id=run.product_id,
+                        mode=run_mode,
+                    )
+                    return {"run_id": run.run_id, "status": "waiting_approval"}
+
+                attempts = stage.attempts + 1
+                self._append_thread_event(
+                    session=session,
+                    thread_id=run.thread_id,
+                    brand_id=run.brand_id,
+                    project_id=run.product_id,
+                    actor_id=actor_id,
+                    event_type="WorkflowRunStageStarted",
                     payload={
                         "thread_id": run.thread_id,
                         "run_id": run.run_id,
                         "stage_key": stage.stage_id,
                         "attempt": attempts,
-                        "error_code": error_code,
-                        "error_message": error_message,
-                        "retryable": retryable,
+                        "skills": list(stage_cfg["skills"]),
                     },
                     causation_id=causation_id,
                     correlation_id=correlation_id,
+                )
+                try:
+                    manifest = self._execute_stage(
+                        run_id=run.run_id,
+                        thread_id=run.thread_id,
+                        project_id=run.product_id,
+                        request_text=run.user_request,
+                        mode=run_mode,
+                        stage_key=stage.stage_id,
+                        stage_position=stage.position,
+                        skills=list(stage_cfg["skills"]),
+                        attempts=attempts,
+                    )
+                except Exception as exc:
+                    default_retryable = attempts < int(stage_cfg["retry_policy"]["max_attempts"])
+                    error_code = "stage_execution_error"
+                    error_message = str(exc)
+                    retryable = default_retryable
+                    if isinstance(exc, StageExecutionError):
+                        error_code = exc.error_code
+                        error_message = exc.error_message
+                        retryable = exc.retryable and default_retryable
+                    update_stage_status(
+                        session,
+                        stage_pk=stage.stage_pk,
+                        status="failed",
+                        attempts=attempts,
+                    )
+                    update_run_status(session, run_id=run_id, status="failed")
+                    self._append_thread_event(
+                        session=session,
+                        thread_id=run.thread_id,
+                        brand_id=run.brand_id,
+                        project_id=run.product_id,
+                        actor_id=actor_id,
+                        event_type="WorkflowRunStageFailed",
+                        payload={
+                            "thread_id": run.thread_id,
+                            "run_id": run.run_id,
+                            "stage_key": stage.stage_id,
+                            "attempt": attempts,
+                            "error_code": error_code,
+                            "error_message": error_message,
+                            "retryable": retryable,
+                        },
+                        causation_id=causation_id,
+                        correlation_id=correlation_id,
+                    )
+                    self._append_thread_event(
+                        session=session,
+                        thread_id=run.thread_id,
+                        brand_id=run.brand_id,
+                        project_id=run.product_id,
+                        actor_id=actor_id,
+                        event_type="WorkflowRunFailed",
+                        payload={"thread_id": run.thread_id, "run_id": run.run_id},
+                        causation_id=causation_id,
+                        correlation_id=correlation_id,
+                    )
+                    self._write_run_summary(
+                        run_id=run_id,
+                        status="failed",
+                        thread_id=run.thread_id,
+                        brand_id=run.brand_id,
+                        project_id=run.product_id,
+                        mode=run_mode,
+                    )
+                    return {"run_id": run.run_id, "status": "failed"}
+
+                update_stage_status(
+                    session,
+                    stage_pk=stage.stage_pk,
+                    status="completed",
+                    attempts=attempts,
                 )
                 self._append_thread_event(
                     session=session,
@@ -456,66 +507,41 @@ class WorkflowRuntimeV2:
                     brand_id=run.brand_id,
                     project_id=run.product_id,
                     actor_id=actor_id,
-                    event_type="WorkflowRunFailed",
-                    payload={"thread_id": run.thread_id, "run_id": run.run_id},
+                    event_type="WorkflowRunStageCompleted",
+                    payload={
+                        "thread_id": run.thread_id,
+                        "run_id": run.run_id,
+                        "stage_key": stage.stage_id,
+                        "attempt": attempts,
+                        "artifact_count": len(manifest["artifacts"]),
+                    },
                     causation_id=causation_id,
                     correlation_id=correlation_id,
                 )
-                self._write_run_summary(
-                    run_id=run_id,
-                    status="failed",
-                    thread_id=run.thread_id,
-                    brand_id=run.brand_id,
-                    project_id=run.product_id,
-                    mode=run_mode,
-                )
-                return {"run_id": run.run_id, "status": "failed"}
 
-            update_stage_status(
-                session,
-                stage_pk=stage.stage_pk,
-                status="completed",
-                attempts=attempts,
-            )
+            update_run_status(session, run_id=run_id, status="completed")
             self._append_thread_event(
                 session=session,
                 thread_id=run.thread_id,
                 brand_id=run.brand_id,
                 project_id=run.product_id,
                 actor_id=actor_id,
-                event_type="WorkflowRunStageCompleted",
-                payload={
-                    "thread_id": run.thread_id,
-                    "run_id": run.run_id,
-                    "stage_key": stage.stage_id,
-                    "attempt": attempts,
-                    "artifact_count": len(manifest["artifacts"]),
-                },
+                event_type="WorkflowRunCompleted",
+                payload={"thread_id": run.thread_id, "run_id": run.run_id},
                 causation_id=causation_id,
                 correlation_id=correlation_id,
             )
-
-        update_run_status(session, run_id=run_id, status="completed")
-        self._append_thread_event(
-            session=session,
-            thread_id=run.thread_id,
-            brand_id=run.brand_id,
-            project_id=run.product_id,
-            actor_id=actor_id,
-            event_type="WorkflowRunCompleted",
-            payload={"thread_id": run.thread_id, "run_id": run.run_id},
-            causation_id=causation_id,
-            correlation_id=correlation_id,
-        )
-        self._write_run_summary(
-            run_id=run_id,
-            status="completed",
-            thread_id=run.thread_id,
-            brand_id=run.brand_id,
-            project_id=run.product_id,
-            mode=run_mode,
-        )
-        return {"run_id": run.run_id, "status": "completed"}
+            self._write_run_summary(
+                run_id=run_id,
+                status="completed",
+                thread_id=run.thread_id,
+                brand_id=run.brand_id,
+                project_id=run.product_id,
+                mode=run_mode,
+            )
+            return {"run_id": run.run_id, "status": "completed"}
+        finally:
+            run_lock.release()
 
     def _execute_stage(
         self,
@@ -674,6 +700,15 @@ class WorkflowRuntimeV2:
 
     def _run_root(self, run_id: str) -> Path:
         return self.workspace.root / "runs" / run_id
+
+    def _acquire_run_lock(self, run_id: str) -> threading.Lock | None:
+        with self._run_locks_guard:
+            lock = self._run_locks.get(run_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._run_locks[run_id] = lock
+        acquired = lock.acquire(blocking=False)
+        return lock if acquired else None
 
     def _stage_dir(self, run_id: str, stage_position: int, stage_key: str) -> Path:
         return self._run_root(run_id) / "stages" / f"{stage_position + 1:02d}-{stage_key}"

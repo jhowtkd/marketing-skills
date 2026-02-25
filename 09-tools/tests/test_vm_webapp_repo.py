@@ -2,11 +2,14 @@ from pathlib import Path
 
 from vm_webapp.db import build_engine, init_db, session_scope
 from vm_webapp.repo import (
+    claim_run_for_execution,
     close_thread,
     create_brand,
     create_product,
+    create_run,
     create_thread,
     get_product,
+    get_run,
     get_thread,
     list_brands,
     list_threads,
@@ -116,3 +119,40 @@ def test_thread_roundtrip_and_close(tmp_path: Path) -> None:
         thread = get_thread(session, thread_id="t1")
         assert thread is not None
         assert thread.status == "closed"
+
+
+def test_claim_run_for_execution_allows_single_winner(tmp_path: Path) -> None:
+    engine = build_engine(tmp_path / "db.sqlite3")
+    init_db(engine)
+
+    with session_scope(engine) as session:
+        create_run(
+            session,
+            run_id="run-1",
+            brand_id="b1",
+            product_id="p1",
+            thread_id="t1",
+            stack_path="foundation_stack",
+            user_request="request",
+            status="queued",
+        )
+
+    with session_scope(engine) as session:
+        first = claim_run_for_execution(
+            session,
+            run_id="run-1",
+            allowed_statuses=("queued", "waiting_approval"),
+            target_status="running",
+        )
+        second = claim_run_for_execution(
+            session,
+            run_id="run-1",
+            allowed_statuses=("queued", "waiting_approval"),
+            target_status="running",
+        )
+        run = get_run(session, "run-1")
+
+    assert first is True
+    assert second is False
+    assert run is not None
+    assert run.status == "running"
