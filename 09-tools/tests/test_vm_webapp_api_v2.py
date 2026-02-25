@@ -158,7 +158,7 @@ def test_v2_collaboration_flow_comment_task_complete_and_approval(
     assert done.status_code == 200
 
     granted = client.post(
-        "/api/v2/approvals/apr-1/grant",
+        "/api/v2/approvals/apr-1/grant-and-resume",
         headers={"Idempotency-Key": "apr-1-grant"},
     )
     assert granted.status_code == 200
@@ -360,10 +360,15 @@ def test_v2_workflow_run_endpoints_queue_resume_and_list_artifacts(tmp_path: Pat
         assert pending
         approval_id = pending[0]["approval_id"]
         granted = client.post(
-            f"/api/v2/approvals/{approval_id}/grant",
+            f"/api/v2/approvals/{approval_id}/grant-and-resume",
             headers={"Idempotency-Key": f"run-approval-{approvals}"},
         )
         assert granted.status_code == 200
+        # Verify new response fields
+        grant_body = granted.json()
+        assert "run_id" in grant_body
+        assert "resume_applied" in grant_body
+        assert "run_status" in grant_body
         approvals += 1
         detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
 
@@ -474,7 +479,7 @@ def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path
             pending = payload["pending_approvals"]
             assert pending
             granted = client.post(
-                f"/api/v2/approvals/{pending[0]['approval_id']}/grant",
+                f"/api/v2/approvals/{pending[0]['approval_id']}/grant-and-resume",
                 headers={"Idempotency-Key": f"idem-approval-{approvals}"},
             )
             assert granted.status_code == 200
@@ -483,16 +488,90 @@ def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path
     else:
         raise AssertionError("run did not complete in time")
 
-    resumed_1 = client.post(
+    # Legacy resume endpoint should now return 404
+    resumed_legacy = client.post(
         f"/api/v2/workflow-runs/{run_id}/resume",
-        headers={"Idempotency-Key": "idem-resume-1"},
+        headers={"Idempotency-Key": "idem-resume-legacy"},
     )
-    resumed_2 = client.post(
-        f"/api/v2/workflow-runs/{run_id}/resume",
-        headers={"Idempotency-Key": "idem-resume-2"},
-    )
+    assert resumed_legacy.status_code == 404
 
-    assert resumed_1.status_code == 200
-    assert resumed_2.status_code == 200
-    assert resumed_1.json()["status"] == "completed"
-    assert resumed_2.json()["status"] == "completed"
+
+def test_v2_grant_and_resume_endpoint_returns_orchestrated_payload(tmp_path: Path) -> None:
+    """Test that grant-and-resume returns complete orchestrated payload with run metadata."""
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    # Setup: brand, project, thread
+    client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "gar-b"}, json={"name": "Acme"}
+    )
+    brand_id = client.get("/api/v2/brands").json()["brands"][0]["brand_id"]
+
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "gar-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    )
+    project_id = client.get("/api/v2/projects", params={"brand_id": brand_id}).json()[
+        "projects"
+    ][0]["project_id"]
+
+    thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "gar-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()
+
+    # Start a workflow run
+    started = client.post(
+        f"/api/v2/threads/{thread['thread_id']}/workflow-runs",
+        headers={"Idempotency-Key": "gar-run"},
+        json={"request_text": "Generate plan assets", "mode": "plan_90d"},
+    )
+    assert started.status_code == 200
+    run_id = started.json()["run_id"]
+
+    # Wait for waiting_approval status
+    detail = wait_for_run_status(client, run_id, {"waiting_approval"})
+    pending = detail["pending_approvals"]
+    assert pending
+    approval_id = pending[0]["approval_id"]
+
+    # Call grant-and-resume endpoint
+    response = client.post(
+        f"/api/v2/approvals/{approval_id}/grant-and-resume",
+        headers={"Idempotency-Key": "approval-gar-1"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    
+    # Verify response structure
+    assert body["approval_id"] == approval_id
+    assert body["run_id"] == run_id
+    assert "resume_applied" in body
+    assert "run_status" in body
+    assert "event_ids" in body
+    assert "approval_status" in body
+
+
+def test_v2_legacy_grant_and_resume_routes_are_removed(tmp_path: Path) -> None:
+    """Test that legacy grant and resume endpoints return 404 or 405 (not found)."""
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    old_grant = client.post("/api/v2/approvals/apr-1/grant", headers={"Idempotency-Key": "x"})
+    old_resume = client.post("/api/v2/workflow-runs/run-1/resume", headers={"Idempotency-Key": "y"})
+    
+    # Both 404 and 405 indicate the route is not available
+    assert old_grant.status_code in (404, 405)
+    assert old_resume.status_code in (404, 405)

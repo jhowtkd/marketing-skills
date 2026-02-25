@@ -17,6 +17,7 @@ from vm_webapp.commands_v2 import (
     create_brand_command,
     create_project_command,
     create_thread_command,
+    grant_and_resume_approval_command,
     grant_approval_command,
     remove_thread_mode_command,
     rename_thread_command,
@@ -591,23 +592,29 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
     }
 
 
-@router.post("/v2/workflow-runs/{run_id}/resume")
-def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
+@router.post("/v2/approvals/{approval_id}/grant-and-resume")
+def grant_and_resume_approval_v2(approval_id: str, request: Request) -> dict[str, object]:
+    """Grant approval and resume workflow run in a single orchestrated action."""
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
-        result = resume_workflow_run_command(
+        result = grant_and_resume_approval_command(
             session,
-            run_id=run_id,
+            approval_id=approval_id,
             actor_id="workspace-owner",
             idempotency_key=idem,
         )
-        if result.event_id.startswith("evt-"):
-            project_command_event(session, event_id=result.event_id)
-    payload = json.loads(result.response_json)
-    return {
-        "run_id": str(payload.get("run_id", run_id)),
-        "status": str(payload.get("status", "running")),
-    }
+        for event_id in json.loads(result.response_json).get("event_ids", []):
+            if str(event_id).startswith("evt-"):
+                project_command_event(session, event_id=event_id)
+
+    pump_event_worker(request, max_events=40)
+
+    with session_scope(request.app.state.engine) as session:
+        payload = json.loads(result.response_json)
+        run_id = payload.get("run_id")
+        run = get_run(session, run_id) if run_id else None
+        payload["run_status"] = run.status if run is not None else payload.get("run_status", "unknown")
+        return payload
 
 
 @router.get("/v2/workflow-runs/{run_id}/artifact-content")
@@ -726,20 +733,6 @@ def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
         )
         project_command_event(session, event_id=result.event_id)
     return {"event_id": result.event_id, "task_id": task_id}
-
-
-@router.post("/v2/approvals/{approval_id}/grant")
-def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
-    idem = require_idempotency(request)
-    with session_scope(request.app.state.engine) as session:
-        result = grant_approval_command(
-            session,
-            approval_id=approval_id,
-            actor_id="workspace-owner",
-            idempotency_key=idem,
-        )
-        project_command_event(session, event_id=result.event_id)
-    return {"event_id": result.event_id, "approval_id": approval_id}
 
 
 @router.post("/v2/threads/{thread_id}/agent-plan/start")
