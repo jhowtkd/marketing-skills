@@ -231,6 +231,48 @@ python3 09-tools/onboard_web.py serve --host 127.0.0.1 --port 8765
 
 ---
 
+## 🚀 VM WebApp v2 Runtime & Tooling
+
+O VM WebApp evoluiu de um simples wrapper para um orquestrador resiliente orientado a eventos (`Event-Driven`).
+
+### 1. Domínio Hierárquico
+
+A estrutura de dados reflete a hierarquia de marketing real:
+- **Brand:** Identidade global, Soul, Brand Voice.
+- **Campaign:** Iniciativas temporais (ex: "Summer Sale").
+- **Task:** Unidades de trabalho (ex: "Draft Email").
+- **Thread:** Canal de comunicação e histórico.
+- **Run:** Instância de execução de um workflow.
+
+### 2. Context Resolver (Immutable Snapshots)
+
+Para garantir reprodutibilidade, cada `Run` utiliza um snapshot imutável do contexto:
+1. **Resolution:** Merge hierárquico `Brand -> Campaign -> Task`.
+2. **Policy:** Apenas campos permitidos (`tone`, `objective`, etc.) podem ser sobrescritos.
+3. **Snapshot:** O contexto resolvido é persistido no início do run.
+
+### 3. Tool Layer & Governance
+
+O runtime não executa lógica diretamente, mas invoca ferramentas através do `ToolExecutor`:
+- **Registry:** Descoberta de ferramentas via `ToolContract`.
+- **Governance:** Autorização por Brand, Rate-limiting e gestão de segredos (`ToolCredentialRef`).
+- **Audit:** Cada chamada de ferramenta gera um evento de auditoria no `EventLog`.
+
+### 4. RAG Pipeline (Hierarchical Retrieval)
+
+Módulo de memória persistente para aprendizado contínuo:
+- **Ingestion:** Fragmentação (`Chunker`) e indexação de artefatos de runs finalizados.
+- **Retrieval:** Busca semântica com filtros de `brand_id` e boosting para `campaign_id` atual.
+- **Storage:** Baseado no `MemoryIndex` (vetores esparsos e metadados).
+
+### 5. Resiliência e Observabilidade
+
+- **Resilience:** Políticas de `Retry` (com backoff), `FallbackChain` (troca de LLM/Provider) e `CircuitBreaker`.
+- **Metrics:** Coleta de latência, custo (tokens/infra) e health por stage.
+- **Event Sourcing:** Todo o estado do sistema é derivado do `EventLog`, permitindo rebuild de projeções e auditoria completa.
+
+---
+
 ## 💾 Sistema de Contexto
 
 ### Checkpoint System
