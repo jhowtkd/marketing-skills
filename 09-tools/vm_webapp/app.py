@@ -15,6 +15,7 @@ from vm_webapp.memory import MemoryIndex
 from vm_webapp.orchestrator_v2 import configure_workflow_executor
 from vm_webapp.run_engine import RunEngine
 from vm_webapp.settings import Settings
+from vm_webapp.startup_checks import validate_startup_contract
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
 
@@ -33,6 +34,7 @@ def create_app(
     llm: Any | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    validate_startup_contract(settings)
 
     app = FastAPI(title="VM Web App")
     app.add_exception_handler(ValueError, value_error_to_http)
