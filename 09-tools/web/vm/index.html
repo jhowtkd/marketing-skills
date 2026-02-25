@@ -11,7 +11,7 @@
   <body class="min-h-screen bg-gray-50">
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-screen">
       <!-- Left Column: Navigation -->
-      <aside id="vm-shell-left" class="lg:col-span-3 space-y-4 overflow-y-auto">
+      <aside id="vm-shell-left" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Navigation">
         <section class="panel bg-white rounded-lg shadow p-4" id="brand-workspace-panel">
           <h2 class="text-lg font-semibold mb-3">Brands</h2>
           <form id="brand-create-form" class="stack space-y-2">
@@ -35,7 +35,7 @@
       </aside>
 
       <!-- Main Column: Content -->
-      <main id="vm-shell-main" class="lg:col-span-6 space-y-4 overflow-y-auto">
+      <main id="vm-shell-main" class="lg:col-span-6 space-y-4 overflow-y-auto" aria-label="Workspace Content">
         <div id="ui-error-banner" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="status" aria-live="polite"></div>
         <header class="panel hero bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow p-6">
           <h1 class="text-2xl font-bold">VM Web App Event-Driven Workspace</h1>
@@ -91,7 +91,7 @@
       </main>
 
       <!-- Right Column: Operations -->
-      <aside id="vm-shell-right" class="lg:col-span-3 space-y-4 overflow-y-auto">
+      <aside id="vm-shell-right" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Operations">
         <section class="panel bg-white rounded-lg shadow p-4">
           <h3 class="font-semibold mb-3">Tasks</h3>
           <div id="tasks-list" class="list space-y-2"></div>

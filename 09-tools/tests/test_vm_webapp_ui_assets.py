@@ -2,6 +2,15 @@ import re
 from pathlib import Path
 
 
+def test_vm_index_shell_has_mobile_stack_and_accessibility_landmarks() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert 'aria-label="Workspace Navigation"' in html
+    assert 'aria-label="Workspace Content"' in html
+    assert 'aria-label="Workspace Operations"' in html
+    assert "lg:grid" in html or "lg:flex" in html
+    assert "overflow-y-auto" in html
+
+
 def test_vm_app_js_has_timeline_style_map_and_error_banner_hooks() -> None:
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
