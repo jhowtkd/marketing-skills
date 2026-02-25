@@ -425,6 +425,13 @@ function renderWorkflowRuns(items) {
   clearAndRender(workflowRunsList, items, (run) => {
     const row = document.createElement("div");
     row.className = "item";
+    
+    // Highlight waiting_approval status
+    if (run.status === "waiting_approval") {
+      row.style.borderLeft = "4px solid #ff9800";
+      row.style.backgroundColor = "#fff8e1";
+    }
+    
     const bar = document.createElement("div");
     bar.className = "inline";
     const label = document.createElement("div");
@@ -434,7 +441,10 @@ function renderWorkflowRuns(items) {
       requestedMode === effectiveMode
         ? `mode=${effectiveMode}`
         : `mode=${requestedMode} -> ${effectiveMode}`;
-    label.textContent = `${run.run_id} (${run.status}) ${run.completed_stages || 0}/${run.total_stages || 0} ${modeLabel}`;
+    
+    // Add visual indicator for waiting_approval
+    const statusPrefix = run.status === "waiting_approval" ? "⏸️ " : "";
+    label.textContent = `${statusPrefix}${run.run_id} (${run.status}) ${run.completed_stages || 0}/${run.total_stages || 0} ${modeLabel}`;
     bar.appendChild(label);
 
     const openDetail = createActionButton("Details", async () => {

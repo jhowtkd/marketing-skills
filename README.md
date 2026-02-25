@@ -164,7 +164,7 @@ Acesse: `http://127.0.0.1:8766`
 - `GET /api/v2/workflow-profiles`
 - `POST /api/v2/threads/{thread_id}/workflow-runs` -> retorna `{ run_id, status, requested_mode, effective_mode }`
 - `GET /api/v2/workflow-runs/{run_id}`
-- `POST /api/v2/workflow-runs/{run_id}/resume` (controle idempotente de seguranca; em run terminal retorna status atual)
+- `POST /api/v2/approvals/{approval_id}/grant-and-resume` (concede aprovação e retoma workflow em uma ação)
 - `GET /api/v2/workflow-runs/{run_id}/artifacts`
 - `GET /api/v2/workflow-runs/{run_id}/artifact-content?stage_dir=...&artifact_path=...`
 

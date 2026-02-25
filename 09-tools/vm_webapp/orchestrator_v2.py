@@ -66,29 +66,10 @@ def process_new_events(session: Session, *, max_events: int | None = None) -> in
             payload = json.loads(event.payload_json)
             approval = get_approval_view(session, payload["approval_id"])
             reason = approval.reason if approval is not None else ""
-            if reason.startswith("workflow_gate:"):
-                if _workflow_executor is None:
-                    raise ValueError("workflow runtime not configured")
-                parts = reason.split(":")
-                if len(parts) >= 3:
-                    run_id = parts[1]
-                    run = get_run(session, run_id)
-                    if run is not None:
-                        _workflow_executor(
-                            session=session,
-                            event_type="WorkflowRunResumed",
-                            payload={
-                                "thread_id": run.thread_id,
-                                "brand_id": run.brand_id,
-                                "project_id": run.product_id,
-                                "run_id": run.run_id,
-                                "request_text": run.user_request,
-                            },
-                            actor_id="agent:vm-workflow",
-                            causation_id=event.event_id,
-                            correlation_id=event.correlation_id or event.event_id,
-                        )
-            else:
+            # Note: workflow_gate approvals are now handled by grant_and_resume_approval_command
+            # which creates both ApprovalGranted and WorkflowRunResumed atomically.
+            # No auto-resume needed here anymore.
+            if not reason.startswith("workflow_gate:"):
                 thread_id = event.thread_id or payload.get("thread_id")
                 if not thread_id:
                     mark_event_processed(session, event.event_id)

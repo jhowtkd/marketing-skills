@@ -6,6 +6,7 @@ from vm_webapp.commands_v2 import (
     grant_and_resume_approval_command,
 )
 from vm_webapp.db import build_engine, init_db, session_scope
+from vm_webapp.models import Run
 from vm_webapp.repo import append_event
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.events import EventEnvelope
@@ -84,6 +85,17 @@ def test_grant_and_resume_workflow_gate_returns_run_metadata(tmp_path: Path) -> 
         )
         saved = append_event(session, approval_event)
         apply_event_to_read_models(session, saved)
+        
+        # Create a run in the database so resume can be applied
+        session.add(Run(
+            run_id=run_id,
+            thread_id=thread_id,
+            brand_id=brand_id,
+            product_id=project_id,
+            stack_path="foundation",
+            user_request="Test request",
+            status="waiting_approval",
+        ))
         
         result = grant_and_resume_approval_command(
             session,

@@ -560,7 +560,7 @@ def test_v2_grant_and_resume_endpoint_returns_orchestrated_payload(tmp_path: Pat
 
 
 def test_v2_legacy_grant_and_resume_routes_are_removed(tmp_path: Path) -> None:
-    """Test that legacy grant and resume endpoints return 404 or 405 (not found)."""
+    """Test that legacy grant and resume endpoints are not available (404/405)."""
     app = create_app(
         settings=Settings(
             vm_workspace_root=tmp_path / "runtime" / "vm",
@@ -569,9 +569,13 @@ def test_v2_legacy_grant_and_resume_routes_are_removed(tmp_path: Path) -> None:
     )
     client = TestClient(app)
 
+    # /grant returns 405 because it partially matches /grant-and-resume (same path prefix)
     old_grant = client.post("/api/v2/approvals/apr-1/grant", headers={"Idempotency-Key": "x"})
+    
+    # /resume returns 405 because it matches /{run_id} pattern with wrong method
     old_resume = client.post("/api/v2/workflow-runs/run-1/resume", headers={"Idempotency-Key": "y"})
     
-    # Both 404 and 405 indicate the route is not available
-    assert old_grant.status_code in (404, 405)
-    assert old_resume.status_code in (404, 405)
+    # Both should NOT return 200 - they are not valid endpoints anymore
+    # 405 = method not allowed (route exists but wrong method or partial path match)
+    assert old_grant.status_code == 405
+    assert old_resume.status_code == 405

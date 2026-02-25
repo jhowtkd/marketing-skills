@@ -502,6 +502,7 @@ def grant_and_resume_approval_command(
     saved = append_event(session, event)
     
     # Resume workflow run if this is a workflow gate approval
+    resume_applied = False
     if run_id:
         run = get_run(session, run_id)
         if run is not None and run.status not in {"completed", "failed", "canceled"}:
@@ -530,6 +531,7 @@ def grant_and_resume_approval_command(
             event_ids = [saved.event_id, resume_saved.event_id]
             approval_status = "granted"
             run_status = "running"
+            resume_applied = True
         else:
             event_ids = [saved.event_id]
             approval_status = "granted"
@@ -544,7 +546,7 @@ def grant_and_resume_approval_command(
         "run_id": run_id,
         "approval_status": approval_status,
         "run_status": run_status,
-        "resume_applied": bool(run_id),
+        "resume_applied": resume_applied,
         "event_ids": event_ids,
     }
     save_command_dedup(
