@@ -137,7 +137,17 @@ uv run python -m vm_webapp serve --host 127.0.0.1 --port 8766
 
 Acesse: `http://127.0.0.1:8766`
 
-### Fluxo operacional
+### Studio (Guided-first, recomendado)
+
+O Studio é o caminho rápido para criar planos/calendários sem expor a arquitetura interna.
+
+1. Crie/seleciona `Brand` e `Project`.
+2. Clique em **Create plan**.
+3. Preencha o brief, escolha o playbook (`plan_90d` ou `content_calendar`) e clique em **Generate**.
+4. Acompanhe **Status** e **Progress** no Studio e leia o output no **Preview**.
+5. Se precisar de detalhes técnicos (IDs, timeline, workflow IO, `skill_overrides`), ative **Dev mode**.
+
+### Fluxo operacional (Dev mode / avançado)
 
 1. Crie `Brand -> Project -> Thread`.
 2. Escolha `mode` e, opcionalmente, passe `skill_overrides` no run.

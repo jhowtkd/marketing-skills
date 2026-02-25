@@ -42,51 +42,92 @@
           <p class="mt-2 opacity-90">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
         </header>
 
+        <section id="studio-toolbar" class="panel bg-white rounded-lg shadow p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold">Studio</h2>
+              <p id="studio-status-text" class="text-sm text-gray-600">Select a plan to begin.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                id="studio-create-plan-button"
+                type="button"
+                class="bg-green-600 text-white rounded px-4 py-2"
+              >
+                Create plan
+              </button>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input id="studio-devmode-toggle" type="checkbox" class="rounded" />
+                Dev mode
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel bg-white rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-2">Preview</h3>
+          <pre
+            id="studio-artifact-preview"
+            class="item muted p-3 bg-gray-100 rounded text-sm"
+          >No preview yet.</pre>
+        </section>
+
+        <section class="panel bg-white rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-2">Progress</h3>
+          <div id="studio-stage-progress" class="list space-y-2"></div>
+        </section>
+
         <section class="panel bg-white rounded-lg shadow p-4" id="thread-workspace-panel">
           <h2 class="text-lg font-semibold mb-3">Threads</h2>
           <div class="inline flex gap-2 mb-3">
             <input id="thread-title-input" placeholder="thread title" class="flex-1 border rounded px-3 py-2" />
             <button id="thread-create-button" type="button" class="bg-blue-600 text-white rounded px-4 py-2">New Thread</button>
           </div>
-          <form id="thread-mode-form" class="inline flex gap-2 mb-3">
-            <input id="thread-mode-input" placeholder="mode (e.g. plan_90d)" class="flex-1 border rounded px-3 py-2" />
-            <button type="submit" class="bg-gray-600 text-white rounded px-4 py-2">Add Mode</button>
-          </form>
-          <p id="mode-help" class="muted text-sm text-gray-600 mb-4">
-            Mode = contexto operacional da thread (ex.: plan_90d, content_calendar). Voce pode
-            adicionar, editar titulo da thread e remover modes ativos.
-          </p>
+          <div class="vm-dev-only">
+            <form id="thread-mode-form" class="inline flex gap-2 mb-3">
+              <input id="thread-mode-input" placeholder="mode (e.g. plan_90d)" class="flex-1 border rounded px-3 py-2" />
+              <button type="submit" class="bg-gray-600 text-white rounded px-4 py-2">Add Mode</button>
+            </form>
+            <p id="mode-help" class="muted text-sm text-gray-600 mb-4">
+              Mode = contexto operacional da thread (ex.: plan_90d, content_calendar). Voce pode
+              adicionar, editar titulo da thread e remover modes ativos.
+            </p>
+          </div>
           <div id="threads-list" class="list space-y-2 mb-4"></div>
 
-          <h3 class="font-semibold mb-2">Modes</h3>
-          <div id="thread-modes-list" class="list space-y-2 mb-4"></div>
+          <div class="vm-dev-only">
+            <h3 class="font-semibold mb-2">Modes</h3>
+            <div id="thread-modes-list" class="list space-y-2 mb-4"></div>
 
-          <h3 class="font-semibold mb-2">Timeline</h3>
-          <div id="timeline-list" class="list space-y-2 mb-4"></div>
+            <h3 class="font-semibold mb-2">Timeline</h3>
+            <div id="timeline-list" class="list space-y-2 mb-4"></div>
+          </div>
 
-          <section class="panel bg-gray-50 rounded-lg p-4" id="workflow-io-panel">
-            <h3 class="font-semibold mb-3">Workflow Input / Output</h3>
-            <form id="workflow-run-form" class="stack space-y-2">
-              <input
-                id="workflow-request-input"
-                placeholder="describe the workflow output you need"
-                class="w-full border rounded px-3 py-2"
-              />
-              <input id="workflow-mode-input" placeholder="mode (default plan_90d)" class="w-full border rounded px-3 py-2" />
-              <textarea
-                id="workflow-overrides-input"
-                placeholder='skill overrides JSON (e.g. {"strategy_draft":["04-copy/direct-response"]})'
-                class="w-full border rounded px-3 py-2 h-20"
-              ></textarea>
-              <button type="submit" class="w-full bg-green-600 text-white rounded px-3 py-2">Run Workflow</button>
-            </form>
-            <h4 class="font-medium mt-4 mb-2">Profile Preview</h4>
-            <div id="workflow-profile-preview-list" class="list space-y-2"></div>
-            <h4 class="font-medium mt-4 mb-2">Runs</h4>
-            <div id="workflow-runs-list" class="list space-y-2"></div>
-            <h4 class="font-medium mt-4 mb-2">Run Detail</h4>
-            <div id="workflow-run-detail-list" class="list space-y-2"></div>
-          </section>
+          <div class="vm-dev-only">
+            <section class="panel bg-gray-50 rounded-lg p-4" id="workflow-io-panel">
+              <h3 class="font-semibold mb-3">Workflow Input / Output</h3>
+              <form id="workflow-run-form" class="stack space-y-2">
+                <input
+                  id="workflow-request-input"
+                  placeholder="describe the workflow output you need"
+                  class="w-full border rounded px-3 py-2"
+                />
+                <input id="workflow-mode-input" placeholder="mode (default plan_90d)" class="w-full border rounded px-3 py-2" />
+                <textarea
+                  id="workflow-overrides-input"
+                  placeholder='skill overrides JSON (e.g. {"strategy_draft":["04-copy/direct-response"]})'
+                  class="w-full border rounded px-3 py-2 h-20"
+                ></textarea>
+                <button type="submit" class="w-full bg-green-600 text-white rounded px-3 py-2">Run Workflow</button>
+              </form>
+              <h4 class="font-medium mt-4 mb-2">Profile Preview</h4>
+              <div id="workflow-profile-preview-list" class="list space-y-2"></div>
+              <h4 class="font-medium mt-4 mb-2">Runs</h4>
+              <div id="workflow-runs-list" class="list space-y-2"></div>
+              <h4 class="font-medium mt-4 mb-2">Run Detail</h4>
+              <div id="workflow-run-detail-list" class="list space-y-2"></div>
+            </section>
+          </div>
         </section>
       </main>
 
@@ -108,6 +149,42 @@
           <pre id="workflow-artifact-preview" class="item muted mt-4 p-3 bg-gray-100 rounded text-sm">Select an artifact to preview.</pre>
         </section>
       </aside>
+    </div>
+    <div
+      id="studio-wizard"
+      class="vm-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create plan wizard"
+    >
+      <div class="vm-modal__card">
+        <h3 class="text-lg font-semibold mb-3">Create plan</h3>
+        <form id="studio-wizard-form" class="space-y-3">
+          <input
+            id="studio-plan-title-input"
+            class="w-full border rounded px-3 py-2"
+            placeholder="Title (optional)"
+          />
+          <textarea
+            id="studio-plan-brief-input"
+            class="w-full border rounded px-3 py-2 h-28"
+            placeholder="Describe product, audience, objective, channels…"
+          ></textarea>
+          <div id="studio-playbooks" class="grid gap-3 md:grid-cols-2"></div>
+          <div class="flex justify-end gap-2">
+            <button
+              id="studio-wizard-cancel"
+              type="button"
+              class="bg-gray-200 rounded px-3 py-2"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="bg-green-600 text-white rounded px-3 py-2">
+              Generate
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
     <script src="/app.js"></script>
   </body>

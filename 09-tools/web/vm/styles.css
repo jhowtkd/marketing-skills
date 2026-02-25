@@ -115,3 +115,25 @@ button.ghost {
     flex-direction: column;
   }
 }
+
+.vm-dev-only { display: none; }
+
+.vm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.vm-modal__card {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 720px;
+  width: 100%;
+  padding: 16px;
+}
+
+body[data-dev-mode="1"] .vm-dev-only { display: block; }

@@ -100,3 +100,28 @@ def test_ui_assets_include_effective_mode_and_stage_status_labels() -> None:
     assert "fallback_applied" in js
     assert "error_code" in js
     assert "Run Detail" in html
+
+def test_vm_index_contains_studio_and_devmode_anchors() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "id=\"studio-toolbar\"" in html
+    assert "id=\"studio-create-plan-button\"" in html
+    assert "id=\"studio-devmode-toggle\"" in html
+    assert "id=\"studio-artifact-preview\"" in html
+    assert "id=\"studio-wizard\"" in html
+
+def test_vm_app_js_has_devmode_toggle_wiring() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "studio-devmode-toggle" in js
+    assert "localStorage" in js
+
+def test_vm_app_js_includes_studio_wizard_ids() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "studio-create-plan-button" in js
+    assert "studio-wizard" in js
+    assert "/api/v2/threads" in js
+    assert "/workflow-runs" in js
+
+def test_vm_index_contains_studio_progress_anchors() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "id=\"studio-stage-progress\"" in html
+    assert "id=\"studio-status-text\"" in html
