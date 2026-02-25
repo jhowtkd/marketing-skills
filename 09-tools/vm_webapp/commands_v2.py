@@ -455,6 +455,110 @@ def complete_task_command(
     return dedup
 
 
+def _extract_run_id_from_reason(reason: str | None) -> str | None:
+    """Parse workflow gate reason: workflow_gate:<run_id>:<stage_key>"""
+    if not reason:
+        return None
+    parts = reason.split(":")
+    if len(parts) >= 3 and parts[0] == "workflow_gate":
+        return parts[1]
+    return None
+
+
+def grant_and_resume_approval_command(
+    session: Session,
+    *,
+    approval_id: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    approval = get_approval_view(session, approval_id)
+    if approval is None:
+        raise ValueError(f"approval not found: {approval_id}")
+
+    # Parse workflow gate reason: workflow_gate:<run_id>:<stage>
+    run_id = _extract_run_id_from_reason(approval.reason if approval else None)
+
+    thread_id = approval.thread_id if approval else None
+    stream_id = f"thread:{thread_id}" if thread_id else f"approval:{approval_id}"
+    expected = get_stream_version(session, stream_id)
+    
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="ApprovalGranted",
+        aggregate_type="thread" if thread_id else "approval",
+        aggregate_id=thread_id or approval_id,
+        stream_id=stream_id,
+        expected_version=expected,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={"approval_id": approval_id},
+        thread_id=thread_id,
+    )
+    saved = append_event(session, event)
+    
+    # Resume workflow run if this is a workflow gate approval
+    if run_id:
+        run = get_run(session, run_id)
+        if run is not None and run.status not in {"completed", "failed", "canceled"}:
+            run_stream_id = f"thread:{run.thread_id}"
+            run_expected = get_stream_version(session, run_stream_id)
+            resume_event = EventEnvelope(
+                event_id=f"evt-{uuid4().hex[:12]}",
+                event_type="WorkflowRunResumed",
+                aggregate_type="thread",
+                aggregate_id=run.thread_id,
+                stream_id=run_stream_id,
+                expected_version=run_expected,
+                actor_type="human",
+                actor_id=actor_id,
+                payload={
+                    "thread_id": run.thread_id,
+                    "brand_id": run.brand_id,
+                    "project_id": run.product_id,
+                    "run_id": run_id,
+                },
+                thread_id=run.thread_id,
+                brand_id=run.brand_id,
+                project_id=run.product_id,
+            )
+            resume_saved = append_event(session, resume_event)
+            event_ids = [saved.event_id, resume_saved.event_id]
+            approval_status = "granted"
+            run_status = "running"
+        else:
+            event_ids = [saved.event_id]
+            approval_status = "granted"
+            run_status = run.status if run else "unknown"
+    else:
+        event_ids = [saved.event_id]
+        approval_status = "granted"
+        run_status = "unknown"
+        
+    response = {
+        "approval_id": approval_id,
+        "run_id": run_id,
+        "approval_status": approval_status,
+        "run_status": run_status,
+        "resume_applied": bool(run_id),
+        "event_ids": event_ids,
+    }
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="grant_and_resume_approval",
+        event_id=saved.event_id,
+        response=response,
+    )
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    assert dedup is not None
+    return dedup
+
+
 def grant_approval_command(
     session: Session,
     *,
