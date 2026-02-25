@@ -174,3 +174,23 @@ class ApprovalView(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     required_role: Mapped[str] = mapped_column(String(64), nullable=False, default="editor")
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ToolPermission(Base):
+    __tablename__ = "tool_permissions"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    max_calls_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    current_day_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_call_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ToolCredential(Base):
+    __tablename__ = "tool_credentials"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    secret_ref: Mapped[str] = mapped_column(String(512), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

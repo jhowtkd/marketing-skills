@@ -22,8 +22,29 @@ from vm_webapp.models import (
     Thread,
     ThreadView,
     TimelineItemView,
+    ToolCredential,
+    ToolPermission,
 )
-from vm_webapp.workspace import Workspace
+
+
+def get_tool_permission(
+    session: Session, brand_id: str, tool_id: str
+) -> ToolPermission | None:
+    return session.scalar(
+        select(ToolPermission).where(
+            ToolPermission.brand_id == brand_id, ToolPermission.tool_id == tool_id
+        )
+    )
+
+
+def get_tool_credential(
+    session: Session, brand_id: str, tool_id: str
+) -> ToolCredential | None:
+    return session.scalar(
+        select(ToolCredential).where(
+            ToolCredential.brand_id == brand_id, ToolCredential.tool_id == tool_id
+        )
+    )
 
 
 def create_brand(
