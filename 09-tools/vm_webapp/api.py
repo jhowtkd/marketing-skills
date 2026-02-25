@@ -15,7 +15,9 @@ from vm_webapp.commands_v2 import (
     add_thread_mode_command,
     complete_task_command,
     create_brand_command,
+    create_campaign_command,
     create_project_command,
+    create_task_command,
     create_thread_command,
     grant_approval_command,
     remove_thread_mode_command,
@@ -129,6 +131,21 @@ class ProjectCreateRequest(BaseModel):
     objective: str = ""
     channels: list[str] = Field(default_factory=list)
     due_date: str | None = None
+
+
+class CampaignCreateRequest(BaseModel):
+    campaign_id: str | None = None
+    brand_id: str
+    project_id: str
+    title: str
+
+
+class TaskCreateRequest(BaseModel):
+    task_id: str | None = None
+    thread_id: str
+    campaign_id: str | None = None
+    brand_id: str | None = None
+    title: str
 
 
 class ThreadCreateV2Request(BaseModel):
@@ -294,6 +311,73 @@ def list_projects_v2(
     }
 
 
+@router.post("/v2/campaigns")
+def create_campaign_v2(payload: CampaignCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_campaign_command(
+            session,
+            campaign_id=payload.campaign_id,
+            brand_id=payload.brand_id,
+            project_id=payload.project_id,
+            title=payload.title,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        response_payload = json.loads(result.response_json)
+    return {
+        "event_id": result.event_id,
+        "campaign_id": str(response_payload["campaign_id"]),
+        "title": str(response_payload["title"]),
+    }
+
+
+@router.get("/v2/campaigns")
+def list_campaigns_v2(
+    project_id: str, request: Request
+) -> dict[str, list[dict[str, object]]]:
+    with session_scope(request.app.state.engine) as session:
+        from vm_webapp.repo import list_campaigns_view
+
+        rows = list_campaigns_view(session, project_id=project_id)
+    return {
+        "campaigns": [
+            {
+                "campaign_id": row.campaign_id,
+                "brand_id": row.brand_id,
+                "project_id": row.project_id,
+                "title": row.title,
+                "updated_at": row.updated_at,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/v2/tasks")
+def create_task_v2(payload: TaskCreateRequest, request: Request) -> dict[str, str]:
+    idem = require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        result = create_task_command(
+            session,
+            task_id=payload.task_id,
+            thread_id=payload.thread_id,
+            campaign_id=payload.campaign_id,
+            brand_id=payload.brand_id,
+            title=payload.title,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        response_payload = json.loads(result.response_json)
+    return {
+        "event_id": result.event_id,
+        "task_id": str(response_payload["task_id"]),
+        "campaign_id": response_payload.get("campaign_id"),
+    }
+
+
 @router.post("/v2/threads")
 def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
@@ -396,6 +480,11 @@ def remove_thread_mode_v2(
 def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, object]]]:
     payload = request.app.state.workflow_runtime.list_profiles()
     return {"profiles": payload}
+
+
+@router.get("/v2/metrics")
+def metrics_v2(request: Request) -> dict[str, object]:
+    return request.app.state.workflow_runtime.metrics.snapshot()
 
 
 @router.post("/v2/threads/{thread_id}/workflow-runs")

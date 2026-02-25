@@ -52,7 +52,9 @@ class FoundationRunnerService:
         project_id: str,
         request_text: str,
         stage_key: str,
+        llm_model: str | None = None,
     ) -> FoundationStageResult:
+        model_to_use = llm_model or self.llm_model
         foundation_thread_id = self._foundation_thread_id(thread_id, run_id)
         before_state = self._try_get_status(project_id=project_id, thread_id=foundation_thread_id)
         before_artifacts = self._artifact_set(before_state)
@@ -116,6 +118,7 @@ class FoundationRunnerService:
                     llm_content = self._render_stage_markdown(
                         prompt=prompt,
                         fallback=current_content,
+                        llm_model=model_to_use,
                     )
                     artifacts[candidate] = llm_content
                     # Update accumulated_artifacts so brief uses fresh content
@@ -133,6 +136,7 @@ class FoundationRunnerService:
                 brief_md = self._render_stage_markdown(
                     prompt=brief_prompt,
                     fallback=existing_brief,
+                    llm_model=model_to_use,
                 )
                 artifacts["final/foundation-brief.md"] = brief_md
 
@@ -140,7 +144,7 @@ class FoundationRunnerService:
             state=state,
             stage_key=stage_key,
             llm_enabled=self.llm is not None and llm_used_successfully,
-            llm_model=self.llm_model if (self.llm is not None and llm_used_successfully) else None,
+            llm_model=model_to_use if (self.llm is not None and llm_used_successfully) else None,
         )
         return FoundationStageResult(
             stage_key=stage_key,
@@ -154,12 +158,13 @@ class FoundationRunnerService:
         *,
         prompt: str,
         fallback: str,
+        llm_model: str | None = None,
     ) -> str:
         if self.llm is None:
             return fallback
         try:
             return self.llm.chat(
-                model=self.llm_model,
+                model=llm_model or self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 max_tokens=1200,

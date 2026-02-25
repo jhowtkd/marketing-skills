@@ -170,3 +170,30 @@ def test_vm_retro_theme_tokens_and_action_button_hooks_exist() -> None:
     assert ".vm-terminal-btn" in css
     assert "createActionButton(label, onClick, variant" in js
     assert "vm-terminal-btn" in js
+
+
+def test_readme_and_architecture_document_new_platform_contracts() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    arch = Path("ARCHITECTURE.md").read_text(encoding="utf-8")
+    
+    # Hierarchical Domain
+    assert "Hierarchical Domain" in readme
+    assert "Brand -> Campaign -> Task" in readme
+    assert "Campaign" in arch
+    assert "Task" in arch
+    
+    # Tooling
+    assert "Tool Registry" in readme
+    assert "ToolContract" in readme
+    assert "Governance" in arch
+    assert "ToolCredentialRef" in arch
+    
+    # RAG
+    assert "RAG Pipeline" in readme
+    assert "Indexer" in arch
+    assert "Retriever" in arch
+    
+    # Resilience
+    assert "Resiliência" in readme
+    assert "CircuitBreaker" in arch
+    assert "FallbackChain" in arch

@@ -155,11 +155,23 @@ class TimelineItemView(Base):
     occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
+class CampaignView(Base):
+    __tablename__ = "campaigns_view"
+
+    campaign_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
 class TaskView(Base):
     __tablename__ = "tasks_view"
 
     task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    brand_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
@@ -174,3 +186,33 @@ class ApprovalView(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     required_role: Mapped[str] = mapped_column(String(64), nullable=False, default="editor")
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ToolPermission(Base):
+    __tablename__ = "tool_permissions"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    max_calls_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    current_day_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_call_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ToolCredential(Base):
+    __tablename__ = "tool_credentials"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    secret_ref: Mapped[str] = mapped_column(String(512), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class ContextVersion(Base):
+    __tablename__ = "context_versions"
+
+    version_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)  # brand, campaign, task
+    scope_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

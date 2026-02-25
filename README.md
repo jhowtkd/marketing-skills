@@ -178,6 +178,25 @@ O Studio é o caminho rápido para criar planos/calendários sem expor a arquite
 - `GET /api/v2/workflow-runs/{run_id}/artifacts`
 - `GET /api/v2/workflow-runs/{run_id}/artifact-content?stage_dir=...&artifact_path=...`
 
+### Hierarchical Domain & Tooling (v2 Core)
+
+A plataforma evoluiu para suportar domínio hierárquico completo e governança de ferramentas.
+
+- **Hierarquia:** `Brand -> Campaign -> Task -> Thread -> Run`.
+- **Contexto Imutável:** Resolução hierárquica `Brand -> Campaign -> Task` com políticas de override controladas e snapshot imutável por `Run`.
+- **Tool Registry:** Catálogo de ferramentas plugáveis com contrato `ToolContract`.
+- **Governança:** Autorização por `brand_id`, rate-limit diário e gestão de `ToolCredentialRef`.
+- **RAG Pipeline:** Ingestão e recuperação hierárquica (filtro por `brand`, boost por `campaign`) usando `MemoryIndex`.
+- **Resiliência:** Políticas de `Retry` com backoff, `FallbackChain` entre providers e `CircuitBreaker`.
+- **Observabilidade:** Coletor de métricas de latência, custo e saúde operacional por stage/run.
+
+#### Endpoints de Domínio (v2)
+
+- `POST /api/v2/campaigns`
+- `GET /api/v2/campaigns?project_id=...`
+- `POST /api/v2/tasks`
+- `GET /api/v2/threads/{thread_id}/tasks`
+
 Observação: endpoints de escrita usam header `Idempotency-Key`.
 
 ### Estrutura de artifacts por execução

@@ -12,6 +12,7 @@ from vm_webapp.models import (
     ApprovalView,
     Brand,
     BrandView,
+    CampaignView,
     CommandDedup,
     EventLog,
     Project,
@@ -22,8 +23,29 @@ from vm_webapp.models import (
     Thread,
     ThreadView,
     TimelineItemView,
+    ToolCredential,
+    ToolPermission,
 )
-from vm_webapp.workspace import Workspace
+
+
+def get_tool_permission(
+    session: Session, brand_id: str, tool_id: str
+) -> ToolPermission | None:
+    return session.scalar(
+        select(ToolPermission).where(
+            ToolPermission.brand_id == brand_id, ToolPermission.tool_id == tool_id
+        )
+    )
+
+
+def get_tool_credential(
+    session: Session, brand_id: str, tool_id: str
+) -> ToolCredential | None:
+    return session.scalar(
+        select(ToolCredential).where(
+            ToolCredential.brand_id == brand_id, ToolCredential.tool_id == tool_id
+        )
+    )
 
 
 def create_brand(
@@ -361,6 +383,16 @@ def list_brands_view(session: Session) -> list[BrandView]:
 
 def get_brand_view(session: Session, brand_id: str) -> BrandView | None:
     return session.get(BrandView, brand_id)
+
+
+def list_campaigns_view(session: Session, *, project_id: str) -> list[CampaignView]:
+    return list(
+        session.scalars(
+            select(CampaignView)
+            .where(CampaignView.project_id == project_id)
+            .order_by(CampaignView.campaign_id.asc())
+        )
+    )
 
 
 def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
