@@ -38,7 +38,7 @@ def create_app(
     app.add_exception_handler(ValueError, value_error_to_http)
 
     workspace = Workspace(root=settings.vm_workspace_root)
-    engine = build_engine(settings.vm_db_path)
+    engine = build_engine(settings.vm_db_path, db_url=settings.vm_db_url)
     init_db(engine)
     memory = memory or MemoryIndex(root=workspace.root / "zvec")
     if llm is None and settings.kimi_api_key:
