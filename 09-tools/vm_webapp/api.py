@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -56,6 +56,7 @@ from vm_webapp.repo import (
     list_timeline_items_view,
     touch_thread_activity,
 )
+from vm_webapp.observability import render_prometheus
 from vm_webapp.stacking import build_context_pack
 
 
@@ -528,6 +529,14 @@ def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, obje
 @router.get("/v2/metrics")
 def metrics_v2(request: Request) -> dict[str, object]:
     return request.app.state.workflow_runtime.metrics.snapshot()
+
+
+@router.get("/v2/metrics/prometheus")
+def metrics_prometheus(request: Request) -> PlainTextResponse:
+    metrics = request.app.state.workflow_runtime.metrics
+    metrics.record_count("http_request_total:metrics_prometheus")
+    payload = render_prometheus(metrics.snapshot())
+    return PlainTextResponse(payload, media_type="text/plain; version=0.0.4")
 
 
 @router.post("/v2/threads/{thread_id}/workflow-runs")

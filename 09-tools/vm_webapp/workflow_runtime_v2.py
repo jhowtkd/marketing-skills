@@ -561,6 +561,7 @@ class WorkflowRuntimeV2:
                         causation_id=causation_id,
                         correlation_id=correlation_id,
                     )
+                    self.metrics.record_count("workflow_run_failed")
                     self._write_run_summary(
                         run_id=run_id,
                         status="failed",
