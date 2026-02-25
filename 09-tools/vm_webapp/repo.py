@@ -12,6 +12,7 @@ from vm_webapp.models import (
     ApprovalView,
     Brand,
     BrandView,
+    CampaignView,
     CommandDedup,
     EventLog,
     Project,

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from vm_webapp.models import (
     ApprovalView,
     BrandView,
+    CampaignView,
     EventLog,
     ProjectView,
     TaskView,
@@ -96,6 +97,22 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             )
             row.last_activity_at = event.occurred_at
 
+    if event.event_type == "CampaignCreated":
+        row = session.get(CampaignView, payload["campaign_id"])
+        if row is None:
+            row = CampaignView(
+                campaign_id=payload["campaign_id"],
+                brand_id=payload["brand_id"],
+                project_id=payload["project_id"],
+                title=payload.get("title", ""),
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        else:
+            row.title = payload.get("title", row.title)
+            row.updated_at = event.occurred_at
+        return
+
     if event.event_type == "TaskCommentAdded":
         row = session.get(TaskView, payload["task_id"])
         if row is None and event.thread_id:
@@ -116,6 +133,8 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             row = TaskView(
                 task_id=payload["task_id"],
                 thread_id=event.thread_id,
+                campaign_id=payload.get("campaign_id"),
+                brand_id=payload.get("brand_id") or event.brand_id,
                 title=payload.get("title", payload["task_id"]),
                 status=payload.get("status", "open"),
                 updated_at=event.occurred_at,
@@ -124,6 +143,8 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
         elif row is not None:
             row.title = payload.get("title", row.title)
             row.status = payload.get("status", row.status)
+            row.campaign_id = payload.get("campaign_id", row.campaign_id)
+            row.brand_id = payload.get("brand_id", row.brand_id)
             row.updated_at = event.occurred_at
 
     if event.event_type == "TaskCompleted":
