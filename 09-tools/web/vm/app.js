@@ -38,6 +38,14 @@ const uiErrorBanner = document.getElementById("ui-error-banner");
 const studioDevModeToggle = document.getElementById("studio-devmode-toggle");
 const DEV_MODE_KEY = "vm_dev_mode";
 
+const studioCreatePlanButton = document.getElementById("studio-create-plan-button");
+const studioWizard = document.getElementById("studio-wizard");
+const studioWizardForm = document.getElementById("studio-wizard-form");
+const studioWizardCancel = document.getElementById("studio-wizard-cancel");
+const studioPlanTitleInput = document.getElementById("studio-plan-title-input");
+const studioPlanBriefInput = document.getElementById("studio-plan-brief-input");
+const studioPlaybooks = document.getElementById("studio-playbooks");
+
 function setDevMode(enabled) {
   document.body.dataset.devMode = enabled ? "1" : "0";
   if (studioDevModeToggle) studioDevModeToggle.checked = !!enabled;
@@ -47,6 +55,38 @@ function setDevMode(enabled) {
 function loadDevMode() {
   const raw = window.localStorage.getItem(DEV_MODE_KEY);
   setDevMode(raw === "1");
+}
+
+let studioSelectedMode = "plan_90d";
+
+function renderStudioPlaybooks() {
+  if (!studioPlaybooks) return;
+  const allowed = new Set(["plan_90d", "content_calendar"]);
+  const playbooks = (workflowProfilesState || []).filter((p) => allowed.has(p.mode));
+  studioPlaybooks.innerHTML = "";
+  for (const p of playbooks) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "border rounded p-3 text-left";
+    btn.textContent = `${p.mode}: ${p.description || ""}`;
+    btn.addEventListener("click", () => {
+      studioSelectedMode = p.mode;
+      renderStudioPlaybooks();
+    });
+    if (p.mode === studioSelectedMode) btn.classList.add("border-blue-500", "bg-blue-50");
+    studioPlaybooks.appendChild(btn);
+  }
+}
+
+function openStudioWizard() {
+  if (!studioWizard) return;
+  renderStudioPlaybooks();
+  studioWizard.classList.remove("hidden");
+}
+
+function closeStudioWizard() {
+  if (!studioWizard) return;
+  studioWizard.classList.add("hidden");
 }
 
 const TIMELINE_EVENT_STYLE = {
@@ -923,6 +963,47 @@ if (studioDevModeToggle) {
 }
 
 loadDevMode();
+
+async function startStudioPlan() {
+  if (!activeBrandId || !activeProjectId) {
+    setUiError("Select a brand and project first.");
+    return;
+  }
+  const title = (studioPlanTitleInput?.value || "").trim() || "New plan";
+  const request_text = (studioPlanBriefInput?.value || "").trim();
+  if (!request_text) return;
+
+  const created = await postV2(
+    ENDPOINT_THREADS,
+    { project_id: activeProjectId, brand_id: activeBrandId, title },
+    "studio-thread-create"
+  );
+  const thread_id = created.thread_id;
+  await postV2(
+    `/api/v2/threads/${encodeURIComponent(thread_id)}/modes`,
+    { mode: studioSelectedMode },
+    "studio-mode"
+  );
+  const started = await postV2(
+    `/api/v2/threads/${encodeURIComponent(thread_id)}/workflow-runs`,
+    { request_text, mode: studioSelectedMode, skill_overrides: {} },
+    "studio-workflow-run"
+  );
+
+  activeThreadId = thread_id;
+  activeWorkflowRunId = started.run_id || null;
+  closeStudioWizard();
+  await loadThreads(activeProjectId);
+}
+
+if (studioCreatePlanButton) studioCreatePlanButton.addEventListener("click", openStudioWizard);
+if (studioWizardCancel) studioWizardCancel.addEventListener("click", closeStudioWizard);
+if (studioWizardForm) {
+  studioWizardForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await startStudioPlan();
+  });
+}
 
 Promise.all([loadWorkflowProfiles(), loadBrands()])
   .then(() => {

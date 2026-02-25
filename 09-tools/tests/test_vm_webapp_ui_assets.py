@@ -106,3 +106,10 @@ def test_vm_app_js_has_devmode_toggle_wiring() -> None:
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
     assert "studio-devmode-toggle" in js
     assert "localStorage" in js
+
+def test_vm_app_js_includes_studio_wizard_ids() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "studio-create-plan-button" in js
+    assert "studio-wizard" in js
+    assert "/api/v2/threads" in js
+    assert "/workflow-runs" in js
