@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from vm_webapp.commands_v2 import (
     add_comment_command,
@@ -75,6 +76,48 @@ def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: 
 @router.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+def _database_dependency_status(request: Request) -> dict[str, str]:
+    try:
+        with session_scope(request.app.state.engine) as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "error"}
+
+
+def _worker_dependency_status(request: Request) -> dict[str, str]:
+    worker = getattr(request.app.state, "event_worker", None)
+    mode = getattr(
+        request.app.state,
+        "worker_mode",
+        "in_process" if worker is not None else "external",
+    )
+    if mode == "in_process":
+        status = "ok" if worker is not None else "missing"
+    else:
+        status = "ok"
+    return {"status": status, "mode": str(mode)}
+
+
+@router.get("/v2/health/live")
+def health_live() -> dict[str, str]:
+    return {"status": "live"}
+
+
+@router.get("/v2/health/ready")
+def health_ready(request: Request) -> dict[str, object]:
+    dependencies = {
+        "database": _database_dependency_status(request),
+        "worker": _worker_dependency_status(request),
+    }
+    status = (
+        "ready"
+        if all(dep.get("status") == "ok" for dep in dependencies.values())
+        else "not_ready"
+    )
+    return {"status": status, "dependencies": dependencies}
 
 
 @router.get("/brands")

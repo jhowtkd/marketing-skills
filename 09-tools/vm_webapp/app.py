@@ -67,6 +67,7 @@ def create_app(
     app.state.run_engine = run_engine
     app.state.workflow_runtime = workflow_runtime
     app.state.event_worker = event_worker
+    app.state.worker_mode = "in_process"
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
