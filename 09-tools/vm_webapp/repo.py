@@ -14,7 +14,7 @@ from vm_webapp.models import (
     BrandView,
     CommandDedup,
     EventLog,
-    Product,
+    Project,
     ProjectView,
     Run,
     Stage,
@@ -53,12 +53,12 @@ def list_brands(session: Session) -> list[Brand]:
     return list(session.scalars(select(Brand).order_by(Brand.brand_id)))
 
 
-def list_products_by_brand(session: Session, brand_id: str) -> list[Product]:
+def list_products_by_brand(session: Session, brand_id: str) -> list[Project]:
     return list(
         session.scalars(
-            select(Product)
-            .where(Product.brand_id == brand_id)
-            .order_by(Product.product_id.asc())
+            select(Project)
+            .where(Project.brand_id == brand_id)
+            .order_by(Project.product_id.asc())
         )
     )
 
@@ -72,8 +72,8 @@ def create_product(
     canonical: dict[str, Any],
     ws: Workspace,
     essence_md: str,
-) -> Product:
-    product = Product(
+) -> Project:
+    product = Project(
         product_id=product_id,
         brand_id=brand_id,
         name=name,
@@ -88,8 +88,8 @@ def create_product(
     return product
 
 
-def get_product(session: Session, product_id: str) -> Product | None:
-    return session.scalar(select(Product).where(Product.product_id == product_id))
+def get_product(session: Session, product_id: str) -> Project | None:
+    return session.scalar(select(Project).where(Project.product_id == product_id))
 
 
 def _now_iso() -> str:
