@@ -35,6 +35,94 @@ const workflowArtifactsList = document.getElementById("workflow-artifacts-list")
 const workflowArtifactPreview = document.getElementById("workflow-artifact-preview");
 const uiErrorBanner = document.getElementById("ui-error-banner");
 
+const studioDevModeToggle = document.getElementById("studio-devmode-toggle");
+const DEV_MODE_KEY = "vm_dev_mode";
+
+const studioCreatePlanButton = document.getElementById("studio-create-plan-button");
+const studioWizard = document.getElementById("studio-wizard");
+const studioWizardForm = document.getElementById("studio-wizard-form");
+const studioWizardCancel = document.getElementById("studio-wizard-cancel");
+const studioPlanTitleInput = document.getElementById("studio-plan-title-input");
+const studioPlanBriefInput = document.getElementById("studio-plan-brief-input");
+const studioPlaybooks = document.getElementById("studio-playbooks");
+const studioStatusText = document.getElementById("studio-status-text");
+const studioStageProgress = document.getElementById("studio-stage-progress");
+const studioArtifactPreview = document.getElementById("studio-artifact-preview");
+
+const STATUS_LABEL = {
+  queued: "Em fila",
+  running: "Gerando…",
+  waiting_approval: "Aguardando revisão",
+  completed: "Pronto",
+  failed: "Falhou",
+};
+
+function humanizeStageKey(key) {
+  return String(key || "").replaceAll("_", " ");
+}
+
+function renderStudioRun(detail) {
+  if (!detail) return;
+  if (studioStatusText) {
+    const label = STATUS_LABEL[detail.status] || detail.status;
+    studioStatusText.textContent = `${label} · ${detail.effective_mode || detail.mode || ""}`.trim();
+  }
+  if (studioStageProgress) {
+    const rows = Array.isArray(detail.stages)
+      ? detail.stages.slice().sort((a, b) => a.position - b.position)
+      : [];
+    clearAndRender(studioStageProgress, rows, (stage) => {
+      const node = document.createElement("div");
+      node.className = "item";
+      node.textContent = `${humanizeStageKey(stage.stage_id)} — ${stage.status}`;
+      return node;
+    });
+  }
+}
+
+function setDevMode(enabled) {
+  document.body.dataset.devMode = enabled ? "1" : "0";
+  if (studioDevModeToggle) studioDevModeToggle.checked = !!enabled;
+  window.localStorage.setItem(DEV_MODE_KEY, enabled ? "1" : "0");
+}
+
+function loadDevMode() {
+  const raw = window.localStorage.getItem(DEV_MODE_KEY);
+  setDevMode(raw === "1");
+}
+
+let studioSelectedMode = "plan_90d";
+
+function renderStudioPlaybooks() {
+  if (!studioPlaybooks) return;
+  const allowed = new Set(["plan_90d", "content_calendar"]);
+  const playbooks = (workflowProfilesState || []).filter((p) => allowed.has(p.mode));
+  studioPlaybooks.innerHTML = "";
+  for (const p of playbooks) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "border rounded p-3 text-left";
+    btn.textContent = `${p.mode}: ${p.description || ""}`;
+    btn.addEventListener("click", () => {
+      studioSelectedMode = p.mode;
+      renderStudioPlaybooks();
+    });
+    if (p.mode === studioSelectedMode) btn.classList.add("border-blue-500", "bg-blue-50");
+    studioPlaybooks.appendChild(btn);
+  }
+}
+
+function openStudioWizard() {
+  if (!studioWizard) return;
+  renderStudioPlaybooks();
+  studioWizard.classList.remove("hidden");
+}
+
+function closeStudioWizard() {
+  if (!studioWizard) return;
+  studioWizard.classList.add("hidden");
+}
+
 const TIMELINE_EVENT_STYLE = {
   ApprovalRequested: { icon: "gavel", tone: "amber" },
   ApprovalGranted: { icon: "verified", tone: "green" },
@@ -623,6 +711,7 @@ async function loadWorkflowRunDetail(runId) {
   }
   const detail = await fetchJson(`/api/v2/workflow-runs/${encodeURIComponent(runId)}`);
   renderWorkflowRunDetail(detail);
+  renderStudioRun(detail);
 }
 
 async function loadWorkflowArtifacts(runId) {
@@ -649,6 +738,7 @@ async function loadWorkflowArtifactContent(stageDir, artifactPath) {
     `/api/v2/workflow-runs/${encodeURIComponent(activeWorkflowRunId)}/artifact-content?${query.toString()}`
   );
   workflowArtifactPreview.textContent = body.content || "";
+  if (studioArtifactPreview) studioArtifactPreview.textContent = body.content || "";
 }
 
 async function loadBrands() {
@@ -901,6 +991,55 @@ workflowRunForm.addEventListener("submit", async (event) => {
   await loadWorkflowRuns();
   restartWorkflowPolling();
 });
+
+if (studioDevModeToggle) {
+  studioDevModeToggle.addEventListener("change", () => {
+    setDevMode(studioDevModeToggle.checked);
+  });
+}
+
+loadDevMode();
+
+async function startStudioPlan() {
+  if (!activeBrandId || !activeProjectId) {
+    setUiError("Select a brand and project first.");
+    return;
+  }
+  const title = (studioPlanTitleInput?.value || "").trim() || "New plan";
+  const request_text = (studioPlanBriefInput?.value || "").trim();
+  if (!request_text) return;
+
+  const created = await postV2(
+    ENDPOINT_THREADS,
+    { project_id: activeProjectId, brand_id: activeBrandId, title },
+    "studio-thread-create"
+  );
+  const thread_id = created.thread_id;
+  await postV2(
+    `/api/v2/threads/${encodeURIComponent(thread_id)}/modes`,
+    { mode: studioSelectedMode },
+    "studio-mode"
+  );
+  const started = await postV2(
+    `/api/v2/threads/${encodeURIComponent(thread_id)}/workflow-runs`,
+    { request_text, mode: studioSelectedMode, skill_overrides: {} },
+    "studio-workflow-run"
+  );
+
+  activeThreadId = thread_id;
+  activeWorkflowRunId = started.run_id || null;
+  closeStudioWizard();
+  await loadThreads(activeProjectId);
+}
+
+if (studioCreatePlanButton) studioCreatePlanButton.addEventListener("click", openStudioWizard);
+if (studioWizardCancel) studioWizardCancel.addEventListener("click", closeStudioWizard);
+if (studioWizardForm) {
+  studioWizardForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await startStudioPlan();
+  });
+}
 
 Promise.all([loadWorkflowProfiles(), loadBrands()])
   .then(() => {
