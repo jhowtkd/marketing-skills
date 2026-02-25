@@ -251,7 +251,7 @@ Para garantir reprodutibilidade, cada `Run` utiliza um snapshot imutável do con
 2. **Policy:** Apenas campos permitidos (`tone`, `objective`, etc.) podem ser sobrescritos.
 3. **Snapshot:** O contexto resolvido é persistido no início do run.
 
-### 3. Tool Layer & Governance
+### 4. Tool Layer & Governance
 
 O runtime não executa lógica diretamente, mas invoca ferramentas através do `ToolExecutor`:
 - **Registry:** Descoberta de ferramentas via `ToolContract`.
@@ -264,6 +264,7 @@ Módulo de memória persistente para aprendizado contínuo:
 - **Ingestion:** Fragmentação (`Chunker`) e indexação de artefatos de runs finalizados.
 - **Retrieval:** Busca semântica com filtros de `brand_id` e boosting para `campaign_id` atual.
 - **Storage:** Baseado no `MemoryIndex` (vetores esparsos e metadados).
+- **Architecture:** Indexer e Retriever isolados para desacoplamento de storage.
 
 ### 5. Resiliência e Observabilidade
 
