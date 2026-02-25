@@ -135,3 +135,5 @@ button.ghost {
   width: 100%;
   padding: 16px;
 }
+
+body[data-dev-mode="1"] .vm-dev-only { display: block; }

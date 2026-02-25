@@ -101,3 +101,8 @@ def test_vm_index_contains_studio_and_devmode_anchors() -> None:
     assert "id=\"studio-devmode-toggle\"" in html
     assert "id=\"studio-artifact-preview\"" in html
     assert "id=\"studio-wizard\"" in html
+
+def test_vm_app_js_has_devmode_toggle_wiring() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "studio-devmode-toggle" in js
+    assert "localStorage" in js

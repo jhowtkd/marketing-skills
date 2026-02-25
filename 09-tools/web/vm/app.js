@@ -35,6 +35,20 @@ const workflowArtifactsList = document.getElementById("workflow-artifacts-list")
 const workflowArtifactPreview = document.getElementById("workflow-artifact-preview");
 const uiErrorBanner = document.getElementById("ui-error-banner");
 
+const studioDevModeToggle = document.getElementById("studio-devmode-toggle");
+const DEV_MODE_KEY = "vm_dev_mode";
+
+function setDevMode(enabled) {
+  document.body.dataset.devMode = enabled ? "1" : "0";
+  if (studioDevModeToggle) studioDevModeToggle.checked = !!enabled;
+  window.localStorage.setItem(DEV_MODE_KEY, enabled ? "1" : "0");
+}
+
+function loadDevMode() {
+  const raw = window.localStorage.getItem(DEV_MODE_KEY);
+  setDevMode(raw === "1");
+}
+
 const TIMELINE_EVENT_STYLE = {
   ApprovalRequested: { icon: "gavel", tone: "amber" },
   ApprovalGranted: { icon: "verified", tone: "green" },
@@ -901,6 +915,14 @@ workflowRunForm.addEventListener("submit", async (event) => {
   await loadWorkflowRuns();
   restartWorkflowPolling();
 });
+
+if (studioDevModeToggle) {
+  studioDevModeToggle.addEventListener("change", () => {
+    setDevMode(studioDevModeToggle.checked);
+  });
+}
+
+loadDevMode();
 
 Promise.all([loadWorkflowProfiles(), loadBrands()])
   .then(() => {
