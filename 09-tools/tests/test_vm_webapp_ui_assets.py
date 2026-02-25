@@ -17,6 +17,10 @@ def test_vm_app_js_has_timeline_style_map_and_error_banner_hooks() -> None:
     assert "TIMELINE_EVENT_STYLE" in js
     assert "ui-error-banner" in js
     assert "function setUiError" in js
+    assert "function clearUiError" in js
+    assert "setUiError(detail)" in js
+    assert "clearUiError()" in js
+    assert "TIMELINE_EVENT_STYLE[itemRow.event_type]" in js
     assert 'id="ui-error-banner"' in html
 
 
