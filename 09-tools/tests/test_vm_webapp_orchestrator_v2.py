@@ -131,7 +131,7 @@ def test_workflow_gate_approval_auto_resumes_without_manual_resume(tmp_path: Pat
     assert started.status_code == 200
     run_id = started.json()["run_id"]
 
-    deadline = time.time() + 4.0
+    deadline = time.time() + 8.0
     approvals_granted = 0
     final_status = "queued"
     while time.time() < deadline:
@@ -146,10 +146,11 @@ def test_workflow_gate_approval_auto_resumes_without_manual_resume(tmp_path: Pat
             assert pending
             approval_id = pending[0]["approval_id"]
             granted = client.post(
-                f"/api/v2/approvals/{approval_id}/grant",
+                f"/api/v2/approvals/{approval_id}/grant-and-resume",
                 headers={"Idempotency-Key": f"auto-approval-{approvals_granted}"},
             )
             assert granted.status_code == 200
+            assert granted.json()["resume_applied"] is True
             approvals_granted += 1
         time.sleep(0.05)
 

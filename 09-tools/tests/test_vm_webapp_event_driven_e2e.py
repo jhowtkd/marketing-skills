@@ -86,10 +86,11 @@ def grant_pending_approvals_until_completed(
             assert pending
             approval_id = pending[0]["approval_id"]
             grant = client.post(
-                f"/api/v2/approvals/{approval_id}/grant",
+                f"/api/v2/approvals/{approval_id}/grant-and-resume",
                 headers={"Idempotency-Key": f"e2e-grant-{run_id}-{grants}"},
             )
             assert grant.status_code == 200
+            assert grant.json()["resume_applied"] is True
             grants += 1
         time.sleep(0.05)
     raise AssertionError(f"run {run_id} did not reach completed")
@@ -127,10 +128,11 @@ def test_approval_gate_blocks_agent_run_until_granted(tmp_path: Path) -> None:
     assert not any(i["event_type"] == "AgentStepCompleted" for i in timeline_before)
 
     grant = client.post(
-        f"/api/v2/approvals/{seed['approval_id']}/grant",
+        f"/api/v2/approvals/{seed['approval_id']}/grant-and-resume",
         headers={"Idempotency-Key": "grant-1"},
     )
     assert grant.status_code == 200
+    assert grant.json()["resume_applied"] in {True, False}
 
     timeline_after = client.get(f"/api/v2/threads/{seed['thread_id']}/timeline").json()[
         "items"
