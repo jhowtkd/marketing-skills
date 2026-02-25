@@ -16,6 +16,7 @@ from vm_webapp.events import EventEnvelope, now_iso
 from vm_webapp.foundation_runner_service import FoundationRunnerService, FoundationStageResult
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.projectors_v2 import apply_event_to_read_models
+from vm_webapp.event_worker import pump_worker_with_resilience
 from vm_webapp.repo import (
     append_event,
     claim_run_for_execution,
@@ -95,6 +96,13 @@ class WorkflowRuntimeV2:
         self._run_locks_guard = threading.Lock()
         self._run_locks: dict[str, threading.Lock] = {}
         self.llm_model = llm_model
+
+    def pump_worker_dependency(self, *, worker, max_events: int = 30) -> int:
+        return pump_worker_with_resilience(
+            worker=worker,
+            metrics=self.metrics,
+            max_events=max_events,
+        )
 
     def list_profiles(self) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []
