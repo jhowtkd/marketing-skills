@@ -47,46 +47,37 @@
       </aside>
 
       <!-- Main Column: Content -->
-      <main id="vm-shell-main" class="lg:col-span-6 space-y-4 overflow-y-auto" aria-label="Workspace Content">
-        <div id="ui-error-banner" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="status" aria-live="polite"></div>
-        <header class="panel hero bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow p-6">
-          <h1 class="text-2xl font-bold">VM Web App Event-Driven Workspace</h1>
-          <p class="mt-2 opacity-90">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
+      <main id="vm-shell-main" class="col-span-12 lg:col-span-6 space-y-6" aria-label="Workspace Content">
+        <div id="ui-error-banner" class="hidden border border-white bg-black text-white px-4 py-3" role="status" aria-live="polite"></div>
+        <header class="border border-white bg-black p-4">
+          <h1 class="text-xl font-bold">VM Web App Event-Driven Workspace</h1>
+          <p class="mt-2 opacity-70 text-sm">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
         </header>
 
-        <section id="studio-toolbar" class="panel bg-white rounded-lg shadow p-4">
-          <div class="flex items-center justify-between gap-3">
+        <section id="studio-toolbar" class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Studio</div>
+          <div class="p-4 pt-8 flex items-center justify-between gap-3">
             <div>
-              <h2 class="text-lg font-semibold">Studio</h2>
-              <p id="studio-status-text" class="text-sm text-gray-600">Select a plan to begin.</p>
+              <p id="studio-status-text" class="text-sm text-gray-400">Select a plan to begin.</p>
             </div>
             <div class="flex items-center gap-2">
-              <button
-                id="studio-create-plan-button"
-                type="button"
-                class="bg-green-600 text-white rounded px-4 py-2"
-              >
-                Create plan
-              </button>
-              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input id="studio-devmode-toggle" type="checkbox" class="rounded" />
-                Dev mode
+              <button id="studio-create-plan-button" type="button" class="border border-white bg-transparent text-white px-4 py-2 hover:bg-white hover:text-black transition-colors">Create plan</button>
+              <label class="inline-flex items-center gap-2 text-sm">
+                <input id="studio-devmode-toggle" type="checkbox" class="accent-white" />
+                <span class="text-gray-400">Dev mode</span>
               </label>
             </div>
           </div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-2">Preview</h3>
-          <pre
-            id="studio-artifact-preview"
-            class="item muted p-3 bg-gray-100 rounded text-sm"
-          >No preview yet.</pre>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Preview</div>
+          <pre id="studio-artifact-preview" class="p-4 pt-8 text-sm text-gray-300">No preview yet.</pre>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-2">Progress</h3>
-          <div id="studio-stage-progress" class="list space-y-2"></div>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Progress</div>
+          <div id="studio-stage-progress" class="p-4 pt-8 space-y-2"></div>
         </section>
 
         <section class="vm-dev-only border border-white bg-black relative">
@@ -115,21 +106,21 @@
       </main>
 
       <!-- Right Column: Operations -->
-      <aside id="vm-shell-right" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Operations">
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Tasks</h3>
-          <div id="tasks-list" class="list space-y-2"></div>
+      <aside id="vm-shell-right" class="col-span-12 lg:col-span-3 space-y-6" aria-label="Workspace Operations">
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Task_Board</div>
+          <div id="tasks-list" class="p-4 pt-8 space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Approvals</h3>
-          <div id="approvals-list" class="list space-y-2"></div>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Approvals</div>
+          <div id="approvals-list" class="p-4 pt-8 space-y-2"></div>
         </section>
 
-        <section class="panel bg-white rounded-lg shadow p-4">
-          <h3 class="font-semibold mb-3">Artifacts</h3>
-          <div id="workflow-artifacts-list" class="list space-y-2"></div>
-          <pre id="workflow-artifact-preview" class="item muted mt-4 p-3 bg-gray-100 rounded text-sm">Select an artifact to preview.</pre>
+        <section class="border border-white bg-black relative">
+          <div class="absolute top-0 left-0 bg-white text-black px-2 py-1 text-xs">Artifacts</div>
+          <div id="workflow-artifacts-list" class="p-4 pt-8 space-y-2"></div>
+          <pre id="workflow-artifact-preview" class="p-4 text-sm text-gray-300">Select an artifact to preview.</pre>
         </section>
       </aside>
     </div>

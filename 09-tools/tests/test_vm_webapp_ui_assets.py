@@ -138,3 +138,18 @@ def test_vm_index_left_column_uses_retro_panels_with_brand_project_thread_ids() 
     )
     assert "Initialize Brand" in html
     assert "Execute Project" in html
+
+
+def test_vm_index_main_and_right_columns_keep_all_runtime_anchors_in_retro_layout() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert re.search(
+        r'id="vm-shell-main".*id="studio-toolbar".*id="studio-create-plan-button".*id="studio-devmode-toggle".*id="studio-artifact-preview".*id="studio-stage-progress".*id="thread-mode-form".*id="thread-modes-list".*id="timeline-list".*id="workflow-run-form".*id="workflow-run-detail-list"',
+        html,
+        re.S,
+    )
+    assert re.search(
+        r'id="vm-shell-right".*id="tasks-list".*id="approvals-list".*id="workflow-artifacts-list".*id="workflow-artifact-preview"',
+        html,
+        re.S,
+    )
+    assert "Task_Board" in html
