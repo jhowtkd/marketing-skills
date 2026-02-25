@@ -24,7 +24,7 @@ class Brand(Base):
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
 
 
-class Product(Base):
+class Project(Base):
     __tablename__ = "products"
 
     product_id: Mapped[str] = mapped_column(String(64), primary_key=True)
