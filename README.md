@@ -178,6 +178,26 @@ O Studio é o caminho rápido para criar planos/calendários sem expor a arquite
 - `GET /api/v2/workflow-runs/{run_id}/artifacts`
 - `GET /api/v2/workflow-runs/{run_id}/artifact-content?stage_dir=...&artifact_path=...`
 
+### Managed-First Deploy (Render)
+
+Contrato de deploy operacional (API + worker) para ambiente managed-first:
+
+- Blueprint Render: `deploy/render/vm-webapp-render.yaml`
+- Runbook operacional: `docs/runbooks/vm-webapp-managed-first.md`
+- API command: `uv run python -m vm_webapp serve --host 0.0.0.0 --port $PORT`
+- Worker command: `uv run python -m vm_webapp worker --poll-interval-ms 500`
+
+Variaveis obrigatorias em managed mode:
+
+- `VM_ENABLE_MANAGED_MODE=true`
+- `VM_DB_URL=<postgres_connection_string>`
+- `VM_REDIS_URL=<redis_connection_string>`
+
+Probes recomendadas no deploy:
+
+- `GET /api/v2/health/live`
+- `GET /api/v2/health/ready`
+
 ### Hierarchical Domain & Tooling (v2 Core)
 
 A plataforma evoluiu para suportar domínio hierárquico completo e governança de ferramentas.

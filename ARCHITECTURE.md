@@ -272,6 +272,21 @@ Módulo de memória persistente para aprendizado contínuo:
 - **Metrics:** Coleta de latência, custo (tokens/infra) e health por stage.
 - **Event Sourcing:** Todo o estado do sistema é derivado do `EventLog`, permitindo rebuild de projeções e auditoria completa.
 
+### 6. Managed-First Deployment Contract
+
+Topologia de producao recomendada para operacao managed-first:
+
+- **Web service:** API HTTP (`python -m vm_webapp serve`) exposta publicamente.
+- **Worker service:** Loop assíncrono (`python -m vm_webapp worker --poll-interval-ms 500`) para drenar eventos.
+- **Stateful dependencies:** PostgreSQL (`VM_DB_URL`) e Redis (`VM_REDIS_URL`).
+- **Fail-fast de startup:** com `VM_ENABLE_MANAGED_MODE=true`, a aplicacao falha se DB/Redis nao estiverem configurados.
+- **Probes operacionais:** `GET /api/v2/health/live` (liveness) e `GET /api/v2/health/ready` (readiness + dependencies).
+
+Artefatos de referencia:
+
+- Blueprint Render: `deploy/render/vm-webapp-render.yaml`
+- Runbook operacional: `docs/runbooks/vm-webapp-managed-first.md`
+
 ---
 
 ## 💾 Sistema de Contexto
