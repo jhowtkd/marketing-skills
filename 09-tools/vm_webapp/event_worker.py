@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Protocol
 
 from sqlalchemy.engine import Engine
 
@@ -16,6 +17,23 @@ class InProcessEventWorker:
     def pump(self, *, max_events: int = 50) -> int:
         with session_scope(self.engine) as session:
             return process_new_events(session, max_events=max_events)
+
+
+class SupportsMetricsCounter(Protocol):
+    def record_count(self, name: str, value: int = 1) -> None: ...
+
+
+def pump_worker_with_resilience(
+    *,
+    worker,
+    metrics: SupportsMetricsCounter,
+    max_events: int = 30,
+) -> int:
+    try:
+        return int(worker.pump(max_events=max_events))
+    except Exception:
+        metrics.record_count("dependency_failures")
+        return 0
 
 
 def run_worker_loop(
