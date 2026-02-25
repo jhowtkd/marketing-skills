@@ -113,3 +113,8 @@ def test_vm_app_js_includes_studio_wizard_ids() -> None:
     assert "studio-wizard" in js
     assert "/api/v2/threads" in js
     assert "/workflow-runs" in js
+
+def test_vm_index_contains_studio_progress_anchors() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "id=\"studio-stage-progress\"" in html
+    assert "id=\"studio-status-text\"" in html

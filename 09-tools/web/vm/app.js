@@ -45,6 +45,40 @@ const studioWizardCancel = document.getElementById("studio-wizard-cancel");
 const studioPlanTitleInput = document.getElementById("studio-plan-title-input");
 const studioPlanBriefInput = document.getElementById("studio-plan-brief-input");
 const studioPlaybooks = document.getElementById("studio-playbooks");
+const studioStatusText = document.getElementById("studio-status-text");
+const studioStageProgress = document.getElementById("studio-stage-progress");
+const studioArtifactPreview = document.getElementById("studio-artifact-preview");
+
+const STATUS_LABEL = {
+  queued: "Em fila",
+  running: "Gerando…",
+  waiting_approval: "Aguardando revisão",
+  completed: "Pronto",
+  failed: "Falhou",
+};
+
+function humanizeStageKey(key) {
+  return String(key || "").replaceAll("_", " ");
+}
+
+function renderStudioRun(detail) {
+  if (!detail) return;
+  if (studioStatusText) {
+    const label = STATUS_LABEL[detail.status] || detail.status;
+    studioStatusText.textContent = `${label} · ${detail.effective_mode || detail.mode || ""}`.trim();
+  }
+  if (studioStageProgress) {
+    const rows = Array.isArray(detail.stages)
+      ? detail.stages.slice().sort((a, b) => a.position - b.position)
+      : [];
+    clearAndRender(studioStageProgress, rows, (stage) => {
+      const node = document.createElement("div");
+      node.className = "item";
+      node.textContent = `${humanizeStageKey(stage.stage_id)} — ${stage.status}`;
+      return node;
+    });
+  }
+}
 
 function setDevMode(enabled) {
   document.body.dataset.devMode = enabled ? "1" : "0";
@@ -677,6 +711,7 @@ async function loadWorkflowRunDetail(runId) {
   }
   const detail = await fetchJson(`/api/v2/workflow-runs/${encodeURIComponent(runId)}`);
   renderWorkflowRunDetail(detail);
+  renderStudioRun(detail);
 }
 
 async function loadWorkflowArtifacts(runId) {
@@ -703,6 +738,7 @@ async function loadWorkflowArtifactContent(stageDir, artifactPath) {
     `/api/v2/workflow-runs/${encodeURIComponent(activeWorkflowRunId)}/artifact-content?${query.toString()}`
   );
   workflowArtifactPreview.textContent = body.content || "";
+  if (studioArtifactPreview) studioArtifactPreview.textContent = body.content || "";
 }
 
 async function loadBrands() {
