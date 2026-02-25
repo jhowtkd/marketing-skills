@@ -443,3 +443,7 @@ Expected:
 
 If any command fails, stop and debug with `@systematic-debugging` before continuing.
 
+
+## Release Checklist Artifact
+
+- `docs/plans/2026-02-25-vm-webapp-managed-first-hardening-release-checklist.md`
