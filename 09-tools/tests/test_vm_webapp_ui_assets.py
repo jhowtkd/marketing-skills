@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -8,6 +9,13 @@ def test_vm_index_uses_stitch_shell_and_cdn_dependencies() -> None:
     assert 'id="vm-shell-left"' in html
     assert 'id="vm-shell-main"' in html
     assert 'id="vm-shell-right"' in html
+
+
+def test_vm_index_places_anchor_ids_in_left_center_right_columns() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert re.search(r'id="vm-shell-left".*id="brands-list".*id="projects-list"', html, re.S)
+    assert re.search(r'id="vm-shell-main".*id="threads-list".*id="timeline-list".*id="workflow-run-form".*id="workflow-run-detail-list"', html, re.S)
+    assert re.search(r'id="vm-shell-right".*id="tasks-list".*id="approvals-list".*id="workflow-artifacts-list".*id="workflow-artifact-preview"', html, re.S)
 
 
 def test_vm_index_contains_event_driven_workspace_panels() -> None:
