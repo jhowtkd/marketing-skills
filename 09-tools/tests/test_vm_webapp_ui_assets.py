@@ -127,3 +127,14 @@ def test_vm_index_contains_retro_terminal_head_and_shell_chrome() -> None:
     assert "fonts.googleapis.com/icon?family=Material+Icons" in html
     assert 'class="scanlines"' in html
     assert "SYS.VER.3.0.0 [MONOCHROME]" in html
+
+
+def test_vm_index_left_column_uses_retro_panels_with_brand_project_thread_ids() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert re.search(
+        r'id="vm-shell-left".*id="brand-create-form".*id="brands-list".*id="project-create-form".*id="projects-list".*id="thread-create-button".*id="threads-list"',
+        html,
+        re.S,
+    )
+    assert "Initialize Brand" in html
+    assert "Execute Project" in html
