@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>VM Web App Event-Driven Workspace</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="min-h-screen bg-gray-50">
+  <body class="min-h-screen bg-black text-white" style="font-family: 'Share Tech Mono', monospace;">
+    <div class="scanlines"></div>
+    <div class="absolute top-0 right-0 p-1 text-[10px] opacity-70">SYS.VER.3.0.0 [MONOCHROME]</div>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-screen">
       <!-- Left Column: Navigation -->
       <aside id="vm-shell-left" class="lg:col-span-3 space-y-4 overflow-y-auto" aria-label="Workspace Navigation">

@@ -118,3 +118,12 @@ def test_vm_index_contains_studio_progress_anchors() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     assert "id=\"studio-stage-progress\"" in html
     assert "id=\"studio-status-text\"" in html
+
+
+def test_vm_index_contains_retro_terminal_head_and_shell_chrome() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "Share+Tech+Mono" in html
+    assert "JetBrains+Mono" in html
+    assert "fonts.googleapis.com/icon?family=Material+Icons" in html
+    assert 'class="scanlines"' in html
+    assert "SYS.VER.3.0.0 [MONOCHROME]" in html
