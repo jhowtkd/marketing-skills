@@ -482,6 +482,11 @@ def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, obje
     return {"profiles": payload}
 
 
+@router.get("/v2/metrics")
+def metrics_v2(request: Request) -> dict[str, object]:
+    return request.app.state.workflow_runtime.metrics.snapshot()
+
+
 @router.post("/v2/threads/{thread_id}/workflow-runs")
 def start_workflow_run_v2(
     thread_id: str, payload: WorkflowRunRequest, request: Request
