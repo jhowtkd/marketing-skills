@@ -54,6 +54,11 @@ def test_readme_mentions_kimi_env_vars_for_vm_webapp() -> None:
     assert "KIMI_BASE_URL" in content
 
 
+def test_readme_mentions_grant_and_resume_endpoint() -> None:
+    content = Path("README.md").read_text(encoding="utf-8")
+    assert "/api/v2/approvals/{approval_id}/grant-and-resume" in content
+
+
 def test_ui_assets_include_effective_mode_and_stage_status_labels() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")

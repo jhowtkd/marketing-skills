@@ -262,3 +262,33 @@ KIMI_BASE_URL=https://openrouter.ai/api/v1
 VM_WORKSPACE_ROOT=runtime/vm
 VM_DB_PATH=runtime/vm/workspace.sqlite3
 ```
+
+### API v2 Workflow Approval (Grant-and-Resume)
+
+**Breaking Change:** A API v2 consolidou as operações de aprovação em um único endpoint orquestrado.
+
+**Endpoint:**
+```
+POST /api/v2/approvals/{approval_id}/grant-and-resume
+```
+
+**Comportamento:**
+- Concede a aprovação pendente
+- Retoma automaticamente a execução do workflow se o approval estiver associado a um gate de workflow
+- Retorna metadados da execução (`run_id`, `resume_applied`, `run_status`, `event_ids`)
+
+**Endpoints removidos (retornam 404/405):**
+- `POST /api/v2/approvals/{approval_id}/grant` (use `grant-and-resume`)
+- `POST /api/v2/workflow-runs/{run_id}/resume` (obsoleto - resumo automático via grant)
+
+**Exemplo de resposta:**
+```json
+{
+  "approval_id": "apr-run-1",
+  "run_id": "run-1",
+  "approval_status": "granted",
+  "run_status": "running",
+  "resume_applied": true,
+  "event_ids": ["evt-abc123", "evt-def456"]
+}
+```
