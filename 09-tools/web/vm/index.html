@@ -42,6 +42,36 @@
           <p class="mt-2 opacity-90">Flow: Brand -> Project -> Thread with timeline and approvals.</p>
         </header>
 
+        <section id="studio-toolbar" class="panel bg-white rounded-lg shadow p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold">Studio</h2>
+              <p id="studio-status-text" class="text-sm text-gray-600">Select a plan to begin.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                id="studio-create-plan-button"
+                type="button"
+                class="bg-green-600 text-white rounded px-4 py-2"
+              >
+                Create plan
+              </button>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input id="studio-devmode-toggle" type="checkbox" class="rounded" />
+                Dev mode
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel bg-white rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-2">Preview</h3>
+          <pre
+            id="studio-artifact-preview"
+            class="item muted p-3 bg-gray-100 rounded text-sm"
+          >No preview yet.</pre>
+        </section>
+
         <section class="panel bg-white rounded-lg shadow p-4" id="thread-workspace-panel">
           <h2 class="text-lg font-semibold mb-3">Threads</h2>
           <div class="inline flex gap-2 mb-3">
@@ -109,6 +139,13 @@
         </section>
       </aside>
     </div>
+    <div
+      id="studio-wizard"
+      class="vm-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create plan wizard"
+    ></div>
     <script src="/app.js"></script>
   </body>
 </html>
