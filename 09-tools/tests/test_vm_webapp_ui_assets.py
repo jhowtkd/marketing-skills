@@ -42,7 +42,8 @@ def test_vm_app_js_calls_workflow_run_endpoints() -> None:
     js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
     assert "/api/v2/threads/" in js and "/workflow-runs" in js
     assert "/api/v2/workflow-runs/" in js and "/artifacts" in js
-    assert "/api/v2/workflow-runs/" in js and "/resume" in js
+    # Legacy /resume endpoint removed - now using grant-and-resume via approvals
+    assert "/api/v2/approvals/" in js and "/grant-and-resume" in js
     assert "/api/v2/workflow-profiles" in js
 
 
@@ -61,3 +62,17 @@ def test_ui_assets_include_effective_mode_and_stage_status_labels() -> None:
     assert "fallback_applied" in js
     assert "error_code" in js
     assert "Run Detail" in html
+
+
+def test_vm_ui_uses_grant_and_resume_endpoint_only() -> None:
+    js = Path("09-tools/web/vm/app.js").read_text(encoding="utf-8")
+    assert "/api/v2/approvals/" in js and "/grant-and-resume" in js
+    # Legacy endpoints should not be used
+    assert "/api/v2/approvals/" not in js or "/grant\"" not in js.replace("grant-and-resume", "").replace("grantAndResume", "")
+    assert "/api/v2/workflow-runs/" not in js or "/resume" not in js
+
+
+def test_vm_index_contains_fixed_pending_approvals_panel() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert 'id="pending-approvals-panel"' in html
+    assert 'id="pending-approvals-list"' in html

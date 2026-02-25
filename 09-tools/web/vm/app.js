@@ -23,6 +23,7 @@ const threadModesList = document.getElementById("thread-modes-list");
 const timelineList = document.getElementById("timeline-list");
 const tasksList = document.getElementById("tasks-list");
 const approvalsList = document.getElementById("approvals-list");
+const pendingApprovalsList = document.getElementById("pending-approvals-list");
 
 const workflowRunForm = document.getElementById("workflow-run-form");
 const workflowRequestInput = document.getElementById("workflow-request-input");
@@ -98,6 +99,16 @@ function clearAndRender(container, rows, renderItem) {
   for (const row of rows) {
     container.appendChild(renderItem(row));
   }
+}
+
+async function grantAndResume(approvalId) {
+  await postV2(
+    `/api/v2/approvals/${encodeURIComponent(approvalId)}/grant-and-resume`,
+    {},
+    "approval-grant-resume"
+  );
+  await loadThreadWorkspace();
+  await loadPendingApprovals();
 }
 
 function createActionButton(label, onClick) {
@@ -365,15 +376,26 @@ function renderApprovals(items) {
     row.appendChild(text);
     if (approval.status !== "granted") {
       const grantButton = createActionButton("Grant", async () => {
-        await postV2(
-          `/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`,
-          {},
-          "approval-grant"
-        );
-        await loadThreadWorkspace();
+        await grantAndResume(approval.approval_id);
       });
       row.appendChild(grantButton);
     }
+    return row;
+  });
+}
+
+function renderPendingApprovals(items) {
+  clearAndRender(pendingApprovalsList, items, (approval) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    row.style.borderLeft = "4px solid #1f5eff";
+    const text = document.createElement("div");
+    text.textContent = `${approval.approval_id} ${approval.reason ? "(" + approval.reason + ")" : ""}`;
+    row.appendChild(text);
+    const grantButton = createActionButton("Grant & Resume", async () => {
+      await grantAndResume(approval.approval_id);
+    });
+    row.appendChild(grantButton);
     return row;
   });
 }
@@ -422,17 +444,6 @@ function renderWorkflowRuns(items) {
     });
     bar.appendChild(openDetail);
 
-    if (run.status === "waiting_approval") {
-      const resume = createActionButton("Resume", async () => {
-        await postV2(
-          `/api/v2/workflow-runs/${encodeURIComponent(run.run_id)}/resume`,
-          {},
-          "workflow-resume"
-        );
-        await loadWorkflowRunDetail(run.run_id);
-      });
-      bar.appendChild(resume);
-    }
     row.appendChild(bar);
     return row;
   });
@@ -490,23 +501,8 @@ function renderWorkflowRunDetail(detail) {
     const actions = document.createElement("div");
     actions.className = "inline";
     actions.appendChild(
-      createActionButton("Grant", async () => {
-        await postV2(
-          `/api/v2/approvals/${encodeURIComponent(approval.approval_id)}/grant`,
-          {},
-          "workflow-detail-grant"
-        );
-        await loadWorkflowRunDetail(detail.run_id);
-      })
-    );
-    actions.appendChild(
-      createActionButton("Resume", async () => {
-        await postV2(
-          `/api/v2/workflow-runs/${encodeURIComponent(detail.run_id)}/resume`,
-          {},
-          "workflow-detail-resume"
-        );
-        await loadWorkflowRunDetail(detail.run_id);
+      createActionButton("Grant & Resume", async () => {
+        await grantAndResume(approval.approval_id);
       })
     );
     row.appendChild(actions);
@@ -559,18 +555,35 @@ async function loadWorkflowRuns() {
   );
   const runs = body.runs || [];
   renderWorkflowRuns(runs);
-  if (!runs.length) {
-    activeWorkflowRunId = null;
+  
+  // Auto-select first waiting_approval run, or first run
+  const waitingRun = runs.find((r) => r.status === "waiting_approval");
+  if (waitingRun) {
+    activeWorkflowRunId = waitingRun.run_id;
+  } else if (!activeWorkflowRunId || !runs.some((row) => row.run_id === activeWorkflowRunId)) {
+    activeWorkflowRunId = runs[0]?.run_id || null;
+  }
+  
+  if (activeWorkflowRunId) {
+    await loadWorkflowRunDetail(activeWorkflowRunId);
+    await loadWorkflowArtifacts(activeWorkflowRunId);
+  } else {
     renderWorkflowRunDetail(null);
     renderWorkflowArtifacts([]);
     workflowArtifactPreview.textContent = "Select an artifact to preview.";
+  }
+}
+
+async function loadPendingApprovals() {
+  if (!activeThreadId) {
+    renderPendingApprovals([]);
     return;
   }
-  if (!activeWorkflowRunId || !runs.some((row) => row.run_id === activeWorkflowRunId)) {
-    activeWorkflowRunId = runs[0].run_id;
-  }
-  await loadWorkflowRunDetail(activeWorkflowRunId);
-  await loadWorkflowArtifacts(activeWorkflowRunId);
+  const body = await fetchJson(
+    `/api/v2/threads/${encodeURIComponent(activeThreadId)}/approvals`
+  );
+  const pending = (body.items || []).filter((a) => a.status !== "granted");
+  renderPendingApprovals(pending);
 }
 
 async function loadWorkflowRunDetail(runId) {
@@ -688,6 +701,7 @@ async function loadThreadWorkspace() {
     renderWorkflowRuns([]);
     renderWorkflowRunDetail(null);
     renderWorkflowArtifacts([]);
+    renderPendingApprovals([]);
     workflowArtifactPreview.textContent = "Select an artifact to preview.";
     return;
   }
@@ -702,6 +716,7 @@ async function loadThreadWorkspace() {
   renderTasks(tasks.items || []);
   renderApprovals(approvals.items || []);
   await loadWorkflowRuns();
+  await loadPendingApprovals();
 }
 
 function restartWorkflowPolling() {
@@ -718,6 +733,7 @@ function restartWorkflowPolling() {
     }
     try {
       await loadWorkflowRuns();
+      await loadPendingApprovals();
     } catch (error) {
       console.error(error);
     }

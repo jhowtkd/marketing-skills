@@ -110,6 +110,13 @@ button.ghost {
   color: var(--muted);
 }
 
+.sticky-approvals {
+  position: sticky;
+  top: 8px;
+  z-index: 4;
+  border-color: #9dbbff;
+}
+
 @media (max-width: 760px) {
   .inline {
     flex-direction: column;
