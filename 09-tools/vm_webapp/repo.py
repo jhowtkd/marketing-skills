@@ -385,6 +385,16 @@ def get_brand_view(session: Session, brand_id: str) -> BrandView | None:
     return session.get(BrandView, brand_id)
 
 
+def list_campaigns_view(session: Session, *, project_id: str) -> list[CampaignView]:
+    return list(
+        session.scalars(
+            select(CampaignView)
+            .where(CampaignView.project_id == project_id)
+            .order_by(CampaignView.campaign_id.asc())
+        )
+    )
+
+
 def list_projects_view(session: Session, *, brand_id: str) -> list[ProjectView]:
     return list(
         session.scalars(

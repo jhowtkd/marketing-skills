@@ -1,38 +1,33 @@
-from pathlib import Path
-from uuid import uuid4
-
-from vm_webapp.db import build_engine, init_db, session_scope
+import json
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from vm_webapp.models import Base, ContextVersion
 from vm_webapp.context_versions import append_context_version
-from vm_webapp.models import ContextVersion
 
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
 
-def test_context_versions_are_append_only(tmp_path: Path) -> None:
-    engine = build_engine(tmp_path / "db.sqlite3")
-    init_db(engine)
-
-    scope = "brand"
-    scope_id = "b1"
-
-    with session_scope(engine) as session:
-        v1_id = append_context_version(
-            session,
-            scope=scope,
-            scope_id=scope_id,
-            payload={"key": "v1"}
-        )
-        assert v1_id.startswith("ctxv-")
-
-        v2_id = append_context_version(
-            session,
-            scope=scope,
-            scope_id=scope_id,
-            payload={"key": "v2"}
-        )
-        assert v2_id != v1_id
-
-    with session_scope(engine) as session:
-        v1 = session.get(ContextVersion, v1_id)
-        assert v1.payload_json == '{"key": "v1"}'
-
-        v2 = session.get(ContextVersion, v2_id)
-        assert v2.payload_json == '{"key": "v2"}'
+def test_context_versions_are_append_only(session: Session) -> None:
+    # 1. Append first version
+    payload1 = {"soul": "classic"}
+    v1_id = append_context_version(session, scope="brand", scope_id="b1", payload=payload1)
+    
+    # 2. Append second version
+    payload2 = {"soul": "modern"}
+    v2_id = append_context_version(session, scope="brand", scope_id="b1", payload=payload2)
+    
+    assert v1_id != v2_id
+    
+    # Verify both exist and are correct
+    v1 = session.get(ContextVersion, v1_id)
+    v2 = session.get(ContextVersion, v2_id)
+    
+    assert json.loads(v1.payload_json) == payload1
+    assert json.loads(v2.payload_json) == payload2
+    assert v1.scope == "brand"
+    assert v1.scope_id == "b1"

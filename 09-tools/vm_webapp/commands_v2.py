@@ -257,6 +257,104 @@ def update_project_command(
     return dedup
 
 
+def create_campaign_command(
+    session: Session,
+    *,
+    campaign_id: str | None,
+    brand_id: str,
+    project_id: str,
+    title: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    resolved_id = campaign_id or _auto_id("camp")
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="CampaignCreated",
+        aggregate_type="campaign",
+        aggregate_id=resolved_id,
+        stream_id=f"campaign:{resolved_id}",
+        expected_version=0,
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "campaign_id": resolved_id,
+            "brand_id": brand_id,
+            "project_id": project_id,
+            "title": title,
+        },
+        brand_id=brand_id,
+        project_id=project_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_campaign",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "campaign_id": resolved_id,
+            "title": title,
+        },
+    )
+    return get_command_dedup(session, idempotency_key=idempotency_key)
+
+
+def create_task_command(
+    session: Session,
+    *,
+    task_id: str | None,
+    thread_id: str,
+    campaign_id: str | None,
+    brand_id: str | None,
+    title: str,
+    actor_id: str,
+    idempotency_key: str,
+) -> CommandDedup:
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    resolved_id = task_id or _auto_id("task")
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="TaskCreated",
+        aggregate_type="thread",  # Tasks are part of thread aggregate here
+        aggregate_id=thread_id,
+        stream_id=f"thread:{thread_id}",
+        expected_version=get_stream_version(session, f"thread:{thread_id}"),
+        actor_type="human",
+        actor_id=actor_id,
+        payload={
+            "task_id": resolved_id,
+            "campaign_id": campaign_id,
+            "brand_id": brand_id,
+            "title": title,
+            "status": "open",
+        },
+        thread_id=thread_id,
+        brand_id=brand_id,
+    )
+    saved = append_event(session, event)
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="create_task",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "task_id": resolved_id,
+            "campaign_id": campaign_id,
+        },
+    )
+    return get_command_dedup(session, idempotency_key=idempotency_key)
+
+
 def rename_thread_command(
     session: Session,
     *,

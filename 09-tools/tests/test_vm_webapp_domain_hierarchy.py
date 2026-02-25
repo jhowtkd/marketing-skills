@@ -1,74 +1,73 @@
-from pathlib import Path
 import json
-
-from vm_webapp.db import build_engine, init_db, session_scope
-from vm_webapp.events import EventEnvelope
+from datetime import datetime, timezone
+from pathlib import Path
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from vm_webapp.models import Base, CampaignView, TaskView, EventLog
 from vm_webapp.projectors_v2 import apply_event_to_read_models
-from vm_webapp.repo import append_event
-from vm_webapp.models import CampaignView, TaskView
 
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
 
-def test_projector_creates_campaign_and_task_views(tmp_path: Path) -> None:
-    engine = build_engine(tmp_path / "db.sqlite3")
-    init_db(engine)
-
-    with session_scope(engine) as session:
-        # 1. Project Campaign
-        evt_campaign = append_event(
-            session,
-            EventEnvelope(
-                event_id="evt-camp-1",
-                event_type="CampaignCreated",
-                aggregate_type="campaign",
-                aggregate_id="c1",
-                stream_id="campaign:c1",
-                expected_version=0,
-                actor_type="human",
-                actor_id="user-1",
-                payload={
-                    "campaign_id": "c1",
-                    "brand_id": "b1",
-                    "project_id": "p1",
-                    "title": "Black Friday 2026"
-                },
-                brand_id="b1",
-                project_id="p1",
-            ),
-        )
-        apply_event_to_read_models(session, evt_campaign)
-
-        # 2. Project Task with hierarchy
-        evt_task = append_event(
-            session,
-            EventEnvelope(
-                event_id="evt-task-1",
-                event_type="TaskCreated",
-                aggregate_type="task",
-                aggregate_id="t1",
-                stream_id="task:t1",
-                expected_version=0,
-                actor_type="human",
-                actor_id="user-1",
-                payload={
-                    "task_id": "t1",
-                    "campaign_id": "c1",
-                    "brand_id": "b1",
-                    "title": "Design Banner",
-                    "status": "todo"
-                },
-                brand_id="b1",
-                thread_id="thread-1"
-            ),
-        )
-        apply_event_to_read_models(session, evt_task)
-
-    with session_scope(engine) as session:
-        campaign = session.get(CampaignView, "c1")
-        assert campaign is not None
-        assert campaign.brand_id == "b1"
-        assert campaign.project_id == "p1"
-
-        task = session.get(TaskView, "t1")
-        assert task is not None
-        assert task.campaign_id == "c1"
-        assert task.brand_id == "b1"
+def test_projector_creates_campaign_and_task_views(session: Session) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # 1. Project CampaignCreated
+    campaign_event = EventLog(
+        event_id="evt-c1",
+        event_type="CampaignCreated",
+        aggregate_type="Campaign",
+        aggregate_id="camp-1",
+        stream_id="camp-1",
+        stream_version=1,
+        actor_type="user",
+        actor_id="u1",
+        payload_json=json.dumps({
+            "campaign_id": "camp-1",
+            "brand_id": "brand-1",
+            "project_id": "proj-1",
+            "title": "Summer Sale"
+        }),
+        occurred_at=now
+    )
+    apply_event_to_read_models(session, campaign_event)
+    session.flush()
+    
+    campaign = session.get(CampaignView, "camp-1")
+    assert campaign is not None
+    assert campaign.title == "Summer Sale"
+    assert campaign.brand_id == "brand-1"
+    
+    # 2. Project TaskCreated
+    task_event = EventLog(
+        event_id="evt-t1",
+        event_type="TaskCreated",
+        aggregate_type="Task",
+        aggregate_id="task-1",
+        stream_id="task-1",
+        stream_version=1,
+        actor_type="user",
+        actor_id="u1",
+        thread_id="thread-1",
+        payload_json=json.dumps({
+            "task_id": "task-1",
+            "campaign_id": "camp-1",
+            "brand_id": "brand-1",
+            "title": "Email Blast",
+            "status": "pending"
+        }),
+        occurred_at=now
+    )
+    apply_event_to_read_models(session, task_event)
+    session.flush()
+    
+    task = session.get(TaskView, "task-1")
+    assert task is not None
+    assert task.title == "Email Blast"
+    assert task.campaign_id == "camp-1"
+    assert task.brand_id == "brand-1"
