@@ -505,7 +505,7 @@ def grant_and_resume_approval_command(
     resume_applied = False
     if run_id:
         run = get_run(session, run_id)
-        if run is not None and run.status not in {"completed", "failed", "canceled"}:
+        if run is not None and run.status == "waiting_approval":
             run_stream_id = f"thread:{run.thread_id}"
             run_expected = get_stream_version(session, run_stream_id)
             resume_event = EventEnvelope(
@@ -535,7 +535,7 @@ def grant_and_resume_approval_command(
         else:
             event_ids = [saved.event_id]
             approval_status = "granted"
-            run_status = run.status if run else "unknown"
+            run_status = run.status if run is not None else "unknown"
     else:
         event_ids = [saved.event_id]
         approval_status = "granted"

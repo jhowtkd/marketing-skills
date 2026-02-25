@@ -379,6 +379,8 @@ class WorkflowRuntimeV2:
                         causation_id=causation_id,
                         correlation_id=correlation_id,
                     )
+                if run.status != "waiting_approval":
+                    update_run_status(session, run_id=run_id, status="waiting_approval")
                 self._write_run_summary(
                     run_id=run_id,
                     status="waiting_approval",

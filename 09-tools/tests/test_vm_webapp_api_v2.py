@@ -488,12 +488,12 @@ def test_resume_endpoint_is_idempotent_when_run_already_completed(tmp_path: Path
     else:
         raise AssertionError("run did not complete in time")
 
-    # Legacy resume endpoint should now return 404
+    # Legacy resume endpoint is no longer valid; FastAPI resolves it as method mismatch.
     resumed_legacy = client.post(
         f"/api/v2/workflow-runs/{run_id}/resume",
         headers={"Idempotency-Key": "idem-resume-legacy"},
     )
-    assert resumed_legacy.status_code == 404
+    assert resumed_legacy.status_code == 405
 
 
 def test_v2_grant_and_resume_endpoint_returns_orchestrated_payload(tmp_path: Path) -> None:
