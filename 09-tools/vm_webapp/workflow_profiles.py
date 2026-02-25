@@ -19,6 +19,7 @@ class WorkflowStageProfile:
     approval_required: bool
     retry_policy: dict[str, int]
     timeout_seconds: int
+    fallback_providers: list[str]
 
 
 @dataclass(slots=True, frozen=True)
@@ -47,6 +48,18 @@ def _require_skills(payload: dict[str, Any]) -> list[str]:
     return skills
 
 
+def _require_fallback_providers(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("fallback_providers", [])
+    if not isinstance(raw, list):
+        raise ValueError("workflow profile stage `fallback_providers` must be a list")
+    providers: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("workflow profile stage fallback_providers must be non-empty strings")
+        providers.append(item.strip())
+    return providers
+
+
 def _require_retry_policy(payload: dict[str, Any]) -> dict[str, int]:
     raw = payload.get("retry_policy", {})
     if not isinstance(raw, dict):
@@ -72,6 +85,7 @@ def _parse_stage(payload: Any) -> WorkflowStageProfile:
         approval_required=bool(payload.get("approval_required", False)),
         retry_policy=_require_retry_policy(payload),
         timeout_seconds=timeout,
+        fallback_providers=_require_fallback_providers(payload),
     )
 
 
@@ -138,6 +152,7 @@ def resolve_workflow_plan(
                 "approval_required": stage.approval_required,
                 "retry_policy": dict(stage.retry_policy),
                 "timeout_seconds": stage.timeout_seconds,
+                "fallback_providers": list(stage.fallback_providers),
             }
         )
 

@@ -27,6 +27,7 @@ from vm_webapp.repo import (
     update_run_status,
     update_stage_status,
 )
+from vm_webapp.resilience import ResiliencePolicy, FallbackChain
 from vm_webapp.workflow_profiles import (
     DEFAULT_PROFILES_PATH,
     FOUNDATION_MODE_DEFAULT,
@@ -432,6 +433,9 @@ class WorkflowRuntimeV2:
                     correlation_id=correlation_id,
                 )
                 try:
+                    providers = [self.llm_model] + stage_cfg.get("fallback_providers", [])
+                    current_model = providers[(attempts - 1) % len(providers)]
+
                     manifest = self._execute_stage(
                         run_id=run.run_id,
                         thread_id=run.thread_id,
@@ -442,16 +446,55 @@ class WorkflowRuntimeV2:
                         stage_position=stage.position,
                         skills=list(stage_cfg["skills"]),
                         attempts=attempts,
+                        llm_model=current_model,
                     )
                 except Exception as exc:
-                    default_retryable = attempts < int(stage_cfg["retry_policy"]["max_attempts"])
                     error_code = "stage_execution_error"
                     error_message = str(exc)
-                    retryable = default_retryable
+                    retryable = True
                     if isinstance(exc, StageExecutionError):
                         error_code = exc.error_code
                         error_message = exc.error_message
-                        retryable = exc.retryable and default_retryable
+                        retryable = exc.retryable
+
+                    max_attempts = int(stage_cfg["retry_policy"]["max_attempts"])
+                    # If we have multiple providers, we might want to allow more attempts
+                    total_allowed = max_attempts * len(providers)
+                    policy = ResiliencePolicy(max_attempts=total_allowed)
+                    decision = policy.next_action(attempt=attempts, retryable=retryable)
+
+                    if decision.action in {"retry", "fallback"}:
+                        update_stage_status(
+                            session,
+                            stage_pk=stage.stage_pk,
+                            status="pending",
+                            attempts=attempts,
+                        )
+                        update_run_status(session, run_id=run_id, status="queued")
+                        
+                        self._append_thread_event(
+                            session=session,
+                            thread_id=run.thread_id,
+                            brand_id=run.brand_id,
+                            project_id=run.product_id,
+                            actor_id=actor_id,
+                            event_type="WorkflowRunStageRetrying",
+                            payload={
+                                "thread_id": run.thread_id,
+                                "run_id": run.run_id,
+                                "stage_key": stage.stage_id,
+                                "attempt": attempts,
+                                "error_code": error_code,
+                                "error_message": error_message,
+                                "retryable": retryable,
+                                "next_action": decision.action,
+                                "delay_seconds": decision.delay_seconds,
+                            },
+                            causation_id=causation_id,
+                            correlation_id=correlation_id,
+                        )
+                        return {"run_id": run.run_id, "status": "queued"}
+
                     update_stage_status(
                         session,
                         stage_pk=stage.stage_pk,
@@ -473,7 +516,7 @@ class WorkflowRuntimeV2:
                             "attempt": attempts,
                             "error_code": error_code,
                             "error_message": error_message,
-                            "retryable": retryable,
+                            "retryable": False,
                         },
                         causation_id=causation_id,
                         correlation_id=correlation_id,
@@ -559,6 +602,7 @@ class WorkflowRuntimeV2:
         stage_position: int,
         skills: list[str],
         attempts: int,
+        llm_model: str | None = None,
     ) -> dict[str, Any]:
         result = self.foundation_runner.execute_stage(
             run_id=run_id,
@@ -566,6 +610,7 @@ class WorkflowRuntimeV2:
             project_id=project_id,
             request_text=request_text,
             stage_key=stage_key,
+            llm_model=llm_model,
         )
         if result.error_code:
             raise StageExecutionError(
