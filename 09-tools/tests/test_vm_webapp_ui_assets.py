@@ -1,6 +1,15 @@
 from pathlib import Path
 
 
+def test_vm_index_uses_stitch_shell_and_cdn_dependencies() -> None:
+    html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
+    assert "https://cdn.tailwindcss.com?plugins=forms,typography" in html
+    assert "fonts.googleapis.com/icon?family=Material+Icons+Outlined" in html
+    assert 'id="vm-shell-left"' in html
+    assert 'id="vm-shell-main"' in html
+    assert 'id="vm-shell-right"' in html
+
+
 def test_vm_index_contains_event_driven_workspace_panels() -> None:
     html = Path("09-tools/web/vm/index.html").read_text(encoding="utf-8")
     assert 'id="brand-create-form"' in html
