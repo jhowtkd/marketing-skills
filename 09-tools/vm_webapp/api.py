@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,7 @@ from vm_webapp.stacking import build_context_pack
 
 
 router = APIRouter()
+api_logger = logging.getLogger("vm_webapp.api")
 
 
 def _require_open_thread(session, *, thread_id: str, brand_id: str, product_id: str):
@@ -103,7 +105,15 @@ def _worker_dependency_status(request: Request) -> dict[str, str]:
 
 
 @router.get("/v2/health/live")
-def health_live() -> dict[str, str]:
+def health_live(request: Request) -> dict[str, str]:
+    request_id = getattr(request.state, "request_id", "")
+    correlation_id = getattr(request.state, "correlation_id", "")
+    if request_id:
+        api_logger.debug(
+            "health_live request_id=%s correlation_id=%s",
+            request_id,
+            correlation_id,
+        )
     return {"status": "live"}
 
 

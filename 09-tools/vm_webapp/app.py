@@ -11,6 +11,7 @@ from vm_webapp.api import router as api_router
 from vm_webapp.db import build_engine, init_db
 from vm_webapp.event_worker import InProcessEventWorker
 from vm_webapp.llm import KimiClient
+from vm_webapp.logging_config import configure_structured_logging, request_id_middleware
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.orchestrator_v2 import configure_workflow_executor
 from vm_webapp.run_engine import RunEngine
@@ -38,6 +39,8 @@ def create_app(
     validate_startup_contract(settings)
 
     app = FastAPI(title="VM Web App")
+    configure_structured_logging(level=str(getattr(settings, "log_level", "INFO")))
+    app.middleware("http")(request_id_middleware)
     app.add_exception_handler(ValueError, value_error_to_http)
 
     workspace = Workspace(root=settings.vm_workspace_root)
