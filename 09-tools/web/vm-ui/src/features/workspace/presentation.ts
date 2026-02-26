@@ -38,3 +38,10 @@ export function toHumanTimelineEvent(eventType: string): string {
 export function canResumeRunStatus(status: string): boolean {
   return status === "waiting_approval" || status === "waiting" || status === "paused";
 }
+
+export function summarizeRequestText(requestText?: string): string {
+  const normalized = (requestText ?? "").trim();
+  if (!normalized) return "Defina o pedido para liberar uma nova versao editorial.";
+  if (normalized.length <= 120) return normalized;
+  return `${normalized.slice(0, 117)}...`;
+}
