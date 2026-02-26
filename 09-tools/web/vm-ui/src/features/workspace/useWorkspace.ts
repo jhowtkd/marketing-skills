@@ -22,6 +22,12 @@ export type TimelineEvent = {
   payload: any;
 };
 
+export type PrimaryArtifact = {
+  stageDir: string;
+  artifactPath: string;
+  content: string;
+};
+
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
   return { mode: input.mode, request_text: input.requestText.trim() };
 }
@@ -31,10 +37,12 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [runDetail, setRunDetail] = useState<any>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [primaryArtifact, setPrimaryArtifact] = useState<PrimaryArtifact | null>(null);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [loadingPrimaryArtifact, setLoadingPrimaryArtifact] = useState(false);
 
   const fetchProfiles = async () => {
     setLoadingProfiles(true);
@@ -96,6 +104,50 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
+  const fetchPrimaryArtifact = async () => {
+    if (!activeRunId) {
+      setPrimaryArtifact(null);
+      return;
+    }
+    setLoadingPrimaryArtifact(true);
+    try {
+      const listing = await fetchJson<{ stages?: Array<{ stage_dir: string; artifacts?: Array<string | { path?: string; filename?: string }> }> }>(
+        `/api/v2/workflow-runs/${activeRunId}/artifacts`
+      );
+      const stages = Array.isArray(listing.stages) ? listing.stages : [];
+      let targetStage: string | null = null;
+      let targetPath: string | null = null;
+      for (const stage of stages) {
+        const artifacts = Array.isArray(stage.artifacts) ? stage.artifacts : [];
+        if (artifacts.length === 0) continue;
+        const first = artifacts[0];
+        const path = typeof first === "string" ? first : first.path || first.filename || null;
+        if (path) {
+          targetStage = stage.stage_dir;
+          targetPath = path;
+          break;
+        }
+      }
+      if (!targetStage || !targetPath) {
+        setPrimaryArtifact(null);
+        return;
+      }
+      const contentPayload = await fetchJson<{ content?: string }>(
+        `/api/v2/workflow-runs/${activeRunId}/artifact-content?stage_dir=${encodeURIComponent(targetStage)}&artifact_path=${encodeURIComponent(targetPath)}`
+      );
+      setPrimaryArtifact({
+        stageDir: targetStage,
+        artifactPath: targetPath,
+        content: String(contentPayload.content ?? ""),
+      });
+    } catch (e) {
+      console.error("Failed to fetch primary artifact", e);
+      setPrimaryArtifact(null);
+    } finally {
+      setLoadingPrimaryArtifact(false);
+    }
+  };
+
   const startRun = async (input: { mode: string; requestText: string }) => {
     if (!activeThreadId) return;
     try {
@@ -130,20 +182,34 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
 
   useEffect(() => {
     fetchRunDetail();
+    fetchPrimaryArtifact();
   }, [activeRunId]);
+
+  useEffect(() => {
+    if (!activeThreadId) return;
+    const timer = window.setInterval(() => {
+      fetchRuns();
+      fetchTimeline();
+      if (activeRunId) fetchRunDetail();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeThreadId, activeRunId]);
 
   return {
     profiles,
     runs,
     runDetail,
     timeline,
+    primaryArtifact,
     loadingProfiles,
     loadingRuns,
     loadingRunDetail,
     loadingTimeline,
+    loadingPrimaryArtifact,
     startRun,
     resumeRun,
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,
+    refreshPrimaryArtifact: fetchPrimaryArtifact,
   };
 }

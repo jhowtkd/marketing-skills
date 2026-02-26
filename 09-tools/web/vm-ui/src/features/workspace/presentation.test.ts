@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toHumanRunName, toHumanStatus } from "./presentation";
+import { toHumanRunName, toHumanStatus, toHumanTimelineEvent } from "./presentation";
 
 describe("run presentation", () => {
   it("builds human run names", () => {
@@ -23,5 +23,10 @@ describe("run presentation", () => {
 
   it("maps run status", () => {
     expect(toHumanStatus("waiting_approval")).toBe("Aguardando revisao");
+  });
+
+  it("maps timeline event labels", () => {
+    expect(toHumanTimelineEvent("WorkflowRunStarted")).toBe("Geracao iniciada");
+    expect(toHumanTimelineEvent("UnknownEvent")).toBe("UnknownEvent");
   });
 });

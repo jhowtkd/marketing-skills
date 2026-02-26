@@ -60,11 +60,11 @@ export default function App() {
             <div>
               <h1 className="text-lg font-semibold">VM Studio</h1>
               <p className="mt-1 text-xs text-slate-500">
-                {activeBrandId ? `Cliente: ${activeBrandId}` : "Cliente: —"}
+                {activeBrandId ? (devMode ? `Cliente: ${activeBrandId}` : "Cliente selecionado") : "Cliente: —"}
                 {" · "}
-                {activeProjectId ? `Campanha: ${activeProjectId}` : "Campanha: —"}
+                {activeProjectId ? (devMode ? `Campanha: ${activeProjectId}` : "Campanha selecionada") : "Campanha: —"}
                 {" · "}
-                {activeThreadId ? `Job: ${activeThreadId}` : "Job: —"}
+                {activeThreadId ? (devMode ? `Job: ${activeThreadId}` : "Job selecionado") : "Job: —"}
               </p>
             </div>
             <label className="inline-flex items-center gap-2 text-sm text-slate-700">
@@ -87,6 +87,7 @@ export default function App() {
               activeBrandId={activeBrandId}
               activeProjectId={activeProjectId}
               activeThreadId={activeThreadId}
+              devMode={devMode}
               onSelectBrand={handleSelectBrand}
               onSelectProject={handleSelectProject}
               onSelectThread={handleSelectThread}
@@ -110,4 +111,3 @@ export default function App() {
     </div>
   );
 }
-

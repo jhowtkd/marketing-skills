@@ -64,15 +64,10 @@ export function useInbox(activeThreadId: string | null, activeRunId: string | nu
     if (!activeRunId) return;
     const key = `${stageDir}/${artifactPath}`;
     try {
-      // The backend returns a plain string or JSON. The fetchJson wrapper might throw if it's plain text, 
-      // but if the endpoint returns plain text, fetchJson will parse if ok, wait, `fetchJson` parses json.
-      // Wait, let's look at `api.py` line 777 - it probably returns PlainTextResponse.
-      // Wait! `fetchJson` expects json. If `artifact-content` returns plain text, I should use `fetch`.
-      const response = await fetch(`/api/v2/workflow-runs/${activeRunId}/artifact-content?stage_dir=${encodeURIComponent(stageDir)}&artifact_path=${encodeURIComponent(artifactPath)}`);
-      if (response.ok) {
-        const text = await response.text();
-        setArtifactContents(prev => ({ ...prev, [key]: text }));
-      }
+      const payload = await fetchJson<{ content?: string }>(
+        `/api/v2/workflow-runs/${activeRunId}/artifact-content?stage_dir=${encodeURIComponent(stageDir)}&artifact_path=${encodeURIComponent(artifactPath)}`
+      );
+      setArtifactContents((prev) => ({ ...prev, [key]: String(payload.content ?? "") }));
     } catch (e) {
       console.error("Failed to fetch artifact content", e);
     }

@@ -10,6 +10,7 @@ type Props = {
   activeBrandId: MaybeId;
   activeProjectId: MaybeId;
   activeThreadId: MaybeId;
+  devMode: boolean;
   onSelectBrand: (brandId: MaybeId) => void;
   onSelectProject: (projectId: MaybeId) => void;
   onSelectThread: (threadId: MaybeId) => void;
@@ -19,6 +20,7 @@ export default function NavigationPanel({
   activeBrandId,
   activeProjectId,
   activeThreadId,
+  devMode,
   onSelectBrand,
   onSelectProject,
   onSelectThread,
@@ -308,7 +310,7 @@ export default function NavigationPanel({
                       ].join(" ")}
                     >
                       {b.name}
-                      <span className="ml-2 text-xs text-slate-400">{b.brand_id}</span>
+                      {devMode ? <span className="ml-2 text-xs text-slate-400">{b.brand_id}</span> : null}
                     </button>
                     <button
                       type="button"
@@ -377,7 +379,7 @@ export default function NavigationPanel({
                       ].join(" ")}
                     >
                       {p.name}
-                      <span className="ml-2 text-xs text-slate-400">{p.project_id}</span>
+                      {devMode ? <span className="ml-2 text-xs text-slate-400">{p.project_id}</span> : null}
                     </button>
                     <button
                       type="button"
@@ -447,10 +449,10 @@ export default function NavigationPanel({
                             ? "border-blue-200 bg-blue-50 text-blue-900"
                             : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
                         ].join(" ")}
-                      >
-                        {t.title}
-                        <span className="ml-2 text-xs text-slate-400">{t.thread_id}</span>
-                      </button>
+                    >
+                      {t.title}
+                      {devMode ? <span className="ml-2 text-xs text-slate-400">{t.thread_id}</span> : null}
+                    </button>
                       <button
                         type="button"
                         onClick={() => {

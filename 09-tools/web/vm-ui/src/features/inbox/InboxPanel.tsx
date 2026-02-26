@@ -81,7 +81,9 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                   <div className="flex flex-col gap-2">
                     {pendingApprovals.map((approval) => (
                       <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                        <div className="text-xs font-semibold text-slate-900">{approval.approval_id}</div>
+                        <div className="text-xs font-semibold text-slate-900">
+                          {devMode ? approval.approval_id : "Aprovacao pendente"}
+                        </div>
                         <div className="text-xs text-slate-600 mb-2">Status: {approval.status} | Role: {approval.required_role}</div>
                         <div className="text-xs text-slate-800 mb-2">{approval.reason}</div>
                         <button
@@ -106,7 +108,7 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                   <div className="flex flex-col gap-2">
                     {pendingTasks.map((task) => (
                       <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                        <div className="text-xs font-semibold text-slate-900">{task.task_id}</div>
+                        <div className="text-xs font-semibold text-slate-900">{devMode ? task.task_id : "Tarefa pendente"}</div>
                         <div className="text-xs text-slate-600 mb-2">Status: {task.status} | Assigned To: {task.assigned_to}</div>
                         <div className="flex flex-col gap-2">
                           <div className="flex gap-2">
@@ -153,7 +155,9 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                   <div className="flex flex-col gap-2">
                     {historyApprovals.map((approval) => (
                       <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
-                        <div className="text-xs font-semibold text-slate-900">{approval.approval_id}</div>
+                        <div className="text-xs font-semibold text-slate-900">
+                          {devMode ? approval.approval_id : "Aprovacao concluida"}
+                        </div>
                         <div className="text-xs text-slate-600">Status: {approval.status} | Role: {approval.required_role}</div>
                       </div>
                     ))}
@@ -170,7 +174,7 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                   <div className="flex flex-col gap-2">
                     {historyTasks.map((task) => (
                       <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
-                        <div className="text-xs font-semibold text-slate-900">{task.task_id}</div>
+                        <div className="text-xs font-semibold text-slate-900">{devMode ? task.task_id : "Tarefa concluida"}</div>
                         <div className="text-xs text-slate-600">Status: {task.status} | Assigned To: {task.assigned_to}</div>
                       </div>
                     ))}
