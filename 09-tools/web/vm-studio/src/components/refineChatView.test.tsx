@@ -1,7 +1,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
+import { api } from '../api/client';
 import { useStore } from '../store';
 import type { Template, TemplateControls } from '../types';
 import { RefineChatView } from './RefineChatView';
@@ -35,6 +36,8 @@ function cleanupRoot(root: Root, container: HTMLDivElement): void {
 
 describe('RefineChatView', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+
     const template = useStore.getState().templates[0];
     expect(template).toBeDefined();
 
@@ -76,7 +79,18 @@ describe('RefineChatView', () => {
     cleanupRoot(root, container);
   });
 
-  it('sends a refine message and appends assistant response without backend', () => {
+  it('sends a refine message and appends assistant response from backend', async () => {
+    const refineSpy = vi.spyOn(api, 'refineContent').mockResolvedValue({
+      content: '# Entregável Refinado\n\nConteúdo novo.',
+      runId: 'run-refine-1',
+      backendContext: {
+        brandId: 'b-vmstudio-proj-refine-1',
+        projectId: 'p-vmstudio-proj-refine-1',
+        threadId: 't-vmstudio-proj-refine-1',
+      },
+      assistantSummary: 'Refino aplicado com nova versão pronta para revisão.',
+    });
+
     const { root, container } = setupRoot(<RefineChatView />);
 
     const promptButton = Array.from(container.querySelectorAll('button')).find((button) =>
@@ -94,11 +108,51 @@ describe('RefineChatView', () => {
     act(() => {
       sendButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     const messages = useStore.getState().chatMessages;
     expect(messages[messages.length - 2]?.role).toBe('user');
     expect(messages[messages.length - 1]?.role).toBe('assistant');
-    expect(messages[messages.length - 1]?.content).toContain('Sem backend');
+    expect(messages[messages.length - 1]?.content).toContain('Refino aplicado');
+    expect(messages[messages.length - 1]?.content).not.toContain('Sem backend');
+    expect(useStore.getState().generatedContent).toContain('Entregável Refinado');
+    expect(refineSpy).toHaveBeenCalledTimes(1);
+
+    cleanupRoot(root, container);
+  });
+
+  it('keeps UX stable with friendly fallback when backend refine fails', async () => {
+    vi.spyOn(api, 'refineContent').mockRejectedValue(new Error('backend indisponível'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const previousContent = useStore.getState().generatedContent;
+    const { root, container } = setupRoot(<RefineChatView />);
+
+    const promptButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('foco em conversão')
+    );
+    expect(promptButton).toBeDefined();
+
+    act(() => {
+      promptButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const sendButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Enviar'));
+    expect(sendButton).toBeDefined();
+
+    act(() => {
+      sendButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const messages = useStore.getState().chatMessages;
+    expect(messages[messages.length - 1]?.role).toBe('assistant');
+    expect(messages[messages.length - 1]?.content.toLowerCase()).toContain('nao consegui');
+    expect(useStore.getState().generatedContent).toBe(previousContent);
 
     cleanupRoot(root, container);
   });

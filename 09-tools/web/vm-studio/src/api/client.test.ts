@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { suggestTemplatesFromRequest } from './client';
-import type { Template } from '../types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api, suggestTemplatesFromRequest } from './client';
+import type { Project, Template } from '../types';
 
 const templates: Template[] = [
   {
@@ -50,3 +50,117 @@ describe('suggestTemplatesFromRequest', () => {
     ]);
   });
 });
+
+describe('api.generateContent workflow', () => {
+  const baseProject: Project = {
+    id: 'proj-123',
+    name: 'Campanha Primavera',
+    templateId: 'landing-conversion',
+    templateName: 'Landing Page de Conversão',
+    status: 'draft',
+    createdAt: '2026-02-26T00:00:00.000Z',
+    updatedAt: '2026-02-26T00:00:00.000Z',
+  };
+
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: TimerHandler) => {
+      if (typeof callback === 'function') {
+        callback();
+      }
+      return 0 as unknown as number;
+    }) as typeof setTimeout);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('runs backend v2 path end-to-end with approvals, resume and primary artifact', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ brands: [] }))
+      .mockResolvedValueOnce(okJson({ brand_id: 'b-vmstudio-proj-123' }))
+      .mockResolvedValueOnce(okJson({ projects: [] }))
+      .mockResolvedValueOnce(okJson({ project_id: 'p-vmstudio-proj-123' }))
+      .mockResolvedValueOnce(okJson({ threads: [] }))
+      .mockResolvedValueOnce(okJson({ thread_id: 't-vmstudio-proj-123' }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-1', status: 'queued' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-1',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'waiting_approval',
+          pending_approvals: [{ approval_id: 'apr-1', status: 'pending' }],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ approval_id: 'apr-1' }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-1', status: 'running' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-1',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'completed',
+          pending_approvals: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          stages: [
+            {
+              stage_dir: '03-delivery',
+              artifacts: [{ path: 'deliverable/final.md' }],
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ content: '# Conteudo final do backend' }));
+
+    const response = await api.generateContent({
+      templateId: 'landing-conversion',
+      controls: {
+        productName: 'Produto X',
+        problem: 'Baixa conversão',
+      },
+      project: baseProject,
+      chatRequest: 'Preciso de uma landing page para B2B',
+    });
+
+    expect(response.content).toContain('Conteudo final do backend');
+    expect(response.runId).toBe('run-1');
+    expect(response.backendContext.brandId).toBe('b-vmstudio-proj-123');
+    expect(response.backendContext.projectId).toBe('p-vmstudio-proj-123');
+    expect(response.backendContext.threadId).toBe('t-vmstudio-proj-123');
+
+    const workflowRunCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/api/v2/threads/t-vmstudio-proj-123/workflow-runs')
+    );
+    expect(workflowRunCall).toBeDefined();
+    const workflowRunPayload = JSON.parse(String(workflowRunCall?.[1]?.body ?? '{}'));
+    expect(workflowRunPayload.mode).toBe('content_calendar');
+
+    const postCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(postCalls.length).toBeGreaterThan(0);
+    expect(
+      postCalls.every(([, init]) => {
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        return typeof headers['Idempotency-Key'] === 'string' && headers['Idempotency-Key'].length > 0;
+      })
+    ).toBe(true);
+
+    const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calledUrls).toContain('/api/v2/workflow-runs/run-1/artifacts');
+    expect(calledUrls.some((url) => url.includes('/api/v2/workflow-runs/run-1/artifact-content?'))).toBe(true);
+  });
+});
+
+function okJson(payload: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => payload,
+  } as Response;
+}
