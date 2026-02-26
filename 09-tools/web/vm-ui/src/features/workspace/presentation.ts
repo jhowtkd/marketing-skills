@@ -9,8 +9,8 @@ export function toHumanStatus(status: string): string {
   return map[status] ?? status;
 }
 
-export function toHumanRunName(input: { index: number; requestText: string; createdAt?: string }): string {
-  const short = input.requestText.trim().slice(0, 36) || "sem pedido";
+export function toHumanRunName(input: { index: number; requestText?: string; createdAt?: string }): string {
+  const short = (input.requestText ?? "").trim().slice(0, 36) || "sem pedido";
   const hhmm = input.createdAt ? new Date(input.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--";
   return `Versao ${input.index} · ${short} · ${hhmm}`;
 }

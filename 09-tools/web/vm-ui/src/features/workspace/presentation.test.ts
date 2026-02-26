@@ -11,6 +11,16 @@ describe("run presentation", () => {
     expect(name).toContain("Versao 2");
   });
 
+  it("does not crash when request text is missing", () => {
+    const name = toHumanRunName({
+      index: 1,
+      requestText: undefined as unknown as string,
+      createdAt: "2026-02-26T14:20:00Z",
+    });
+    expect(name).toContain("Versao 1");
+    expect(name).toContain("sem pedido");
+  });
+
   it("maps run status", () => {
     expect(toHumanStatus("waiting_approval")).toBe("Aguardando revisao");
   });
