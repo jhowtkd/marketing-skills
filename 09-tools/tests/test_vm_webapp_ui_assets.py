@@ -232,3 +232,9 @@ def test_hardening_release_checklist_exists_and_mentions_migrations_secrets_and_
     assert "migration" in content
     assert "secret" in content
     assert "probe" in content
+
+
+def test_vm_react_ui_source_tree_exists() -> None:
+    assert Path("09-tools/web/vm-ui").exists()
+    assert Path("09-tools/web/vm-ui/package.json").exists()
+    assert Path("09-tools/web/vm-ui/src/App.tsx").exists()
