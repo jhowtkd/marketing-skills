@@ -50,4 +50,20 @@ describe("NavigationPanel", () => {
     expect(screen.getByRole("heading", { name: "Versoes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Contexto do Job" })).toBeInTheDocument();
   });
+
+  it("nudges the user toward choosing a job before opening the canvas flow", async () => {
+    render(
+      <NavigationPanel
+        activeBrandId="brand-1"
+        activeProjectId="project-1"
+        activeThreadId={null}
+        devMode={false}
+        onSelectBrand={() => {}}
+        onSelectProject={() => {}}
+        onSelectThread={() => {}}
+      />
+    );
+
+    expect(await screen.findByText("Escolha um job para abrir o canvas deliverable-first.")).toBeInTheDocument();
+  });
 });

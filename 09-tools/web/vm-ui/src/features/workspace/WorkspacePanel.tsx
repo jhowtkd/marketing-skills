@@ -57,10 +57,17 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     () => [...timeline].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
     [timeline]
   );
+  const hasActiveThread = Boolean(activeThreadId);
   const activeRun = runs.find((run) => run.run_id === activeRunId) ?? runs[0] ?? null;
+  const hasActiveRun = Boolean(activeRun);
   const activeStatus = runDetail?.status ?? activeRun?.status ?? "";
   const activeRequestText = activeRun?.request_text ?? "";
   const canRegenerate = Boolean(activeThreadId && activeRun?.requested_mode && activeRequestText.trim());
+  const canvasSummary = !hasActiveThread
+    ? "Escolha um job para abrir o canvas editorial."
+    : hasActiveRun
+      ? summarizeRequestText(activeRequestText)
+      : "Ainda nao existe uma versao ativa para este job.";
 
   const versionsSection = (
     <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
@@ -74,17 +81,21 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         <p className="text-xs uppercase tracking-[0.14em] text-slate-400">Selecione uma versao para revisar</p>
       </div>
       {runs.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">Nenhuma versao encontrada.</p>
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          {hasActiveThread
+            ? "Nenhuma versao encontrada. Gere a primeira entrega para inaugurar a timeline editorial."
+            : "Escolha um job para abrir o historico desta frente."}
+        </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
           {runs.map((r, idx) => (
             <div
               key={r.run_id}
               onClick={() => onSelectRun(r.run_id)}
-              className={`cursor-pointer rounded-2xl border p-3 text-sm transition-colors ${
+              className={`cursor-pointer rounded-2xl border p-3 text-sm transition-all duration-200 ${
                 activeRunId === r.run_id
-                  ? "border-[var(--vm-primary)] bg-[var(--vm-warm)]"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  ? "border-[var(--vm-primary)] bg-[var(--vm-warm)] shadow-sm ring-1 ring-[color:var(--vm-primary)]/20"
+                  : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -116,7 +127,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         </div>
       </div>
       {sortedTimeline.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">Nenhum evento na timeline.</p>
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          {hasActiveThread
+            ? "Nenhum evento na timeline ainda. As etapas desta versao aparecerao aqui."
+            : "A timeline sera preenchida quando um job ativo entrar em execucao."}
+        </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2 max-h-64 overflow-auto">
           {sortedTimeline.map((event) => (
@@ -143,27 +158,40 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             Entregavel principal
           </p>
           <h2 className="mt-2 font-serif text-2xl text-slate-900">Versao ativa</h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">{summarizeRequestText(activeRequestText)}</p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">{canvasSummary}</p>
         </div>
         <div className="rounded-full border border-slate-200 bg-[var(--vm-warm)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary-strong)]">
-          {activeStatus ? toHumanStatus(activeStatus) : "Sem versao selecionada"}
+          {activeStatus ? toHumanStatus(activeStatus) : hasActiveThread ? "Sem versao selecionada" : "Selecione um job"}
         </div>
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-[var(--vm-warm)]/45 p-4">
+        <div className="rounded-[1.5rem] border border-slate-200 bg-[var(--vm-warm)]/45 p-4 transition-all duration-200">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
                 Objetivo do pedido
               </p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{summarizeRequestText(activeRequestText)}</p>
+              <p className="mt-2 text-sm font-medium text-slate-900">{canvasSummary}</p>
             </div>
             <div>
               <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-slate-500">Ultima atualizacao</p>
               <p className="mt-2 text-sm font-medium text-slate-900">{formatDateTime(activeRun?.created_at)}</p>
             </div>
           </div>
+
+          {!hasActiveThread || !hasActiveRun ? (
+            <div className="mt-4 rounded-[1.25rem] border border-dashed border-slate-300 bg-white/80 p-4">
+              <p className="text-sm font-semibold text-slate-900">
+                {!hasActiveThread ? "Escolha um job para abrir o canvas editorial." : "Ainda nao existe uma versao ativa para este job."}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {!hasActiveThread
+                  ? "Use o rail da esquerda para definir cliente, campanha e job. O preview dominante aparece assim que a frente estiver contextualizada."
+                  : "Defina o pedido, selecione um perfil e gere a primeira versao para destravar preview, timeline e pendencias."}
+              </p>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex flex-col gap-2">
@@ -241,20 +269,40 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </div>
         </div>
 
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 transition-all duration-200">
           {loadingPrimaryArtifact ? (
-            <p className="text-sm text-slate-600">Carregando artefato...</p>
+            <div className="space-y-4" aria-live="polite">
+              <div className="h-3 w-36 animate-pulse rounded-full bg-slate-200" />
+              <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
+                <div className="h-4 w-2/3 animate-pulse rounded-full bg-slate-200" />
+                <div className="mt-3 h-3 w-full animate-pulse rounded-full bg-slate-100" />
+                <div className="mt-2 h-3 w-11/12 animate-pulse rounded-full bg-slate-100" />
+                <div className="mt-2 h-3 w-4/5 animate-pulse rounded-full bg-slate-100" />
+              </div>
+              <p className="text-sm text-slate-600">Preparando o preview da versao ativa...</p>
+            </div>
           ) : primaryArtifact?.content ? (
             <ArtifactPreview
               content={primaryArtifact.content}
               filename={`${primaryArtifact.stageDir}-${primaryArtifact.artifactPath}`}
             />
           ) : (
-            <p className="text-sm text-slate-600">
-              {activeRun
-                ? "Nenhum artefato principal disponivel para a versao selecionada."
-                : "Selecione uma versao para abrir o preview dominante do entregavel."}
-            </p>
+            <div className="rounded-[1.25rem] border border-dashed border-slate-300 bg-slate-50/90 p-5">
+              <p className="text-sm font-semibold text-slate-900">
+                {activeRun
+                  ? "Nenhum artefato principal disponivel para a versao selecionada."
+                  : hasActiveThread
+                    ? "Ainda nao existe uma versao ativa para este job."
+                    : "Escolha um job para abrir o canvas editorial."}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {activeRun
+                  ? "Recarregue a versao ou acompanhe a timeline para quando o entregavel principal estiver pronto."
+                  : hasActiveThread
+                    ? "Gere ou selecione uma versao para abrir o preview dominante do entregavel."
+                    : "A leitura principal da entrega aparece aqui assim que uma frente estiver selecionada."}
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -273,7 +321,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             <button
               type="button"
               onClick={() => setActiveView("chat")}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-all duration-200 ${
                 activeView === "chat" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
               }`}
             >
@@ -282,7 +330,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             <button
               type="button"
               onClick={() => setActiveView("studio")}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-all duration-200 ${
                 activeView === "studio" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
               }`}
             >

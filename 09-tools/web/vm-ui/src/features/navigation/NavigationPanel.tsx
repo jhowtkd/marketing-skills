@@ -261,6 +261,7 @@ export default function NavigationPanel({
   const selectedProject = projects.find((project) => project.project_id === activeProjectId) ?? null;
   const selectedThread = threads.find((thread) => thread.thread_id === activeThreadId) ?? null;
   const activeModes = selectedThread?.modes ?? [];
+  const hasActiveThread = Boolean(selectedThread);
 
   return (
     <div className="space-y-4 pb-4">
@@ -298,10 +299,10 @@ export default function NavigationPanel({
                     type="button"
                     onClick={() => onSelectBrand(brand.brand_id)}
                     className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
                       brand.brand_id === activeBrandId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
                     ].join(" ")}
                   >
                     {brand.name}
@@ -327,10 +328,10 @@ export default function NavigationPanel({
                     type="button"
                     onClick={() => onSelectProject(project.project_id)}
                     className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
                       project.project_id === activeProjectId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
                     ].join(" ")}
                   >
                     {project.name}
@@ -358,10 +359,10 @@ export default function NavigationPanel({
                     type="button"
                     onClick={() => onSelectThread(thread.thread_id)}
                     className={[
-                      "rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-colors",
+                      "rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
                       thread.thread_id === activeThreadId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
                     ].join(" ")}
                   >
                     <span className="block">{thread.title}</span>
@@ -664,6 +665,14 @@ export default function NavigationPanel({
           A leitura da versao ativa acontece no canvas central. Use este rail apenas para orientar o fluxo.
         </p>
         <div className="mt-4 grid gap-3">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Leitura principal</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {hasActiveThread
+                ? "Canvas editorial desbloqueado para esta frente."
+                : "Escolha um job para abrir o canvas deliverable-first."}
+            </p>
+          </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Versao ativa</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">

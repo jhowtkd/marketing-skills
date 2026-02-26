@@ -3,8 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import WorkspacePanel from "./WorkspacePanel";
 
+const mockUseWorkspace = vi.fn();
+
 vi.mock("./useWorkspace", () => ({
-  useWorkspace: () => ({
+  useWorkspace: (...args: unknown[]) => mockUseWorkspace(...args),
+}));
+
+vi.mock("./viewState", () => ({
+  readWorkspaceView: () => "studio",
+  writeWorkspaceView: vi.fn(),
+}));
+
+function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
+  return {
     profiles: [{ mode: "content_calendar", description: "Calendar" }],
     runs: [
       {
@@ -24,16 +35,37 @@ vi.mock("./useWorkspace", () => ({
     refreshRuns: vi.fn(),
     refreshTimeline: vi.fn(),
     refreshPrimaryArtifact: vi.fn(),
-  }),
-}));
-
-vi.mock("./viewState", () => ({
-  readWorkspaceView: () => "studio",
-  writeWorkspaceView: vi.fn(),
-}));
+    ...overrides,
+  };
+}
 
 describe("WorkspacePanel", () => {
+  it("shows a strong empty state before a job is selected", () => {
+    mockUseWorkspace.mockReturnValue(buildWorkspaceState({ runs: [], runDetail: null, primaryArtifact: null }));
+
+    render(<WorkspacePanel activeThreadId={null} activeRunId={null} onSelectRun={() => {}} devMode={false} />);
+
+    expect(screen.getAllByText("Escolha um job para abrir o canvas editorial.").length).toBeGreaterThan(0);
+  });
+
+  it("shows a human loading state while the primary deliverable is loading", () => {
+    mockUseWorkspace.mockReturnValue(
+      buildWorkspaceState({
+        loadingPrimaryArtifact: true,
+        primaryArtifact: null,
+      })
+    );
+
+    render(
+      <WorkspacePanel activeThreadId="t1" activeRunId="run-1" onSelectRun={() => {}} devMode={false} />
+    );
+
+    expect(screen.getByText("Preparando o preview da versao ativa...")).toBeInTheDocument();
+  });
+
   it("prioritizes the active deliverable", () => {
+    mockUseWorkspace.mockReturnValue(buildWorkspaceState());
+
     render(
       <WorkspacePanel activeThreadId="t1" activeRunId="run-1" onSelectRun={() => {}} devMode={false} />
     );
@@ -43,5 +75,19 @@ describe("WorkspacePanel", () => {
     expect(screen.getByRole("button", { name: "Gerar nova versao" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Baixar .md" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Regenerar" })).toBeInTheDocument();
+  });
+
+  it("guides the user when no version is active yet", () => {
+    mockUseWorkspace.mockReturnValue(
+      buildWorkspaceState({
+        runs: [],
+        runDetail: null,
+        primaryArtifact: null,
+      })
+    );
+
+    render(<WorkspacePanel activeThreadId="t1" activeRunId={null} onSelectRun={() => {}} devMode={false} />);
+
+    expect(screen.getAllByText("Ainda nao existe uma versao ativa para este job.").length).toBeGreaterThan(0);
   });
 });
