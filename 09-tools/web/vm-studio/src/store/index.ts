@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { AppState, Project, Template, TemplateControls } from '../types';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import type { AppState, ChatMessage, Project, StudioPhase, SuggestedTemplate, Template, TemplateControls } from '../types';
 
 const INITIAL_TEMPLATES: Template[] = [
   {
@@ -90,6 +90,11 @@ interface StoreActions {
   setIsGenerating: (isGenerating: boolean) => void;
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   deleteProject: (projectId: string) => void;
+  startFromChatRequest: (requestText: string) => void;
+  setTemplateSuggestions: (suggestions: SuggestedTemplate[]) => void;
+  chooseSuggestedTemplate: (templateId: string) => void;
+  setPhase: (phase: StudioPhase) => void;
+  appendChatMessage: (message: ChatMessage) => void;
 }
 
 const getDefaultControls = (template: Template): TemplateControls => {
@@ -98,6 +103,25 @@ const getDefaultControls = (template: Template): TemplateControls => {
     controls[p.id] = p.defaultValue ?? (p.type === 'slider' ? 50 : '');
   });
   return controls;
+};
+
+const NOOP_STORAGE: StateStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
+const getPersistStorage = (): StateStorage => {
+  const candidate = (globalThis as { localStorage?: Partial<StateStorage> }).localStorage;
+  if (
+    candidate &&
+    typeof candidate.getItem === 'function' &&
+    typeof candidate.setItem === 'function' &&
+    typeof candidate.removeItem === 'function'
+  ) {
+    return candidate as StateStorage;
+  }
+  return NOOP_STORAGE;
 };
 
 export const useStore = create<AppState & StoreActions>()(
@@ -111,6 +135,12 @@ export const useStore = create<AppState & StoreActions>()(
       generatedContent: '',
       isGenerating: false,
       currentView: 'dashboard',
+      phase: 'chat_input',
+      chatRequest: '',
+      chatMessages: [],
+      templateSuggestions: [],
+      selectedSuggestedTemplateId: null,
+      suggestionFallbackToManual: false,
 
       setView: (view) => set({ currentView: view }),
 
@@ -175,9 +205,60 @@ export const useStore = create<AppState & StoreActions>()(
           projects: state.projects.filter((p) => p.id !== projectId),
           currentProject: state.currentProject?.id === projectId ? null : state.currentProject,
         })),
+
+      startFromChatRequest: (requestText) => {
+        const trimmedRequest = requestText.trim();
+        const requestMessage: ChatMessage = {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content: trimmedRequest,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          chatRequest: trimmedRequest,
+          chatMessages: [...state.chatMessages, requestMessage],
+          templateSuggestions: [],
+          selectedSuggestedTemplateId: null,
+          suggestionFallbackToManual: false,
+          phase: 'template_suggestion',
+        }));
+      },
+
+      setTemplateSuggestions: (suggestions) =>
+        set({
+          templateSuggestions: suggestions.slice(0, 3),
+          suggestionFallbackToManual: suggestions.length === 0,
+        }),
+
+      chooseSuggestedTemplate: (templateId) =>
+        set((state) => {
+          const template = state.templates.find((item) => item.id === templateId) || null;
+          if (!template) {
+            return {
+              selectedSuggestedTemplateId: null,
+              suggestionFallbackToManual: true,
+            };
+          }
+          return {
+            selectedSuggestedTemplateId: templateId,
+            selectedTemplate: template,
+            controls: getDefaultControls(template),
+            suggestionFallbackToManual: false,
+            phase: 'generating',
+            currentView: 'editor',
+          };
+        }),
+
+      setPhase: (phase) => set({ phase }),
+
+      appendChatMessage: (message) =>
+        set((state) => ({
+          chatMessages: [...state.chatMessages, message],
+        })),
     }),
     {
       name: 'vm-studio-storage',
+      storage: createJSONStorage(getPersistStorage),
       partialize: (state) => ({ projects: state.projects }),
     }
   )
