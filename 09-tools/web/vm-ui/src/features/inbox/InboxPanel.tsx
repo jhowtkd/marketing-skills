@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useInbox } from "./useInbox";
 import { splitInboxByStatus } from "./presentation";
+import ArtifactPreview from "./ArtifactPreview";
 
 type MaybeId = string | null;
 
@@ -212,9 +213,12 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                               </button>
                             </div>
                             {artifactContents[key] && (
-                              <pre className="mt-2 p-2 bg-slate-900 text-slate-50 rounded overflow-auto whitespace-pre-wrap max-h-64 text-[10px]">
-                                {artifactContents[key]}
-                              </pre>
+                              <div className="mt-2">
+                                <ArtifactPreview 
+                                  content={artifactContents[key]} 
+                                  filename={typeof art === "string" ? art : art.name || art.path} 
+                                />
+                              </div>
                             )}
                           </li>
                         );
