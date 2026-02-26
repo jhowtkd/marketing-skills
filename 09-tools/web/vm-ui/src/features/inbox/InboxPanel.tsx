@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInbox } from "./useInbox";
+import { splitInboxByStatus } from "./presentation";
 
 type MaybeId = string | null;
 
@@ -25,6 +26,9 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
   } = useInbox(activeThreadId, activeRunId);
 
   const [commentInput, setCommentInput] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+
+  const { pendingTasks, pendingApprovals, historyTasks, historyApprovals } = splitInboxByStatus({ tasks, approvals });
 
   return (
     <div className="space-y-4">
@@ -47,80 +51,131 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
         </section>
       )}
 
-      {/* Approvals */}
+      {/* Tabs */}
       {activeThreadId && (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Approvals</h2>
-          {approvals.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">Nenhum approval pendente.</p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-2">
-              {approvals.map((approval) => (
-                <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                  <div className="text-xs font-semibold text-slate-900">{approval.approval_id}</div>
-                  <div className="text-xs text-slate-600 mb-2">Status: {approval.status} | Role: {approval.required_role}</div>
-                  <div className="text-xs text-slate-800 mb-2">{approval.reason}</div>
-                  {approval.status === "pending" && (
-                    <button
-                      type="button"
-                      onClick={() => grantApproval(approval.approval_id)}
-                      className="rounded bg-primary px-3 py-1 text-xs text-white"
-                    >
-                      Grant Approval
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setActiveTab("pending")}
+              className={`px-3 py-1 text-xs font-medium rounded-lg ${activeTab === "pending" ? "bg-primary text-white" : "bg-slate-100 text-slate-700"}`}
+            >
+              Pendentes ({pendingTasks.length + pendingApprovals.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`px-3 py-1 text-xs font-medium rounded-lg ${activeTab === "history" ? "bg-primary text-white" : "bg-slate-100 text-slate-700"}`}
+            >
+              Historico ({historyTasks.length + historyApprovals.length})
+            </button>
+          </div>
 
-      {/* Tasks */}
-      {activeThreadId && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Tasks</h2>
-          {tasks.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">Nenhuma task encontrada.</p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-2">
-              {tasks.map((task) => (
-                <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                  <div className="text-xs font-semibold text-slate-900">{task.task_id}</div>
-                  <div className="text-xs text-slate-600 mb-2">Status: {task.status} | Assigned To: {task.assigned_to}</div>
-                  
-                  {task.status !== "completed" && (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Adicionar comentario"
-                          value={commentInput[task.task_id] || ""}
-                          onChange={(e) => setCommentInput({ ...commentInput, [task.task_id]: e.target.value })}
-                          className="flex-1 rounded border px-2 py-1 text-xs"
-                        />
+          {activeTab === "pending" ? (
+            <div className="space-y-4">
+              {/* Pending Approvals */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-700 mb-2">Aprovacoes pendentes</h3>
+                {pendingApprovals.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhuma aprovacao pendente.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {pendingApprovals.map((approval) => (
+                      <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
+                        <div className="text-xs font-semibold text-slate-900">{approval.approval_id}</div>
+                        <div className="text-xs text-slate-600 mb-2">Status: {approval.status} | Role: {approval.required_role}</div>
+                        <div className="text-xs text-slate-800 mb-2">{approval.reason}</div>
                         <button
                           type="button"
-                          onClick={() => {
-                            commentTask(task.task_id, commentInput[task.task_id] || "");
-                            setCommentInput({ ...commentInput, [task.task_id]: "" });
-                          }}
-                          className="rounded bg-slate-200 px-3 py-1 text-xs text-slate-800"
+                          onClick={() => grantApproval(approval.approval_id)}
+                          className="rounded bg-primary px-3 py-1 text-xs text-white"
                         >
-                          Comentar
+                          Aprovar
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => completeTask(task.task_id)}
-                        className="rounded bg-green-600 px-3 py-1 text-xs text-white w-fit"
-                      >
-                        Concluir Task
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pending Tasks */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-700 mb-2">Tarefas pendentes</h3>
+                {pendingTasks.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhuma tarefa pendente.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {pendingTasks.map((task) => (
+                      <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
+                        <div className="text-xs font-semibold text-slate-900">{task.task_id}</div>
+                        <div className="text-xs text-slate-600 mb-2">Status: {task.status} | Assigned To: {task.assigned_to}</div>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Adicionar comentario"
+                              value={commentInput[task.task_id] || ""}
+                              onChange={(e) => setCommentInput({ ...commentInput, [task.task_id]: e.target.value })}
+                              className="flex-1 rounded border px-2 py-1 text-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                commentTask(task.task_id, commentInput[task.task_id] || "");
+                                setCommentInput({ ...commentInput, [task.task_id]: "" });
+                              }}
+                              className="rounded bg-slate-200 px-3 py-1 text-xs text-slate-800"
+                            >
+                              Comentar
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => completeTask(task.task_id)}
+                            className="rounded bg-green-600 px-3 py-1 text-xs text-white w-fit"
+                          >
+                            Concluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* History Approvals */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-700 mb-2">Aprovacoes concluidas</h3>
+                {historyApprovals.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhuma aprovacao no historico.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {historyApprovals.map((approval) => (
+                      <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
+                        <div className="text-xs font-semibold text-slate-900">{approval.approval_id}</div>
+                        <div className="text-xs text-slate-600">Status: {approval.status} | Role: {approval.required_role}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* History Tasks */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-700 mb-2">Tarefas concluidas</h3>
+                {historyTasks.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhuma tarefa no historico.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {historyTasks.map((task) => (
+                      <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
+                        <div className="text-xs font-semibold text-slate-900">{task.task_id}</div>
+                        <div className="text-xs text-slate-600">Status: {task.status} | Assigned To: {task.assigned_to}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>
