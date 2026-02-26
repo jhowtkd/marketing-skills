@@ -14,6 +14,7 @@ export function Editor() {
   const {
     selectedTemplate,
     currentProject,
+    chatRequest,
     controls,
     generatedContent,
     isGenerating,
@@ -51,6 +52,8 @@ export function Editor() {
       const response = await api.generateContent({
         templateId: selectedTemplate.id,
         controls,
+        project,
+        chatRequest,
       });
 
       setGeneratedContent(response.content);
@@ -59,10 +62,12 @@ export function Editor() {
         content: response.content,
         status: 'ready',
         name: projectName,
+        backendContext: response.backendContext,
+        lastRunId: response.runId,
       });
     } catch (error) {
       console.error('Generation failed:', error);
-      window.alert('Falha ao gerar conteúdo. Tente novamente.');
+      window.alert('Nao foi possivel gerar no backend agora. Tente novamente em instantes.');
     } finally {
       setIsGenerating(false);
     }

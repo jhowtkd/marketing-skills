@@ -1,3 +1,9 @@
+export interface BackendContext {
+  brandId: string;
+  projectId: string;
+  threadId: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -5,6 +11,8 @@ export interface Project {
   templateName: string;
   status: 'ready' | 'generating' | 'draft';
   content?: string;
+  backendContext?: BackendContext;
+  lastRunId?: string;
   createdAt: string;
   updatedAt: string;
 }

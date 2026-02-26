@@ -1,5 +1,6 @@
 import { ArrowLeft, MessageSquareText, Send } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { api } from '../api/client';
 import { useStore } from '../store';
 import { Button } from './ui/Button';
 import { Textarea } from './ui/Textarea';
@@ -23,24 +24,25 @@ function extractDeliverableTitle(content: string): string {
   return firstLine.replace(/^#+\s*/, '');
 }
 
-function buildAssistantReply(prompt: string, deliverableTitle: string): string {
-  return [
-    'Sem backend: apliquei uma simulação local de refinamento.',
-    `Direção: ${prompt}`,
-    `Contexto preservado: ${deliverableTitle}.`,
-    'Se quiser, envie outra instrução para iterarmos.',
-  ].join('\n');
-}
-
 export function RefineChatView() {
-  const { currentProject, generatedContent, chatMessages, appendChatMessage, setPhase } = useStore();
+  const {
+    currentProject,
+    selectedTemplate,
+    generatedContent,
+    chatMessages,
+    appendChatMessage,
+    setGeneratedContent,
+    updateProject,
+    setPhase,
+  } = useStore();
   const [draft, setDraft] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const deliverableTitle = useMemo(() => extractDeliverableTitle(generatedContent), [generatedContent]);
   const deliverablePreview = useMemo(() => generatedContent.slice(0, 480), [generatedContent]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const text = draft.trim();
-    if (!text) {
+    if (!text || isSending) {
       return;
     }
 
@@ -51,14 +53,54 @@ export function RefineChatView() {
       createdAt: new Date().toISOString(),
     });
 
-    appendChatMessage({
-      id: `msg-assistant-${Date.now()}`,
-      role: 'assistant',
-      content: buildAssistantReply(text, deliverableTitle),
-      createdAt: new Date().toISOString(),
-    });
-
     setDraft('');
+
+    if (!currentProject) {
+      appendChatMessage({
+        id: `msg-assistant-${Date.now()}`,
+        role: 'assistant',
+        content: 'Nao encontrei projeto ativo para refinamento. Volte ao editor e tente novamente.',
+        createdAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const templateId = selectedTemplate?.id || currentProject.templateId;
+    setIsSending(true);
+
+    try {
+      const response = await api.refineContent({
+        templateId,
+        prompt: text,
+        currentContent: generatedContent,
+        project: currentProject,
+      });
+
+      setGeneratedContent(response.content);
+      updateProject(currentProject.id, {
+        content: response.content,
+        status: 'ready',
+        backendContext: response.backendContext,
+        lastRunId: response.runId,
+      });
+
+      appendChatMessage({
+        id: `msg-assistant-${Date.now()}`,
+        role: 'assistant',
+        content: response.assistantSummary || `Refino aplicado para ${deliverableTitle}.`,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Refine failed:', error);
+      appendChatMessage({
+        id: `msg-assistant-${Date.now()}`,
+        role: 'assistant',
+        content: 'Nao consegui aplicar o refinamento agora. Tente novamente em instantes.',
+        createdAt: new Date().toISOString(),
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -115,9 +157,9 @@ export function RefineChatView() {
               ))}
             </div>
             <div className="flex justify-end">
-              <Button onClick={sendMessage} disabled={!draft.trim()}>
+              <Button onClick={sendMessage} disabled={!draft.trim() || isSending}>
                 <Send className="mr-2 h-4 w-4" />
-                Enviar
+                {isSending ? 'Enviando...' : 'Enviar'}
               </Button>
             </div>
           </div>
