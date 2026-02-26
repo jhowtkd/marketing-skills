@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 from vm_webapp.app import create_app
 from vm_webapp.db import session_scope
@@ -583,6 +584,67 @@ def test_api_approval_cycle_moves_to_next_gate_without_failed_run(tmp_path: Path
     final = wait_for_run_status(client, run_id, {"waiting_approval", "completed", "failed"})
     assert final["status"] in {"waiting_approval", "completed"}
     assert all(stage["error_code"] is None for stage in final["stages"])
+
+
+def test_resume_recovers_waiting_gate_when_run_is_running_and_approval_missing(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    brand_id = client.post(
+        "/api/v2/brands",
+        headers={"Idempotency-Key": "recover-b"},
+        json={"name": "Acme"},
+    ).json()["brand_id"]
+    project_id = client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "recover-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    ).json()["project_id"]
+    thread_id = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "recover-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()["thread_id"]
+
+    run_id = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "recover-run"},
+        json={"request_text": "Generate plan assets", "mode": "content_calendar"},
+    ).json()["run_id"]
+
+    detail = wait_for_run_status(client, run_id, {"waiting_approval", "completed"})
+    assert detail["status"] == "waiting_approval"
+    approval_id = detail["pending_approvals"][0]["approval_id"]
+
+    with session_scope(client.app.state.engine) as session:
+        session.execute(delete(ApprovalView).where(ApprovalView.approval_id == approval_id))
+        session.execute(delete(ApprovalView).where(ApprovalView.reason.like(f"workflow_gate:{run_id}:%")))
+        session.commit()
+
+    with session_scope(client.app.state.engine) as session:
+        runtime = client.app.state.workflow_runtime
+        run = runtime.execute_queued_run(
+            session=session,
+            run_id=run_id,
+            actor_id="agent:vm-workflow",
+            causation_id="evt-recover",
+            correlation_id="evt-recover",
+            trigger_event_type="WorkflowRunResumed",
+        )
+        assert run["status"] == "waiting_approval"
+
+    refreshed = client.get(f"/api/v2/workflow-runs/{run_id}")
+    assert refreshed.status_code == 200
+    payload = refreshed.json()
+    assert payload["status"] == "waiting_approval"
+    assert payload["pending_approvals"]
 
 
 def test_grant_unknown_approval_returns_404(tmp_path: Path) -> None:
