@@ -91,7 +91,7 @@ interface StoreActions {
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   deleteProject: (projectId: string) => void;
   startFromChatRequest: (requestText: string) => void;
-  setTemplateSuggestions: (suggestions: SuggestedTemplate[]) => void;
+  setTemplateSuggestions: (suggestions: SuggestedTemplate[], fallbackToManualSelection?: boolean) => void;
   chooseSuggestedTemplate: (templateId: string) => void;
   setPhase: (phase: StudioPhase) => void;
   appendChatMessage: (message: ChatMessage) => void;
@@ -224,10 +224,10 @@ export const useStore = create<AppState & StoreActions>()(
         }));
       },
 
-      setTemplateSuggestions: (suggestions) =>
+      setTemplateSuggestions: (suggestions, fallbackToManualSelection = suggestions.length === 0) =>
         set({
           templateSuggestions: suggestions.slice(0, 3),
-          suggestionFallbackToManual: suggestions.length === 0,
+          suggestionFallbackToManual: fallbackToManualSelection,
         }),
 
       chooseSuggestedTemplate: (templateId) =>
