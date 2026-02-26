@@ -27,69 +27,73 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
   } = useInbox(activeThreadId, activeRunId);
 
   const [commentInput, setCommentInput] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
 
   const { pendingTasks, pendingApprovals, historyTasks, historyApprovals } = splitInboxByStatus({ tasks, approvals });
+  const blockersCount = pendingTasks.length + pendingApprovals.length;
 
   return (
     <div className="space-y-4">
-      {/* Actions / Refresh */}
-      {activeThreadId && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex justify-between items-center">
-            <h2 className="text-sm font-semibold text-slate-900">Inbox</h2>
-            <button
-              onClick={() => {
-                refreshTasks();
-                refreshApprovals();
-                if (activeRunId) refreshArtifacts();
-              }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-900"
-            >
-              Recarregar
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Tabs */}
-      {activeThreadId && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setActiveTab("pending")}
-              className={`px-3 py-1 text-xs font-medium rounded-lg ${activeTab === "pending" ? "bg-primary text-white" : "bg-slate-100 text-slate-700"}`}
-            >
-              Pendentes ({pendingTasks.length + pendingApprovals.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={`px-3 py-1 text-xs font-medium rounded-lg ${activeTab === "history" ? "bg-primary text-white" : "bg-slate-100 text-slate-700"}`}
-            >
-              Historico ({historyTasks.length + historyApprovals.length})
-            </button>
-          </div>
-
-          {activeTab === "pending" ? (
-            <div className="space-y-4">
-              {/* Pending Approvals */}
+      {activeThreadId ? (
+        <>
+          <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/95 p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-xs font-semibold text-slate-700 mb-2">Aprovacoes pendentes</h3>
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+                  Action rail
+                </p>
+                <h2 className="mt-2 font-serif text-2xl text-slate-900">Pendencias desta versao</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Resolva bloqueios da versao ativa antes de abrir historico ou artefatos secundarios.
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <span className="rounded-full bg-[var(--vm-warm)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary-strong)]">
+                  {blockersCount} bloqueio{blockersCount === 1 ? "" : "s"}
+                </span>
+                <button
+                  onClick={() => {
+                    refreshTasks();
+                    refreshApprovals();
+                    if (activeRunId) refreshArtifacts();
+                  }}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900"
+                >
+                  Recarregar
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/95 p-4 shadow-sm">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary)]">
+                  Aprovacoes pendentes
+                </h3>
                 {pendingApprovals.length === 0 ? (
-                  <p className="text-xs text-slate-500">Nenhuma aprovacao pendente.</p>
+                  <p className="mt-2 text-sm text-slate-500">Nenhuma aprovacao bloqueando esta versao.</p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="mt-3 flex flex-col gap-3">
                     {pendingApprovals.map((approval) => (
-                      <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                        <div className="text-xs font-semibold text-slate-900">
-                          {devMode ? approval.approval_id : "Aprovacao pendente"}
+                      <div key={approval.approval_id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {devMode ? approval.approval_id : "Aprovacao pendente"}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-amber-800">
+                              Role {approval.required_role}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                            {approval.status}
+                          </span>
                         </div>
-                        <div className="text-xs text-slate-600 mb-2">Status: {approval.status} | Role: {approval.required_role}</div>
-                        <div className="text-xs text-slate-800 mb-2">{approval.reason}</div>
+                        <p className="mt-3 text-sm text-slate-700">{approval.reason}</p>
                         <button
                           type="button"
                           onClick={() => grantApproval(approval.approval_id)}
-                          className="rounded bg-primary px-3 py-1 text-xs text-white"
+                          className="mt-4 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-white"
                         >
                           Aprovar
                         </button>
@@ -99,25 +103,37 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                 )}
               </div>
 
-              {/* Pending Tasks */}
               <div>
-                <h3 className="text-xs font-semibold text-slate-700 mb-2">Tarefas pendentes</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary)]">
+                  Tarefas pendentes
+                </h3>
                 {pendingTasks.length === 0 ? (
-                  <p className="text-xs text-slate-500">Nenhuma tarefa pendente.</p>
+                  <p className="mt-2 text-sm text-slate-500">Nenhuma tarefa pendente para esta versao.</p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="mt-3 flex flex-col gap-3">
                     {pendingTasks.map((task) => (
-                      <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50">
-                        <div className="text-xs font-semibold text-slate-900">{devMode ? task.task_id : "Tarefa pendente"}</div>
-                        <div className="text-xs text-slate-600 mb-2">Status: {task.status} | Assigned To: {task.assigned_to}</div>
-                        <div className="flex flex-col gap-2">
+                      <div key={task.task_id} className="rounded-2xl border border-slate-200 bg-[var(--vm-warm)]/45 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {devMode ? task.task_id : "Tarefa pendente"}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+                              Responsavel {task.assigned_to || "nao definido"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                            {task.status}
+                          </span>
+                        </div>
+                        <div className="mt-4 flex flex-col gap-2">
                           <div className="flex gap-2">
                             <input
                               type="text"
                               placeholder="Adicionar comentario"
                               value={commentInput[task.task_id] || ""}
                               onChange={(e) => setCommentInput({ ...commentInput, [task.task_id]: e.target.value })}
-                              className="flex-1 rounded border px-2 py-1 text-xs"
+                              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                             />
                             <button
                               type="button"
@@ -125,7 +141,7 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                                 commentTask(task.task_id, commentInput[task.task_id] || "");
                                 setCommentInput({ ...commentInput, [task.task_id]: "" });
                               }}
-                              className="rounded bg-slate-200 px-3 py-1 text-xs text-slate-800"
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800"
                             >
                               Comentar
                             </button>
@@ -133,7 +149,7 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                           <button
                             type="button"
                             onClick={() => completeTask(task.task_id)}
-                            className="rounded bg-green-600 px-3 py-1 text-xs text-white w-fit"
+                            className="w-fit rounded-xl bg-green-600 px-3 py-2 text-sm font-medium text-white"
                           >
                             Concluir
                           </button>
@@ -144,95 +160,116 @@ export default function InboxPanel({ activeThreadId, activeRunId, devMode }: Pro
                 )}
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {/* History Approvals */}
+          </section>
+
+          <details className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50/80 p-4">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">Historico recente</summary>
+            <div className="mt-4 space-y-4">
               <div>
-                <h3 className="text-xs font-semibold text-slate-700 mb-2">Aprovacoes concluidas</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Aprovacoes concluidas
+                </h3>
                 {historyApprovals.length === 0 ? (
-                  <p className="text-xs text-slate-500">Nenhuma aprovacao no historico.</p>
+                  <p className="mt-2 text-sm text-slate-500">Nenhuma aprovacao no historico.</p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="mt-3 flex flex-col gap-2">
                     {historyApprovals.map((approval) => (
-                      <div key={approval.approval_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
-                        <div className="text-xs font-semibold text-slate-900">
+                      <div key={approval.approval_id} className="rounded-2xl border border-slate-200 bg-white p-3 opacity-80">
+                        <p className="text-sm font-medium text-slate-900">
                           {devMode ? approval.approval_id : "Aprovacao concluida"}
-                        </div>
-                        <div className="text-xs text-slate-600">Status: {approval.status} | Role: {approval.required_role}</div>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {approval.status} · role {approval.required_role}
+                        </p>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* History Tasks */}
               <div>
-                <h3 className="text-xs font-semibold text-slate-700 mb-2">Tarefas concluidas</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tarefas concluidas</h3>
                 {historyTasks.length === 0 ? (
-                  <p className="text-xs text-slate-500">Nenhuma tarefa no historico.</p>
+                  <p className="mt-2 text-sm text-slate-500">Nenhuma tarefa no historico.</p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="mt-3 flex flex-col gap-2">
                     {historyTasks.map((task) => (
-                      <div key={task.task_id} className="rounded-lg border p-3 border-slate-200 bg-slate-50 opacity-75">
-                        <div className="text-xs font-semibold text-slate-900">{devMode ? task.task_id : "Tarefa concluida"}</div>
-                        <div className="text-xs text-slate-600">Status: {task.status} | Assigned To: {task.assigned_to}</div>
+                      <div key={task.task_id} className="rounded-2xl border border-slate-200 bg-white p-3 opacity-80">
+                        <p className="text-sm font-medium text-slate-900">
+                          {devMode ? task.task_id : "Tarefa concluida"}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {task.status} · responsavel {task.assigned_to || "nao definido"}
+                        </p>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-          )}
-        </section>
-      )}
+          </details>
 
-      {/* Artifacts */}
-      {activeRunId && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Artifacts da Run {activeRunId}</h2>
-          {artifactStages.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">Nenhum artefato encontrado.</p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-4">
-              {artifactStages.map((stage) => (
-                <div key={stage.stage_dir} className="border-b pb-3 border-slate-200">
-                  <div className="text-xs font-semibold text-slate-800 mb-2">Stage: {stage.stage_dir}</div>
-                  {(!stage.artifacts || (Array.isArray(stage.artifacts) && stage.artifacts.length === 0)) ? (
-                    <div className="text-xs text-slate-500">Sem artefatos.</div>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {Array.isArray(stage.artifacts) && stage.artifacts.map((art: any, i) => {
-                        const path = typeof art === "string" ? art : art.path || art.filename || String(i);
-                        const displayPath = typeof art === "string" ? art : (art.name || art.path || art.filename || JSON.stringify(art));
-                        const key = `${stage.stage_dir}/${path}`;
-                        return (
-                          <li key={i} className="flex flex-col gap-1 rounded bg-slate-50 p-2 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono text-slate-600 break-all">{displayPath}</span>
-                              <button
-                                onClick={() => loadArtifactContent(stage.stage_dir, path)}
-                                className="rounded bg-blue-100 px-2 py-1 text-blue-700 hover:bg-blue-200"
-                              >
-                                Visualizar
-                              </button>
-                            </div>
-                            {artifactContents[key] && (
-                              <div className="mt-2">
-                                <ArtifactPreview 
-                                  content={artifactContents[key]} 
-                                  filename={typeof art === "string" ? art : art.name || art.path} 
-                                />
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
+          {activeRunId ? (
+            <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/95 p-4 shadow-sm">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary)]">
+                Artefatos de apoio
+              </h3>
+              {artifactStages.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-600">Nenhum artefato secundario encontrado.</p>
+              ) : (
+                <div className="mt-3 flex flex-col gap-4">
+                  {artifactStages.map((stage) => (
+                    <div key={stage.stage_dir} className="border-b border-slate-200 pb-3 last:border-b-0">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {stage.stage_dir}
+                      </div>
+                      {(!stage.artifacts || (Array.isArray(stage.artifacts) && stage.artifacts.length === 0)) ? (
+                        <div className="text-xs text-slate-500">Sem artefatos.</div>
+                      ) : (
+                        <ul className="flex flex-col gap-2">
+                          {Array.isArray(stage.artifacts) &&
+                            stage.artifacts.map((art: any, i) => {
+                              const path = typeof art === "string" ? art : art.path || art.filename || String(i);
+                              const displayPath =
+                                typeof art === "string"
+                                  ? art
+                                  : art.name || art.path || art.filename || JSON.stringify(art);
+                              const key = `${stage.stage_dir}/${path}`;
+                              return (
+                                <li key={i} className="rounded-xl bg-slate-50 p-3 text-xs">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="break-all font-mono text-slate-600">{displayPath}</span>
+                                    <button
+                                      onClick={() => loadArtifactContent(stage.stage_dir, path)}
+                                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
+                                    >
+                                      Visualizar
+                                    </button>
+                                  </div>
+                                  {artifactContents[key] ? (
+                                    <div className="mt-3">
+                                      <ArtifactPreview
+                                        content={artifactContents[key]}
+                                        filename={typeof art === "string" ? art : art.name || art.path}
+                                      />
+                                    </div>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <section className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50/80 p-4">
+          <h2 className="text-sm font-semibold text-slate-900">Pendencias desta versao</h2>
+          <p className="mt-2 text-sm text-slate-500">Selecione um job e uma versao ativa para liberar a action rail.</p>
         </section>
       )}
 
