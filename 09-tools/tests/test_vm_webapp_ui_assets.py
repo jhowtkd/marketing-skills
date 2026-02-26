@@ -238,3 +238,10 @@ def test_vm_react_ui_source_tree_exists() -> None:
     assert Path("09-tools/web/vm-ui").exists()
     assert Path("09-tools/web/vm-ui/package.json").exists()
     assert Path("09-tools/web/vm-ui/src/App.tsx").exists()
+
+
+def test_vm_react_ui_dist_index_exists() -> None:
+    dist_index = Path("09-tools/web/vm-ui/dist/index.html")
+    assert dist_index.exists()
+    html = dist_index.read_text(encoding="utf-8")
+    assert 'data-vm-ui="react"' in html
