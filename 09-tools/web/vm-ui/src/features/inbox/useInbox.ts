@@ -1,19 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchJson, postJson } from "../../api/client";
+import { mapTasksResponse, mapApprovalsResponse, Task, Approval } from "./adapters";
 
-export type Task = {
-  task_id: string;
-  status: string;
-  assigned_to: string;
-  details: any;
-};
-
-export type Approval = {
-  approval_id: string;
-  status: string;
-  reason: string;
-  required_role: string;
-};
+export type { Task, Approval } from "./adapters";
 
 export type ArtifactItem = {
   path: string;
@@ -38,8 +27,8 @@ export function useInbox(activeThreadId: string | null, activeRunId: string | nu
       return;
     }
     try {
-      const data = await fetchJson<{ tasks: Task[] }>(`/api/v2/threads/${activeThreadId}/tasks`);
-      setTasks(data.tasks || []);
+      const data = await fetchJson<unknown>(`/api/v2/threads/${activeThreadId}/tasks`);
+      setTasks(mapTasksResponse(data));
     } catch (e) {
       console.error("Failed to fetch tasks", e);
     }
@@ -51,8 +40,8 @@ export function useInbox(activeThreadId: string | null, activeRunId: string | nu
       return;
     }
     try {
-      const data = await fetchJson<{ approvals: Approval[] }>(`/api/v2/threads/${activeThreadId}/approvals`);
-      setApprovals(data.approvals || []);
+      const data = await fetchJson<unknown>(`/api/v2/threads/${activeThreadId}/approvals`);
+      setApprovals(mapApprovalsResponse(data));
     } catch (e) {
       console.error("Failed to fetch approvals", e);
     }
