@@ -1,5 +1,6 @@
 import { ChatHomeView } from './components/ChatHomeView';
 import { Dashboard } from './components/Dashboard';
+import { DeliverableView } from './components/DeliverableView';
 import { Editor } from './components/Editor';
 import { TemplateSuggestionView } from './components/TemplateSuggestionView';
 import { TemplateLibrary } from './components/TemplateLibrary';
@@ -16,7 +17,7 @@ function App() {
     return <TemplateSuggestionView />;
   }
 
-  if (phase === 'generating' || phase === 'deliverable_ready' || phase === 'refining') {
+  if (phase === 'generating') {
     if (currentView === 'templates' || (phase === 'generating' && !selectedTemplate)) {
       return (
         <div className="min-h-screen bg-gray-50">
@@ -30,6 +31,10 @@ function App() {
         <Editor />
       </div>
     );
+  }
+
+  if (phase === 'deliverable_ready' || phase === 'refining') {
+    return <DeliverableView />;
   }
 
   return (

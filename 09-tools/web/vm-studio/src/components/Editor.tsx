@@ -21,6 +21,7 @@ export function Editor() {
     setControl,
     setGeneratedContent,
     setIsGenerating,
+    setPhase,
     createProject,
     updateProject,
   } = useStore();
@@ -53,6 +54,7 @@ export function Editor() {
       });
 
       setGeneratedContent(response.content);
+      setPhase('deliverable_ready');
       updateProject(project.id, {
         content: response.content,
         status: 'ready',
