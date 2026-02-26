@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchJson, postJson } from "../../api/client";
+import { mapTimelineResponse } from "./adapters";
 
 export type WorkflowProfile = {
   mode: string;
@@ -81,8 +82,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
     setLoadingTimeline(true);
     try {
-      const data = await fetchJson<{ events: TimelineEvent[] }>(`/api/v2/threads/${activeThreadId}/timeline`);
-      setTimeline(data.events || []);
+      const data = await fetchJson<unknown>(`/api/v2/threads/${activeThreadId}/timeline`);
+      setTimeline(mapTimelineResponse(data));
     } catch (e) {
       console.error("Failed to fetch timeline", e);
     } finally {
