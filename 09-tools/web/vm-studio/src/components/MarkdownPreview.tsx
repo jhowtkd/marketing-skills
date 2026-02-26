@@ -34,7 +34,7 @@ export function MarkdownPreview({ content, isLoading }: MarkdownPreviewProps) {
 
   return (
     <div className="max-w-3xl mx-auto p-8">
-      <article className="prose prose-lg max-w-none text-gray-700">
+      <article className="editorial-prose prose prose-lg max-w-none text-slate-700">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </article>
     </div>

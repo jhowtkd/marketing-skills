@@ -2,33 +2,92 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --editorial-bg: #f4f2ed;
+  --editorial-ink: #0f172a;
+  --editorial-muted: #475569;
+  --editorial-panel: #ffffff;
+  --editorial-panel-soft: #f8fafc;
+  --editorial-border: #dbe2ea;
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    @apply text-slate-900 antialiased;
+    background-color: var(--editorial-bg);
+    background-image:
+      radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.08), transparent 40%),
+      radial-gradient(circle at 90% 15%, rgba(15, 23, 42, 0.08), transparent 34%),
+      linear-gradient(180deg, #f8f7f3 0%, #f1efea 100%);
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, 'Times New Roman', serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--editorial-ink);
+    font-family: 'Avenir Next', 'Gill Sans', 'Trebuchet MS', sans-serif;
+    letter-spacing: -0.01em;
   }
 }
 
 @layer components {
+  .editorial-surface {
+    background:
+      linear-gradient(155deg, rgba(255, 255, 255, 0.85) 0%, rgba(248, 250, 252, 0.7) 100%),
+      repeating-linear-gradient(
+        135deg,
+        rgba(15, 23, 42, 0.015) 0,
+        rgba(15, 23, 42, 0.015) 2px,
+        transparent 2px,
+        transparent 10px
+      );
+  }
+
+  .editorial-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.2em];
+    color: #334155;
+  }
+
+  .editorial-prose {
+    color: var(--editorial-muted);
+  }
+
+  .editorial-prose h1,
+  .editorial-prose h2,
+  .editorial-prose h3 {
+    color: var(--editorial-ink);
+    font-family: 'Avenir Next', 'Gill Sans', 'Trebuchet MS', sans-serif;
+    line-height: 1.15;
+  }
+
+  .editorial-prose p,
+  .editorial-prose li {
+    line-height: 1.75;
+  }
+
   .btn-primary {
-    @apply bg-primary-600 text-white px-4 py-2 rounded-lg font-medium 
+    @apply bg-primary-600 text-white px-4 py-2 rounded-lg font-medium
            hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .btn-secondary {
     @apply bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium
            hover:bg-gray-50 transition-colors;
   }
-  
+
   .card {
-    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+    background: var(--editorial-panel);
+    border-color: var(--editorial-border);
+    @apply rounded-xl border shadow-sm;
   }
-  
+
   .input {
     @apply w-full px-3 py-2 border border-gray-300 rounded-lg 
            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
-  
+
   .slider {
     @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer
            accent-primary-600;
