@@ -155,6 +155,144 @@ describe('api.generateContent workflow', () => {
     expect(calledUrls).toContain('/api/v2/workflow-runs/run-1/artifacts');
     expect(calledUrls.some((url) => url.includes('/api/v2/workflow-runs/run-1/artifact-content?'))).toBe(true);
   });
+
+  it('grants and resumes when backend reports pending approvals while status is running', async () => {
+    const projectWithContext: Project = {
+      ...baseProject,
+      backendContext: {
+        brandId: 'b-vmstudio-proj-123',
+        projectId: 'p-vmstudio-proj-123',
+        threadId: 't-vmstudio-proj-123',
+      },
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(okJson({ brands: [{ brand_id: 'b-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ projects: [{ project_id: 'p-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ threads: [{ thread_id: 't-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-2', status: 'queued' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-2',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'running',
+          pending_approvals: [{ approval_id: 'apr-2', status: 'pending' }],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ approval_id: 'apr-2' }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-2', status: 'running' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-2',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'completed',
+          pending_approvals: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          stages: [
+            {
+              stage_dir: '03-delivery',
+              artifacts: [{ path: 'deliverable/final.md' }],
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ content: '# Conteudo final apos approvals em running' }));
+
+    const response = await api.generateContent({
+      templateId: 'landing-conversion',
+      controls: {
+        productName: 'Produto Y',
+      },
+      project: projectWithContext,
+      chatRequest: 'Refine para decisor B2B',
+    });
+
+    expect(response.runId).toBe('run-2');
+    expect(response.content).toContain('final apos approvals');
+
+    const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calledUrls).toContain('/api/v2/approvals/apr-2/grant');
+    expect(calledUrls).toContain('/api/v2/workflow-runs/run-2/resume');
+  });
+
+  it('falls back to thread approvals when status is running and stage waits approval', async () => {
+    const projectWithContext: Project = {
+      ...baseProject,
+      backendContext: {
+        brandId: 'b-vmstudio-proj-123',
+        projectId: 'p-vmstudio-proj-123',
+        threadId: 't-vmstudio-proj-123',
+      },
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(okJson({ brands: [{ brand_id: 'b-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ projects: [{ project_id: 'p-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ threads: [{ thread_id: 't-vmstudio-proj-123' }] }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-3', status: 'queued' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-3',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'running',
+          pending_approvals: [],
+          stages: [{ status: 'waiting_approval' }],
+        })
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          items: [
+            {
+              approval_id: 'apr-3',
+              status: 'pending',
+              reason: 'workflow_gate:run-3:brand-voice',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ approval_id: 'apr-3' }))
+      .mockResolvedValueOnce(okJson({ run_id: 'run-3', status: 'running' }))
+      .mockResolvedValueOnce(
+        okJson({
+          run_id: 'run-3',
+          thread_id: 't-vmstudio-proj-123',
+          status: 'completed',
+          pending_approvals: [],
+          stages: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          stages: [
+            {
+              stage_dir: '03-delivery',
+              artifacts: [{ path: 'deliverable/final.md' }],
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(okJson({ content: '# Conteudo final apos fallback por stage waiting_approval' }));
+
+    const response = await api.generateContent({
+      templateId: 'landing-conversion',
+      controls: {
+        productName: 'Produto Z',
+      },
+      project: projectWithContext,
+      chatRequest: 'Preciso de refinamento com aprovacao',
+    });
+
+    expect(response.runId).toBe('run-3');
+    expect(response.content).toContain('fallback por stage');
+
+    const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calledUrls).toContain('/api/v2/threads/t-vmstudio-proj-123/approvals');
+    expect(calledUrls).toContain('/api/v2/approvals/apr-3/grant');
+    expect(calledUrls).toContain('/api/v2/workflow-runs/run-3/resume');
+  });
 });
 
 function okJson(payload: unknown): Response {

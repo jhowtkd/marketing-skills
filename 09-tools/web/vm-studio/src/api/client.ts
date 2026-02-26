@@ -36,6 +36,7 @@ interface WorkflowRunDetailResponse {
   thread_id?: string;
   status: string;
   pending_approvals?: ApprovalRow[];
+  stages?: Array<{ status?: string }>;
   error_message?: string;
 }
 
@@ -401,7 +402,15 @@ async function waitForRunTerminalState(runId: string, threadId: string): Promise
       throw new Error(message);
     }
 
-    if (WAITING_STATUSES.has(status)) {
+    const hasPendingApprovals = collectDetailPendingApprovals(detail).length > 0;
+    const hasApprovalLikeStage = Array.isArray(detail.stages)
+      ? detail.stages.some((stage) => {
+          const stageStatus = String(stage.status || '').toLowerCase();
+          return stageStatus === 'waiting_approval' || WAITING_STATUSES.has(stageStatus);
+        })
+      : false;
+
+    if (WAITING_STATUSES.has(status) || hasPendingApprovals || hasApprovalLikeStage) {
       await handleWaitingRun(runId, threadId, detail);
     }
 
