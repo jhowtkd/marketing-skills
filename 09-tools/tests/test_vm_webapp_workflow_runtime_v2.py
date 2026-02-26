@@ -4,7 +4,7 @@ from pathlib import Path
 from vm_webapp.db import build_engine, init_db, session_scope
 from vm_webapp.memory import MemoryIndex
 from vm_webapp.models import ThreadView
-from vm_webapp.repo import list_stages, update_run_status
+from vm_webapp.repo import get_run, list_approvals_view, list_stages, update_run_status, update_stage_status
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
 
@@ -221,3 +221,49 @@ def test_runtime_stage_output_llm_disabled_when_llm_fails(tmp_path: Path) -> Non
     # When LLM fails and fallback is used, enabled should be False
     assert manifest["output"]["llm"]["enabled"] is False
     assert manifest["output"]["llm"]["model"] is None
+
+
+def test_execute_queued_run_recovers_waiting_gate_when_run_is_running(tmp_path: Path) -> None:
+    runtime = build_runtime(tmp_path, force_foundation=True)
+
+    with session_scope(runtime.engine) as session:
+        runtime.ensure_queued_run(
+            session=session,
+            run_id="run-1",
+            thread_id="t1",
+            brand_id="b1",
+            project_id="p1",
+            request_text="Build assets",
+            mode="content_calendar",
+            skill_overrides={},
+        )
+        stage = list_stages(session, "run-1")[0]
+        update_stage_status(
+            session,
+            stage_pk=stage.stage_pk,
+            status="waiting_approval",
+            attempts=stage.attempts,
+        )
+        update_run_status(session, run_id="run-1", status="running")
+
+    with session_scope(runtime.engine) as session:
+        result = runtime.execute_queued_run(
+            session=session,
+            run_id="run-1",
+            actor_id="agent:test",
+            causation_id="evt-test",
+            correlation_id="evt-test",
+            trigger_event_type="WorkflowRunResumed",
+        )
+        run = get_run(session, "run-1")
+        stages = list_stages(session, "run-1")
+        approvals = list_approvals_view(session, thread_id="t1")
+
+    assert result["status"] == "waiting_approval"
+    assert run is not None
+    assert run.status == "waiting_approval"
+    assert stages[0].status == "waiting_approval"
+    assert any(
+        approval.reason == f"workflow_gate:run-1:{stages[0].stage_id}" and approval.status == "pending"
+        for approval in approvals
+    )
