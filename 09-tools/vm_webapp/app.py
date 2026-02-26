@@ -76,6 +76,10 @@ def create_app(
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
 
+    studio_static_dir = Path(__file__).resolve().parents[1] / "web" / "vm-studio" / "dist"
+    if studio_static_dir.exists():
+        app.mount("/studio", StaticFiles(directory=studio_static_dir, html=True), name="vm-studio")
+
     static_dir = Path(__file__).resolve().parents[1] / "web" / "vm-ui" / "dist"
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="vm-ui")
     return app
