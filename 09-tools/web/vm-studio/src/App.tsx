@@ -2,6 +2,7 @@ import { ChatHomeView } from './components/ChatHomeView';
 import { Dashboard } from './components/Dashboard';
 import { DeliverableView } from './components/DeliverableView';
 import { Editor } from './components/Editor';
+import { RefineChatView } from './components/RefineChatView';
 import { TemplateSuggestionView } from './components/TemplateSuggestionView';
 import { TemplateLibrary } from './components/TemplateLibrary';
 import { useStore } from './store';
@@ -33,8 +34,12 @@ function App() {
     );
   }
 
-  if (phase === 'deliverable_ready' || phase === 'refining') {
+  if (phase === 'deliverable_ready') {
     return <DeliverableView />;
+  }
+
+  if (phase === 'refining') {
+    return <RefineChatView />;
   }
 
   return (
