@@ -76,6 +76,6 @@ def create_app(
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
 
-    static_dir = Path(__file__).resolve().parents[1] / "web" / "vm"
+    static_dir = Path(__file__).resolve().parents[1] / "web" / "vm-ui" / "dist"
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="vm-ui")
     return app

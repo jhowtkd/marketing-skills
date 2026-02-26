@@ -232,3 +232,28 @@ def test_hardening_release_checklist_exists_and_mentions_migrations_secrets_and_
     assert "migration" in content
     assert "secret" in content
     assert "probe" in content
+
+
+def test_vm_react_ui_source_tree_exists() -> None:
+    assert Path("09-tools/web/vm-ui").exists()
+    assert Path("09-tools/web/vm-ui/package.json").exists()
+    assert Path("09-tools/web/vm-ui/src/App.tsx").exists()
+
+
+def test_vm_react_ui_dist_index_exists() -> None:
+    dist_index = Path("09-tools/web/vm-ui/dist/index.html")
+    assert dist_index.exists()
+    html = dist_index.read_text(encoding="utf-8")
+    assert 'data-vm-ui="react"' in html
+
+
+def test_vm_react_ui_bundle_references_v2_endpoints_and_idempotency() -> None:
+    assets_dir = Path("09-tools/web/vm-ui/dist/assets")
+    assert assets_dir.exists()
+    js_files = list(assets_dir.glob("*.js"))
+    assert js_files
+    blob = "\n".join(p.read_text(encoding="utf-8") for p in js_files)
+    assert "/api/v2/brands" in blob
+    assert "/api/v2/projects" in blob
+    assert "/api/v2/threads" in blob
+    assert "Idempotency-Key" in blob
