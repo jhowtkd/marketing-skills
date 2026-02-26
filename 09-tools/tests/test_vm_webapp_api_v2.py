@@ -583,3 +583,21 @@ def test_api_approval_cycle_moves_to_next_gate_without_failed_run(tmp_path: Path
     final = wait_for_run_status(client, run_id, {"waiting_approval", "completed", "failed"})
     assert final["status"] in {"waiting_approval", "completed"}
     assert all(stage["error_code"] is None for stage in final["stages"])
+
+
+def test_grant_unknown_approval_returns_404(tmp_path: Path) -> None:
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v2/approvals/apr-missing/grant",
+        headers={"Idempotency-Key": "idem-missing-apr"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "approval not found: apr-missing"
