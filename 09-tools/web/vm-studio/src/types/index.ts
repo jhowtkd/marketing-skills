@@ -33,6 +33,22 @@ export interface TemplateControls {
   [key: string]: string | number;
 }
 
+export type StudioPhase = 'chat_input' | 'template_suggestion' | 'generating' | 'deliverable_ready' | 'refining';
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt: string;
+}
+
+export interface SuggestedTemplate {
+  templateId: string;
+  templateName: string;
+  summary: string;
+  reason: string;
+}
+
 export interface AppState {
   projects: Project[];
   templates: Template[];
@@ -42,4 +58,10 @@ export interface AppState {
   generatedContent: string;
   isGenerating: boolean;
   currentView: 'dashboard' | 'templates' | 'editor';
+  phase: StudioPhase;
+  chatRequest: string;
+  chatMessages: ChatMessage[];
+  templateSuggestions: SuggestedTemplate[];
+  selectedSuggestedTemplateId: string | null;
+  suggestionFallbackToManual: boolean;
 }
