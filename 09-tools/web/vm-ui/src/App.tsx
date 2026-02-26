@@ -22,6 +22,10 @@ function writeDevMode(value: boolean): void {
   }
 }
 
+function formatContextValue(value: MaybeId, filledLabel: string): string {
+  return value ? filledLabel : "Nao definido";
+}
+
 export default function App() {
   const [activeBrandId, setActiveBrandId] = useState<MaybeId>(null);
   const [activeProjectId, setActiveProjectId] = useState<MaybeId>(null);
@@ -53,36 +57,102 @@ export default function App() {
   }
 
   return (
-    <div data-vm-ui="react" className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-semibold">VM Studio</h1>
-              <p className="mt-1 text-xs text-slate-500">
-                {activeBrandId ? (devMode ? `Cliente: ${activeBrandId}` : "Cliente selecionado") : "Cliente: —"}
-                {" · "}
-                {activeProjectId ? (devMode ? `Campanha: ${activeProjectId}` : "Campanha selecionada") : "Campanha: —"}
-                {" · "}
-                {activeThreadId ? (devMode ? `Job: ${activeThreadId}` : "Job selecionado") : "Job: —"}
+    <div data-vm-ui="react" className="min-h-screen bg-[var(--vm-bg)] text-[var(--vm-ink)]">
+      <header className="border-b border-[color:var(--vm-line)] bg-[color:var(--vm-surface)]/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-5 lg:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                Deliverable-first studio
+              </p>
+              <div>
+                <h1 className="font-serif text-3xl leading-none text-[var(--vm-ink)] sm:text-4xl">VM Studio</h1>
+                <p className="mt-2 max-w-2xl text-sm text-[var(--vm-muted)]">
+                  Preview da versao ativa no centro, contexto editavel no topo e acoes operacionais ao lado.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/80 p-3 shadow-[0_16px_40px_rgba(22,32,51,0.08)]">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-muted)]">
+                Ferramentas
+              </p>
+              <label className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--vm-ink)]">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={devMode}
+                  onChange={(e) => setDevMode(e.target.checked)}
+                />
+                Dev mode
+              </label>
+            </div>
+          </div>
+
+          <section
+            role="region"
+            aria-label="Contexto do studio"
+            className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+                  Contexto ativo
+                </p>
+                <p className="mt-2 text-sm text-[var(--vm-muted)]">
+                  Selecione cliente, campanha e job na navegacao reduzida para atualizar o canvas principal.
+                </p>
+              </div>
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--vm-muted)]">
+                Dev mode fica secundario para manter a leitura editorial.
               </p>
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={devMode}
-                onChange={(e) => setDevMode(e.target.checked)}
-              />
-              Dev mode
-            </label>
-          </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-[1.25rem] border border-[color:var(--vm-line)] bg-white/85 px-4 py-3">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-[var(--vm-muted)]">
+                  Cliente
+                </p>
+                <p className="mt-2 text-base font-semibold text-[var(--vm-ink)]">
+                  {formatContextValue(activeBrandId, devMode ? activeBrandId : "Cliente selecionado")}
+                </p>
+              </div>
+              <div className="rounded-[1.25rem] border border-[color:var(--vm-line)] bg-white/85 px-4 py-3">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-[var(--vm-muted)]">
+                  Campanha
+                </p>
+                <p className="mt-2 text-base font-semibold text-[var(--vm-ink)]">
+                  {formatContextValue(activeProjectId, devMode ? activeProjectId : "Campanha selecionada")}
+                </p>
+              </div>
+              <div className="rounded-[1.25rem] border border-[color:var(--vm-line)] bg-white/85 px-4 py-3">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-[var(--vm-muted)]">
+                  Job
+                </p>
+                <p className="mt-2 text-base font-semibold text-[var(--vm-ink)]">
+                  {formatContextValue(activeThreadId, devMode ? activeThreadId : "Job selecionado")}
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid gap-4 lg:grid-cols-12">
-          <aside className="lg:col-span-3">
+      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
+        <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.95fr)_minmax(0,1.6fr)_minmax(280px,0.95fr)]">
+          <section
+            role="region"
+            aria-label="Navegacao do studio"
+            className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
+          >
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                  Navegacao
+                </p>
+                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Studio rail</h2>
+              </div>
+            </div>
             <NavigationPanel
               activeBrandId={activeBrandId}
               activeProjectId={activeProjectId}
@@ -92,9 +162,24 @@ export default function App() {
               onSelectProject={handleSelectProject}
               onSelectThread={handleSelectThread}
             />
-          </aside>
+          </section>
 
-          <section className="lg:col-span-6">
+          <section
+            role="region"
+            aria-label="Canvas do entregavel"
+            className="rounded-[2rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_20px_48px_rgba(22,32,51,0.1)] sm:p-5"
+          >
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                  Canvas central
+                </p>
+                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Canvas do entregavel</h2>
+              </div>
+              <p className="max-w-xs text-right text-xs uppercase tracking-[0.16em] text-[var(--vm-muted)]">
+                A versao ativa deve dominar a leitura.
+              </p>
+            </div>
             <WorkspacePanel
               activeThreadId={activeThreadId}
               activeRunId={activeRunId}
@@ -103,9 +188,21 @@ export default function App() {
             />
           </section>
 
-          <aside className="lg:col-span-3">
+          <section
+            role="region"
+            aria-label="Action rail da versao"
+            className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
+          >
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                  Action rail
+                </p>
+                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Pendencias da versao</h2>
+              </div>
+            </div>
             <InboxPanel activeThreadId={activeThreadId} activeRunId={activeRunId} devMode={devMode} />
-          </aside>
+          </section>
         </div>
       </main>
     </div>
