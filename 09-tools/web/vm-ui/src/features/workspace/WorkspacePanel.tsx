@@ -24,6 +24,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   } = useWorkspace(activeThreadId, activeRunId);
 
   const [selectedProfile, setSelectedProfile] = useState<string>("");
+  const [requestText, setRequestText] = useState<string>("");
 
   return (
     <div className="space-y-4">
@@ -35,7 +36,19 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             : "Selecione um Job na coluna da esquerda para comecar."}
         </p>
         <div className="mt-4 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-slate-700">Objetivo do pedido</label>
+            <input
+              type="text"
+              value={requestText}
+              onChange={(e) => setRequestText(e.target.value)}
+              disabled={!activeThreadId}
+              placeholder="Descreva o que voce precisa..."
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50 w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-slate-700">Perfil</label>
             <select
               value={selectedProfile}
               onChange={(e) => setSelectedProfile(e.target.value)}
@@ -49,10 +62,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={!activeThreadId || !selectedProfile}
-              onClick={() => startRun(selectedProfile)}
+              disabled={!activeThreadId || !selectedProfile || !requestText.trim()}
+              onClick={() => {
+                startRun({ mode: selectedProfile, requestText });
+                setRequestText("");
+              }}
               className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               Gerar nova versao

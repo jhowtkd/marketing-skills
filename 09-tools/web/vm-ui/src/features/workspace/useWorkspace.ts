@@ -22,6 +22,10 @@ export type TimelineEvent = {
   payload: any;
 };
 
+export function buildStartRunPayload(input: { mode: string; requestText: string }) {
+  return { mode: input.mode, request_text: input.requestText.trim() };
+}
+
 export function useWorkspace(activeThreadId: string | null, activeRunId: string | null) {
   const [profiles, setProfiles] = useState<WorkflowProfile[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -92,13 +96,10 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
-  const startRun = async (mode: string) => {
+  const startRun = async (input: { mode: string; requestText: string }) => {
     if (!activeThreadId) return;
     try {
-      await postJson(`/api/v2/threads/${activeThreadId}/workflow-runs`, {
-        request_text: "Iniciado via UI",
-        mode,
-      }, "run");
+      await postJson(`/api/v2/threads/${activeThreadId}/workflow-runs`, buildStartRunPayload(input), "run");
       fetchRuns();
       fetchTimeline();
     } catch (e) {
