@@ -883,12 +883,18 @@ def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
 def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
-        result = grant_approval_command(
-            session,
-            approval_id=approval_id,
-            actor_id="workspace-owner",
-            idempotency_key=idem,
-        )
+        try:
+            result = grant_approval_command(
+                session,
+                approval_id=approval_id,
+                actor_id="workspace-owner",
+                idempotency_key=idem,
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message.startswith("approval not found:"):
+                raise HTTPException(status_code=404, detail=message) from exc
+            raise
         project_command_event(session, event_id=result.event_id)
     return {"event_id": result.event_id, "approval_id": approval_id}
 

@@ -565,7 +565,10 @@ def grant_approval_command(
         return dedup
 
     approval = get_approval_view(session, approval_id)
-    thread_id = approval.thread_id if approval is not None else None
+    if approval is None:
+        raise ValueError(f"approval not found: {approval_id}")
+
+    thread_id = approval.thread_id
     stream_id = f"thread:{thread_id}" if thread_id else f"approval:{approval_id}"
     expected = get_stream_version(session, stream_id)
     event = EventEnvelope(
