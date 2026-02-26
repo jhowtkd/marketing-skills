@@ -262,8 +262,10 @@ def test_execute_queued_run_recovers_waiting_gate_when_run_is_running(tmp_path: 
     assert result["status"] == "waiting_approval"
     assert run is not None
     assert run.status == "waiting_approval"
-    assert stages[0].status == "waiting_approval"
+    # Find the first stage with approval_required (should be waiting_approval)
+    waiting_stage = next((s for s in stages if s.status == "waiting_approval"), None)
+    assert waiting_stage is not None
     assert any(
-        approval.reason == f"workflow_gate:run-1:{stages[0].stage_id}" and approval.status == "pending"
+        approval.reason == f"workflow_gate:run-1:{waiting_stage.stage_id}" and approval.status == "pending"
         for approval in approvals
     )

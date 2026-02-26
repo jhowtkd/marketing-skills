@@ -25,6 +25,7 @@ from vm_webapp.repo import (
     get_approval_view,
     get_run,
     get_stream_version,
+    get_waiting_stage,
     list_stages,
     update_run_status,
     update_stage_status,
@@ -316,9 +317,14 @@ class WorkflowRuntimeV2:
             return {"run_id": current.run_id, "status": current.status}
         try:
             initial_status = run.status
+            resumable_waiting_gate = False
             if initial_status == "running":
-                return {"run_id": run.run_id, "status": "running"}
-            if initial_status not in {"queued", "waiting_approval"}:
+                waiting_stage = get_waiting_stage(session, run_id)
+                if waiting_stage is None:
+                    return {"run_id": run.run_id, "status": "running"}
+                resumable_waiting_gate = True
+
+            if initial_status not in {"queued", "waiting_approval"} and not resumable_waiting_gate:
                 return {"run_id": run.run_id, "status": initial_status}
 
             claimed = claim_run_for_execution(
@@ -378,14 +384,20 @@ class WorkflowRuntimeV2:
                 if stage_cfg["approval_required"] and (
                     approval is None or approval.status != "granted"
                 ):
-                    if stage.status != "waiting_approval":
+                    needs_gate_seed = approval is None
+                    stage_already_waiting = stage.status == "waiting_approval"
+
+                    if not stage_already_waiting:
                         update_stage_status(
                             session,
                             stage_pk=stage.stage_pk,
                             status="waiting_approval",
                             attempts=stage.attempts,
                         )
-                        update_run_status(session, run_id=run_id, status="waiting_approval")
+
+                    update_run_status(session, run_id=run_id, status="waiting_approval")
+
+                    if not stage_already_waiting or needs_gate_seed:
                         self._append_thread_event(
                             session=session,
                             thread_id=run.thread_id,
@@ -403,6 +415,8 @@ class WorkflowRuntimeV2:
                             causation_id=causation_id,
                             correlation_id=correlation_id,
                         )
+
+                    if needs_gate_seed:
                         self._append_thread_event(
                             session=session,
                             thread_id=run.thread_id,
