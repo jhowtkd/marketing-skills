@@ -58,13 +58,13 @@ export default function App() {
         <div className="mx-auto max-w-7xl px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold">VM Workspace</h1>
+              <h1 className="text-lg font-semibold">VM Studio</h1>
               <p className="mt-1 text-xs text-slate-500">
-                {activeBrandId ? `Marca: ${activeBrandId}` : "Marca: —"}
+                {activeBrandId ? `Cliente: ${activeBrandId}` : "Cliente: —"}
                 {" · "}
-                {activeProjectId ? `Projeto: ${activeProjectId}` : "Projeto: —"}
+                {activeProjectId ? `Campanha: ${activeProjectId}` : "Campanha: —"}
                 {" · "}
-                {activeThreadId ? `Thread: ${activeThreadId}` : "Thread: —"}
+                {activeThreadId ? `Job: ${activeThreadId}` : "Job: —"}
               </p>
             </div>
             <label className="inline-flex items-center gap-2 text-sm text-slate-700">

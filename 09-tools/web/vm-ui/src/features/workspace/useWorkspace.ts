@@ -11,6 +11,7 @@ export type WorkflowRun = {
   run_id: string;
   status: string;
   requested_mode: string;
+  request_text?: string;
   created_at?: string;
 };
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useWorkspace } from "./useWorkspace";
+import { toHumanStatus, toHumanRunName } from "./presentation";
 
 type MaybeId = string | null;
 
@@ -30,8 +31,8 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         <h2 className="text-sm font-semibold text-slate-900">Studio</h2>
         <p className="mt-2 text-sm text-slate-600">
           {activeThreadId
-            ? "Thread selecionada. O proximo passo e rodar um workflow e acompanhar o progresso."
-            : "Selecione uma thread na coluna da esquerda para comecar."}
+            ? "Job selecionado. Clique em 'Gerar nova versao' para criar conteudo."
+            : "Selecione um Job na coluna da esquerda para comecar."}
         </p>
         <div className="mt-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -41,7 +42,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               disabled={!activeThreadId}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
             >
-              <option value="">Selecione um profile</option>
+              <option value="">Selecione um perfil</option>
               {profiles.map((p) => (
                 <option key={p.mode} value={p.mode}>
                   {p.mode}
@@ -54,7 +55,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               onClick={() => startRun(selectedProfile)}
               className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              Rodar workflow
+              Gerar nova versao
             </button>
             {activeRunId ? (
               <button
@@ -81,12 +82,12 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Execucoes</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Versoes</h2>
         {runs.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-600">Nenhuma run encontrada.</p>
+          <p className="mt-2 text-sm text-slate-600">Nenhuma versao encontrada.</p>
         ) : (
           <div className="mt-3 flex flex-col gap-2">
-            {runs.map((r) => (
+            {runs.map((r, idx) => (
               <div
                 key={r.run_id}
                 onClick={() => onSelectRun(r.run_id)}
@@ -98,9 +99,9 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-slate-900">{r.run_id}</span>
-                  <span className="text-xs font-semibold text-slate-500">{r.status}</span>
+                  <span className="text-xs font-semibold text-slate-500">{toHumanStatus(r.status)}</span>
                 </div>
-                <div className="text-xs text-slate-500">{r.requested_mode}</div>
+                <div className="text-xs text-slate-500">{toHumanRunName({ index: idx + 1, requestText: r.request_text || r.requested_mode, createdAt: r.created_at })}</div>
               </div>
             ))}
           </div>
@@ -110,7 +111,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
       {activeRunId && runDetail && (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900 flex justify-between">
-            Detalhes da Run {activeRunId}
+            Detalhes da Versao {activeRunId}
             {(runDetail.status === "paused" || runDetail.status === "waiting") && (
               <button
                 type="button"
