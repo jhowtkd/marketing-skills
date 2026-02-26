@@ -1,3 +1,5 @@
+import type { SuggestedTemplate, Template } from '../types';
+
 const API_BASE = '/api/v2';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -27,6 +29,11 @@ export interface GenerateResponse {
   runId?: string;
 }
 
+export interface TemplateSuggestionResult {
+  suggestions: SuggestedTemplate[];
+  fallbackToManualSelection: boolean;
+}
+
 export const api = {
   async generateContent(request: GenerateRequest): Promise<GenerateResponse> {
     await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -40,6 +47,113 @@ export const api = {
     return fetchJson(`${API_BASE}/workflow-runs/${runId}`);
   },
 };
+
+const FALLBACK_TEMPLATE_ORDER = ['plan-launch-90d', 'landing-conversion', 'email-nurture'] as const;
+
+const TEMPLATE_KEYWORDS: Record<string, string[]> = {
+  'landing-conversion': ['landing', 'pagina', 'página', 'conversao', 'conversão', 'cta', 'captura', 'venda'],
+  'email-nurture': ['email', 'nurture', 'lead', 'funil', 'newsletter', 'sequencia', 'sequência', 'onboarding'],
+  'plan-launch-90d': ['lancamento', 'lançamento', 'estrategia', 'estratégia', 'campanha', 'go-to-market', 'gtm'],
+};
+
+function normalizeText(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function toSummary(description: string): string {
+  const trimmed = description.trim();
+  if (trimmed.length <= 80) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 77)}...`;
+}
+
+function toReason(templateId: string, fallback: boolean): string {
+  if (fallback) {
+    return 'Fallback sugeriu opção estável enquanto você escolhe manualmente.';
+  }
+
+  if (templateId === 'landing-conversion') {
+    return 'Pedido indica foco direto em conversão de página.';
+  }
+  if (templateId === 'email-nurture') {
+    return 'Pedido indica relacionamento e nutrição de leads.';
+  }
+  return 'Pedido indica planejamento estratégico de campanha.';
+}
+
+function scoreTemplate(template: Template, normalizedRequest: string): number {
+  const templateKeywords = TEMPLATE_KEYWORDS[template.id] ?? [];
+  const keywordScore = templateKeywords.reduce((score, keyword) => {
+    const normalizedKeyword = normalizeText(keyword);
+    return normalizedRequest.includes(normalizedKeyword) ? score + 3 : score;
+  }, 0);
+
+  const nameAndTagTokens = [template.name, ...template.tags]
+    .map((value) => normalizeText(value))
+    .flatMap((value) => value.split(/\s+/).filter(Boolean));
+
+  const semanticScore = nameAndTagTokens.reduce((score, token) => {
+    if (token.length < 4) {
+      return score;
+    }
+    return normalizedRequest.includes(token) ? score + 1 : score;
+  }, 0);
+
+  return keywordScore + semanticScore;
+}
+
+function buildOrderedTemplateList(
+  templates: Template[],
+  normalizedRequest: string,
+  fallback: boolean
+): Template[] {
+  if (fallback) {
+    const fallbackTemplates = FALLBACK_TEMPLATE_ORDER
+      .map((templateId) => templates.find((template) => template.id === templateId))
+      .filter((template): template is Template => Boolean(template));
+
+    if (fallbackTemplates.length >= 3) {
+      return fallbackTemplates.slice(0, 3);
+    }
+
+    const missingTemplates = templates.filter((template) => !fallbackTemplates.some((item) => item.id === template.id));
+    return [...fallbackTemplates, ...missingTemplates].slice(0, 3);
+  }
+
+  return [...templates]
+    .sort((left, right) => {
+      const scoreDiff = scoreTemplate(right, normalizedRequest) - scoreTemplate(left, normalizedRequest);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      return left.name.localeCompare(right.name, 'pt-BR');
+    })
+    .slice(0, 3);
+}
+
+export function suggestTemplatesFromRequest(requestText: string, templates: Template[]): TemplateSuggestionResult {
+  const normalizedRequest = normalizeText(requestText.trim());
+  const hasSignal =
+    normalizedRequest.length > 0 &&
+    templates.some((template) => scoreTemplate(template, normalizedRequest) > 0);
+
+  const fallbackToManualSelection = !hasSignal;
+  const orderedTemplates = buildOrderedTemplateList(templates, normalizedRequest, fallbackToManualSelection);
+
+  return {
+    fallbackToManualSelection,
+    suggestions: orderedTemplates.map((template) => ({
+      templateId: template.id,
+      templateName: template.name,
+      summary: toSummary(template.description),
+      reason: toReason(template.id, fallbackToManualSelection),
+    })),
+  };
+}
 
 function generatePlaceholderContent(request: GenerateRequest): string {
   const { templateId, controls } = request;
