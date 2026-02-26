@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toHumanRunName, toHumanStatus, toHumanTimelineEvent } from "./presentation";
+import { canResumeRunStatus, toHumanRunName, toHumanStatus, toHumanTimelineEvent } from "./presentation";
 
 describe("run presentation", () => {
   it("builds human run names", () => {
@@ -28,5 +28,12 @@ describe("run presentation", () => {
   it("maps timeline event labels", () => {
     expect(toHumanTimelineEvent("WorkflowRunStarted")).toBe("Geracao iniciada");
     expect(toHumanTimelineEvent("UnknownEvent")).toBe("UnknownEvent");
+  });
+
+  it("flags statuses that require resume action", () => {
+    expect(canResumeRunStatus("waiting_approval")).toBe(true);
+    expect(canResumeRunStatus("waiting")).toBe(true);
+    expect(canResumeRunStatus("paused")).toBe(true);
+    expect(canResumeRunStatus("running")).toBe(false);
   });
 });

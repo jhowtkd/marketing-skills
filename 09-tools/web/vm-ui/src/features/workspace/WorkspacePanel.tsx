@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ArtifactPreview from "../inbox/ArtifactPreview";
-import { toHumanRunName, toHumanStatus, toHumanTimelineEvent } from "./presentation";
+import { canResumeRunStatus, toHumanRunName, toHumanStatus, toHumanTimelineEvent } from "./presentation";
 import { useWorkspace } from "./useWorkspace";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
 
@@ -246,12 +246,42 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </section>
           {runForm}
           {versionsSection}
+          {activeRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-amber-900">Acao necessaria</h2>
+              <p className="mt-2 text-sm text-amber-800">
+                Esta versao esta aguardando continuidade apos aprovacao. Clique para prosseguir o workflow.
+              </p>
+              <button
+                type="button"
+                onClick={resumeRun}
+                className="mt-3 rounded bg-amber-600 px-3 py-2 text-sm font-medium text-white"
+              >
+                Aprovar e continuar
+              </button>
+            </section>
+          ) : null}
           {timelineSection}
         </>
       ) : (
         <>
           {runForm}
           {versionsSection}
+          {activeRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-amber-900">Acao necessaria</h2>
+              <p className="mt-2 text-sm text-amber-800">
+                Esta versao esta aguardando continuidade apos aprovacao. Clique para prosseguir o workflow.
+              </p>
+              <button
+                type="button"
+                onClick={resumeRun}
+                className="mt-3 rounded bg-amber-600 px-3 py-2 text-sm font-medium text-white"
+              >
+                Aprovar e continuar
+              </button>
+            </section>
+          ) : null}
           {artifactSection}
           {timelineSection}
         </>
@@ -261,7 +291,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900 flex justify-between">
             Debug da versao {activeRunId}
-            {(runDetail.status === "paused" || runDetail.status === "waiting") && (
+            {canResumeRunStatus(runDetail.status) && (
               <button
                 type="button"
                 onClick={resumeRun}

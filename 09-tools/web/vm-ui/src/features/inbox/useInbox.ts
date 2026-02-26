@@ -94,6 +94,13 @@ export function useInbox(activeThreadId: string | null, activeRunId: string | nu
   const grantApproval = async (approvalId: string) => {
     try {
       await postJson(`/api/v2/approvals/${approvalId}/grant`, {}, "grant-approval");
+      if (activeRunId) {
+        try {
+          await postJson(`/api/v2/workflow-runs/${activeRunId}/resume`, {}, "resume-after-approval");
+        } catch (resumeError) {
+          console.error("Failed to resume run after approval", resumeError);
+        }
+      }
       fetchApprovals();
     } catch (e) {
       console.error("Failed to grant approval", e);

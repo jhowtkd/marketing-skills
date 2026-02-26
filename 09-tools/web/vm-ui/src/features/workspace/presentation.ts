@@ -34,3 +34,7 @@ export function toHumanTimelineEvent(eventType: string): string {
   };
   return map[eventType] ?? eventType;
 }
+
+export function canResumeRunStatus(status: string): boolean {
+  return status === "waiting_approval" || status === "waiting" || status === "paused";
+}
