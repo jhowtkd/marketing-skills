@@ -257,264 +257,427 @@ export default function NavigationPanel({
     }
   }
 
+  const selectedBrand = brands.find((brand) => brand.brand_id === activeBrandId) ?? null;
+  const selectedProject = projects.find((project) => project.project_id === activeProjectId) ?? null;
+  const selectedThread = threads.find((thread) => thread.thread_id === activeThreadId) ?? null;
+  const activeModes = selectedThread?.modes ?? [];
+
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-4 pb-4">
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {error}
         </div>
       ) : null}
 
-      {/* MARCAS SECTION */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Marcas</h2>
-        <form onSubmit={handleCreateBrand} className="flex gap-2">
-          <input
-            value={newBrandName}
-            onChange={(e) => setNewBrandName(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            placeholder="Nova marca"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white"
-          >
-            Criar
-          </button>
-        </form>
-        <div className="mt-3 space-y-2">
-          {brands.length ? (
-            brands.map((b) => (
-              <div key={b.brand_id} className="group flex flex-col gap-1">
-                {editingBrandId === b.brand_id ? (
-                  <form onSubmit={(e) => handleEditBrandSubmit(b.brand_id, e)} className="flex gap-2 w-full">
-                    <input
-                      autoFocus
-                      value={editBrandName}
-                      onChange={(e) => setEditBrandName(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">Salvar</button>
-                    <button type="button" onClick={() => setEditingBrandId(null)} className="rounded-lg bg-slate-200 px-3 py-2 text-sm">X</button>
-                  </form>
-                ) : (
-                  <div className="flex w-full gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelectBrand(b.brand_id)}
-                      className={[
-                        "flex-1 rounded-lg border px-3 py-2 text-left text-sm",
-                        b.brand_id === activeBrandId
-                          ? "border-blue-200 bg-blue-50 text-blue-900"
-                          : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
-                      ].join(" ")}
-                    >
-                      {b.name}
-                      {devMode ? <span className="ml-2 text-xs text-slate-400">{b.brand_id}</span> : null}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingBrandId(b.brand_id);
-                        setEditBrandName(b.name);
-                      }}
-                      className="hidden group-hover:block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 shrink-0"
-                    >
-                      Editar
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="text-sm text-slate-500">Sem marcas ainda.</div>
-          )}
+      <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+              Contexto do Job
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Selecione cliente, campanha e job com leitura enxuta. Edicao e cadastro continuam disponiveis, mas
+              saem do foco principal.
+            </p>
+          </div>
+          <span className="rounded-full bg-[var(--vm-warm)] px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary-strong)]">
+            Rail reduzido
+          </span>
         </div>
-      </section>
 
-      {/* PROJETOS SECTION */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Projetos</h2>
-        <form onSubmit={handleCreateProject} className="flex gap-2">
-          <input
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            disabled={!activeBrandId}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-            placeholder={activeBrandId ? "Novo projeto" : "Selecione uma marca"}
-          />
-          <button
-            type="submit"
-            disabled={!activeBrandId}
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Criar
-          </button>
-        </form>
-        <div className="mt-3 space-y-2">
-          {projects.length ? (
-            projects.map((p) => (
-              <div key={p.project_id} className="group flex flex-col gap-1">
-                {editingProjectId === p.project_id ? (
-                  <form onSubmit={(e) => handleEditProjectSubmit(p.project_id, e)} className="flex gap-2 w-full">
-                    <input
-                      autoFocus
-                      value={editProjectName}
-                      onChange={(e) => setEditProjectName(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">Salvar</button>
-                    <button type="button" onClick={() => setEditingProjectId(null)} className="rounded-lg bg-slate-200 px-3 py-2 text-sm">X</button>
-                  </form>
-                ) : (
-                  <div className="flex w-full gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelectProject(p.project_id)}
-                      className={[
-                        "flex-1 rounded-lg border px-3 py-2 text-left text-sm",
-                        p.project_id === activeProjectId
-                          ? "border-blue-200 bg-blue-50 text-blue-900"
-                          : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
-                      ].join(" ")}
-                    >
-                      {p.name}
-                      {devMode ? <span className="ml-2 text-xs text-slate-400">{p.project_id}</span> : null}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingProjectId(p.project_id);
-                        setEditProjectName(p.name);
-                      }}
-                      className="hidden group-hover:block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 shrink-0"
-                    >
-                      Editar
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="text-sm text-slate-500">
-              {activeBrandId ? "Sem projetos ainda." : "Selecione uma marca."}
+        <div className="mt-4 grid gap-3">
+          <section className="rounded-2xl border border-slate-200 bg-[var(--vm-warm)]/45 p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Cliente</p>
+            <p className="mt-2 text-base font-semibold text-slate-900">{selectedBrand?.name ?? "Nenhum cliente selecionado"}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {brands.length ? (
+                brands.map((brand) => (
+                  <button
+                    key={brand.brand_id}
+                    type="button"
+                    onClick={() => onSelectBrand(brand.brand_id)}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                      brand.brand_id === activeBrandId
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                    ].join(" ")}
+                  >
+                    {brand.name}
+                    {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{brand.brand_id}</span> : null}
+                  </button>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">Sem clientes cadastrados.</p>
+              )}
             </div>
-          )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Campanha</p>
+            <p className="mt-2 text-base font-semibold text-slate-900">
+              {selectedProject?.name ?? (activeBrandId ? "Escolha uma campanha" : "Selecione um cliente primeiro")}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {projects.length ? (
+                projects.map((project) => (
+                  <button
+                    key={project.project_id}
+                    type="button"
+                    onClick={() => onSelectProject(project.project_id)}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                      project.project_id === activeProjectId
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                    ].join(" ")}
+                  >
+                    {project.name}
+                    {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{project.project_id}</span> : null}
+                  </button>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {activeBrandId ? "Sem campanhas para este cliente." : "Selecione um cliente para listar campanhas."}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Job</p>
+            <p className="mt-2 text-base font-semibold text-slate-900">
+              {selectedThread?.title ?? (activeProjectId ? "Escolha um job" : "Selecione uma campanha primeiro")}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {threads.length ? (
+                threads.map((thread) => (
+                  <button
+                    key={thread.thread_id}
+                    type="button"
+                    onClick={() => onSelectThread(thread.thread_id)}
+                    className={[
+                      "rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-colors",
+                      thread.thread_id === activeThreadId
+                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                    ].join(" ")}
+                  >
+                    <span className="block">{thread.title}</span>
+                    {devMode ? <span className="mt-1 block text-[11px] text-inherit/80">{thread.thread_id}</span> : null}
+                  </button>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {activeProjectId ? "Sem jobs para esta campanha." : "Selecione uma campanha para listar jobs."}
+                </p>
+              )}
+            </div>
+          </section>
         </div>
-      </section>
 
-      {/* THREADS SECTION */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Threads</h2>
-        <form onSubmit={handleCreateThread} className="flex gap-2">
-          <input
-            value={newThreadTitle}
-            onChange={(e) => setNewThreadTitle(e.target.value)}
-            disabled={!activeProjectId}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-            placeholder={activeProjectId ? "Nova thread" : "Selecione um projeto"}
-          />
-          <button
-            type="submit"
-            disabled={!activeProjectId}
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Criar
-          </button>
-        </form>
-        <div className="mt-3 space-y-2">
-          {threads.length ? (
-            threads.map((t) => (
-              <div key={t.thread_id} className="group flex flex-col gap-1">
-                {editingThreadId === t.thread_id ? (
-                  <form onSubmit={(e) => handleEditThreadSubmit(t.thread_id, e)} className="flex gap-2 w-full">
-                    <input
-                      autoFocus
-                      value={editThreadTitle}
-                      onChange={(e) => setEditThreadTitle(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">Salvar</button>
-                    <button type="button" onClick={() => setEditingThreadId(null)} className="rounded-lg bg-slate-200 px-3 py-2 text-sm">X</button>
-                  </form>
-                ) : (
-                  <div className="flex flex-col w-full gap-2">
-                    <div className="flex w-full gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onSelectThread(t.thread_id)}
-                        className={[
-                          "flex-1 rounded-lg border px-3 py-2 text-left text-sm",
-                          t.thread_id === activeThreadId
-                            ? "border-blue-200 bg-blue-50 text-blue-900"
-                            : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
-                        ].join(" ")}
-                    >
-                      {t.title}
-                      {devMode ? <span className="ml-2 text-xs text-slate-400">{t.thread_id}</span> : null}
-                    </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingThreadId(t.thread_id);
-                          setEditThreadTitle(t.title);
-                        }}
-                        className="hidden group-hover:block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 shrink-0"
-                      >
-                        Editar
-                      </button>
-                    </div>
-
-                    {/* MODES LIST FOR ACTIVE THREAD */}
-                    {t.thread_id === activeThreadId && (
-                      <div className="ml-4 pl-4 border-l-2 border-slate-200 mt-1 mb-2 flex flex-col gap-2">
-                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Modes</div>
-                        {t.modes && t.modes.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {t.modes.map((mode) => (
-                              <span
-                                key={mode}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                              >
-                                {mode}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveMode(t.thread_id, mode)}
-                                  className="text-slate-400 hover:text-red-500 focus:outline-none"
-                                >
-                                  &times;
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-slate-400">Nenhum mode ativo.</div>
-                        )}
-                        <form onSubmit={(e) => handleAddMode(t.thread_id, e)} className="flex gap-2 mt-1">
+        <details className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-3">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">
+            Gerenciar cadastro
+          </summary>
+          <div className="mt-4 space-y-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-slate-900">Clientes</h3>
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Secundario</span>
+              </div>
+              <form onSubmit={handleCreateBrand} className="mt-3 flex gap-2">
+                <input
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Novo cliente"
+                />
+                <button type="submit" className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white">
+                  Criar
+                </button>
+              </form>
+              <div className="mt-3 space-y-2">
+                {brands.length ? (
+                  brands.map((brand) => (
+                    <div key={brand.brand_id} className="group flex flex-col gap-1">
+                      {editingBrandId === brand.brand_id ? (
+                        <form onSubmit={(e) => handleEditBrandSubmit(brand.brand_id, e)} className="flex gap-2 w-full">
                           <input
-                            value={newModeName}
-                            onChange={(e) => setNewModeName(e.target.value)}
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
-                            placeholder="Add mode (ex: plan_90d)"
+                            autoFocus
+                            value={editBrandName}
+                            onChange={(e) => setEditBrandName(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                           />
+                          <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">
+                            Salvar
+                          </button>
                           <button
-                            type="submit"
-                            className="rounded bg-slate-200 px-3 py-1 text-xs font-medium hover:bg-slate-300 transition-colors"
+                            type="button"
+                            onClick={() => setEditingBrandId(null)}
+                            className="rounded-lg bg-slate-200 px-3 py-2 text-sm"
                           >
-                            Add
+                            X
                           </button>
                         </form>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex w-full gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onSelectBrand(brand.brand_id)}
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50"
+                          >
+                            {brand.name}
+                            {devMode ? <span className="ml-2 text-xs text-slate-400">{brand.brand_id}</span> : null}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBrandId(brand.brand_id);
+                              setEditBrandName(brand.name);
+                            }}
+                            className="hidden shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 group-hover:block"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-slate-500">Sem clientes ainda.</div>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-slate-900">Campanhas</h3>
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Secundario</span>
+              </div>
+              <form onSubmit={handleCreateProject} className="mt-3 flex gap-2">
+                <input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  disabled={!activeBrandId}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  placeholder={activeBrandId ? "Nova campanha" : "Selecione um cliente"}
+                />
+                <button
+                  type="submit"
+                  disabled={!activeBrandId}
+                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Criar
+                </button>
+              </form>
+              <div className="mt-3 space-y-2">
+                {projects.length ? (
+                  projects.map((project) => (
+                    <div key={project.project_id} className="group flex flex-col gap-1">
+                      {editingProjectId === project.project_id ? (
+                        <form
+                          onSubmit={(e) => handleEditProjectSubmit(project.project_id, e)}
+                          className="flex gap-2 w-full"
+                        >
+                          <input
+                            autoFocus
+                            value={editProjectName}
+                            onChange={(e) => setEditProjectName(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          />
+                          <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingProjectId(null)}
+                            className="rounded-lg bg-slate-200 px-3 py-2 text-sm"
+                          >
+                            X
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex w-full gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onSelectProject(project.project_id)}
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50"
+                          >
+                            {project.name}
+                            {devMode ? <span className="ml-2 text-xs text-slate-400">{project.project_id}</span> : null}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProjectId(project.project_id);
+                              setEditProjectName(project.name);
+                            }}
+                            className="hidden shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 group-hover:block"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-slate-500">
+                    {activeBrandId ? "Sem campanhas ainda." : "Selecione um cliente."}
                   </div>
                 )}
               </div>
-            ))
-          ) : (
-            <div className="text-sm text-slate-500">
-              {activeProjectId ? "Sem threads ainda." : "Selecione um projeto."}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-slate-900">Jobs</h3>
+                <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Secundario</span>
+              </div>
+              <form onSubmit={handleCreateThread} className="mt-3 flex gap-2">
+                <input
+                  value={newThreadTitle}
+                  onChange={(e) => setNewThreadTitle(e.target.value)}
+                  disabled={!activeProjectId}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  placeholder={activeProjectId ? "Novo job" : "Selecione uma campanha"}
+                />
+                <button
+                  type="submit"
+                  disabled={!activeProjectId}
+                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Criar
+                </button>
+              </form>
+              <div className="mt-3 space-y-2">
+                {threads.length ? (
+                  threads.map((thread) => (
+                    <div key={thread.thread_id} className="group flex flex-col gap-1">
+                      {editingThreadId === thread.thread_id ? (
+                        <form onSubmit={(e) => handleEditThreadSubmit(thread.thread_id, e)} className="flex gap-2 w-full">
+                          <input
+                            autoFocus
+                            value={editThreadTitle}
+                            onChange={(e) => setEditThreadTitle(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          />
+                          <button type="submit" className="rounded-lg bg-green-600 px-3 py-2 text-sm text-white">
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingThreadId(null)}
+                            className="rounded-lg bg-slate-200 px-3 py-2 text-sm"
+                          >
+                            X
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex w-full gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onSelectThread(thread.thread_id)}
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50"
+                          >
+                            {thread.title}
+                            {devMode ? <span className="ml-2 text-xs text-slate-400">{thread.thread_id}</span> : null}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingThreadId(thread.thread_id);
+                              setEditThreadTitle(thread.title);
+                            }}
+                            className="hidden shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 group-hover:block"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-slate-500">
+                    {activeProjectId ? "Sem jobs ainda." : "Selecione uma campanha."}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        </details>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">Modo</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Os modos ativos definem o tipo de entrega. Mantenha apenas o necessario para reduzir ru ruido operacional.
+        </p>
+        {!activeThreadId ? (
+          <p className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+            Selecione um job para configurar os modos desta frente.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {activeModes.length ? (
+                activeModes.map((mode) => (
+                  <span
+                    key={mode}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-[var(--vm-warm)] px-3 py-1.5 text-xs font-medium text-slate-800"
+                  >
+                    {mode}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMode(activeThreadId, mode)}
+                      className="text-slate-400 hover:text-red-500"
+                      aria-label={`Remover modo ${mode}`}
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">Nenhum modo ativo neste job.</p>
+              )}
             </div>
-          )}
+
+            <form onSubmit={(e) => handleAddMode(activeThreadId, e)} className="flex gap-2">
+              <input
+                value={newModeName}
+                onChange={(e) => setNewModeName(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Adicionar modo (ex: content_calendar)"
+              />
+              <button type="submit" className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white">
+                Adicionar
+              </button>
+            </form>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">Versoes</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          A leitura da versao ativa acontece no canvas central. Use este rail apenas para orientar o fluxo.
+        </p>
+        <div className="mt-4 grid gap-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Versao ativa</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {selectedThread ? "Selecione ou gere uma versao no canvas central." : "Escolha um job para liberar as versoes."}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Proximo passo</p>
+            <p className="mt-2 text-sm text-slate-700">
+              {selectedThread
+                ? "Defina o pedido no canvas, gere a versao e acompanhe bloqueios no painel da direita."
+                : "Contextualize cliente, campanha e job para comecar o fluxo deliverable-first."}
+            </p>
+          </div>
         </div>
       </section>
     </div>
