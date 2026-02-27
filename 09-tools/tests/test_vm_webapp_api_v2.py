@@ -3583,3 +3583,119 @@ def test_editorial_recommendations_ordered_by_priority_desc(tmp_path: Path) -> N
             assert recs[i]["priority_score"] >= recs[i + 1]["priority_score"], \
                 f"Recommendations not sorted by priority_score: {recs[i]['priority_score']} < {recs[i+1]['priority_score']}"
 
+
+
+# ============================================================
+# GOVERNANCE v10: SLO, Drift Detection, and Auto-Remediation
+# ============================================================
+
+def test_get_editorial_slo_returns_defaults(tmp_path: Path) -> None:
+    """GET /editorial-slo deve retornar defaults quando não configurado."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-get-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    resp = client.get(f"/api/v2/brands/{brand_id}/editorial-slo")
+    assert resp.status_code == 200
+    data = resp.json()
+    
+    assert data["brand_id"] == brand_id
+    assert data["max_baseline_none_rate"] == 0.5
+    assert data["max_policy_denied_rate"] == 0.2
+    assert data["min_confidence"] == 0.4
+    assert data["auto_remediation_enabled"] is False
+    assert "updated_at" in data
+
+
+def test_put_editorial_slo_requires_admin_role(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve exigir role admin."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-admin-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Editor não pode atualizar SLO
+    resp_editor = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-admin-attempt", "X-User-Role": "editor"},
+        json={"max_baseline_none_rate": 0.3},
+    )
+    assert resp_editor.status_code == 403
+    
+    # Admin pode atualizar
+    resp_admin = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-admin-ok", "Authorization": "Bearer admin:admin"},
+        json={
+            "max_baseline_none_rate": 0.3,
+            "max_policy_denied_rate": 0.1,
+            "min_confidence": 0.6,
+            "auto_remediation_enabled": True,
+        },
+    )
+    assert resp_admin.status_code == 200
+    data = resp_admin.json()
+    assert data["max_baseline_none_rate"] == 0.3
+    assert data["max_policy_denied_rate"] == 0.1
+    assert data["min_confidence"] == 0.6
+    assert data["auto_remediation_enabled"] is True
+
+
+def test_put_editorial_slo_validates_ranges(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve validar ranges dos campos."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-val-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Valor acima do máximo deve falhar
+    resp_invalid = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-val-invalid", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 1.5},  # > 1.0
+    )
+    assert resp_invalid.status_code == 422
+    
+    # Valor abaixo do mínimo deve falhar
+    resp_negative = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-val-neg", "Authorization": "Bearer admin:admin"},
+        json={"min_confidence": -0.1},  # < 0.0
+    )
+    assert resp_negative.status_code == 422
+
+
+def test_put_editorial_slo_is_idempotent(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve ser idempotente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-idem-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Primeira chamada
+    resp1 = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-idem-key", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 0.3},
+    )
+    assert resp1.status_code == 200
+    
+    # Segunda chamada com mesma idempotency key deve retornar mesmo resultado
+    resp2 = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-idem-key", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 0.9},  # Valor diferente, mas mesma key
+    )
+    assert resp2.status_code == 200
+    # Deve retornar o valor da primeira chamada (idempotência)
+    assert resp2.json()["max_baseline_none_rate"] == 0.3
+
+
+def test_get_editorial_slo_returns_404_for_unknown_brand(tmp_path: Path) -> None:
+    """GET /editorial-slo deve retornar 404 para brand inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/brands/brand-inexistente/editorial-slo")
+    assert resp.status_code == 404

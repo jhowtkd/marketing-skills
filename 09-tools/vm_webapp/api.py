@@ -40,6 +40,7 @@ from vm_webapp.repo import (
     close_thread,
     create_thread as create_thread_row,
     get_editorial_policy,
+    get_editorial_slo,
     get_event_by_id,
     get_run,
     get_brand_view,
@@ -61,6 +62,7 @@ from vm_webapp.repo import (
     list_timeline_items_view,
     touch_thread_activity,
     upsert_editorial_policy,
+    upsert_editorial_slo,
 )
 from vm_webapp.editorial_decisions import resolve_baseline
 from vm_webapp.editorial_policy import (
@@ -461,6 +463,13 @@ class EditorialGoldenMarkRequest(BaseModel):
 class EditorialPolicyUpdateRequest(BaseModel):
     editor_can_mark_objective: bool = True
     editor_can_mark_global: bool = False
+
+
+class EditorialSLOUpdateRequest(BaseModel):
+    max_baseline_none_rate: float = Field(default=0.5, ge=0.0, le=1.0)
+    max_policy_denied_rate: float = Field(default=0.2, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
+    auto_remediation_enabled: bool = False
 
 
 @router.post("/v2/brands")
@@ -1833,6 +1842,100 @@ def update_editorial_policy_v2(
             "editor_can_mark_objective": policy.editor_can_mark_objective,
             "editor_can_mark_global": policy.editor_can_mark_global,
             "updated_at": policy.updated_at,
+        }
+
+
+@router.get("/v2/brands/{brand_id}/editorial-slo")
+def get_editorial_slo_v2(brand_id: str, request: Request) -> dict[str, object]:
+    """Get editorial SLO configuration for a brand.
+    
+    Returns default SLO if no custom configuration is set.
+    """
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        slo = get_editorial_slo(session, brand_id)
+        
+    return {
+        "brand_id": brand_id,
+        "max_baseline_none_rate": slo.max_baseline_none_rate if slo else 0.5,
+        "max_policy_denied_rate": slo.max_policy_denied_rate if slo else 0.2,
+        "min_confidence": slo.min_confidence if slo else 0.4,
+        "auto_remediation_enabled": slo.auto_remediation_enabled if slo else False,
+        "updated_at": slo.updated_at if slo else brand.updated_at,
+    }
+
+
+@router.put("/v2/brands/{brand_id}/editorial-slo")
+def update_editorial_slo_v2(
+    brand_id: str, 
+    payload: EditorialSLOUpdateRequest, 
+    request: Request
+) -> dict[str, object]:
+    """Update editorial SLO configuration for a brand.
+    
+    Only admin role can update SLO.
+    Requires Idempotency-Key header.
+    """
+    idem = require_idempotency(request)
+    actor_id = _require_admin_role(request)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        # Check idempotency
+        from vm_webapp.repo import get_command_dedup, save_command_dedup
+        dedup = get_command_dedup(session, idempotency_key=idem)
+        if dedup is not None:
+            # Return existing SLO
+            slo = get_editorial_slo(session, brand_id)
+            return {
+                "brand_id": brand_id,
+                "max_baseline_none_rate": slo.max_baseline_none_rate if slo else 0.5,
+                "max_policy_denied_rate": slo.max_policy_denied_rate if slo else 0.2,
+                "min_confidence": slo.min_confidence if slo else 0.4,
+                "auto_remediation_enabled": slo.auto_remediation_enabled if slo else False,
+                "updated_at": slo.updated_at if slo else brand.updated_at,
+            }
+        
+        # Update SLO
+        slo = upsert_editorial_slo(
+            session,
+            brand_id=brand_id,
+            max_baseline_none_rate=payload.max_baseline_none_rate,
+            max_policy_denied_rate=payload.max_policy_denied_rate,
+            min_confidence=payload.min_confidence,
+            auto_remediation_enabled=payload.auto_remediation_enabled,
+        )
+        
+        # Save dedup record
+        save_command_dedup(
+            session,
+            idempotency_key=idem,
+            command_name="update_editorial_slo",
+            event_id=f"slo-update-{brand_id}",
+            response={
+                "brand_id": brand_id,
+                "max_baseline_none_rate": slo.max_baseline_none_rate,
+                "max_policy_denied_rate": slo.max_policy_denied_rate,
+                "min_confidence": slo.min_confidence,
+                "auto_remediation_enabled": slo.auto_remediation_enabled,
+            },
+        )
+        
+        return {
+            "brand_id": brand_id,
+            "max_baseline_none_rate": slo.max_baseline_none_rate,
+            "max_policy_denied_rate": slo.max_policy_denied_rate,
+            "min_confidence": slo.min_confidence,
+            "auto_remediation_enabled": slo.auto_remediation_enabled,
+            "updated_at": slo.updated_at,
         }
 
 
