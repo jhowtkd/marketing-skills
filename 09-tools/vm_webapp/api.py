@@ -1456,7 +1456,15 @@ def mark_editorial_golden_v2(
     actor_ctx = get_actor_context(request)
     
     # Policy: enforce scope-based authorization
-    _enforce_scope_policy(actor_ctx["actor_role"], payload.scope)
+    try:
+        _enforce_scope_policy(actor_ctx["actor_role"], payload.scope)
+    except HTTPException as e:
+        if e.status_code == 403:
+            # Record policy denial metric
+            request.app.state.workflow_runtime.metrics.record_count("editorial_golden_policy_denied_total")
+            request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_role:{actor_ctx['actor_role']}")
+            request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_scope:{payload.scope}")
+        raise
     
     # Validation: justification must not be empty
     if not payload.justification or not payload.justification.strip():

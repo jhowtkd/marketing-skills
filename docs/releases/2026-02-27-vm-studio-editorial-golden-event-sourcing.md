@@ -283,3 +283,160 @@ d9d8116 feat(api-v2): add editorial decisions endpoints for golden marks
 ---
 
 **Aprovado para release.** ✅
+
+---
+
+## Governança v3 (Audit + Policy Real)
+
+**Data:** 2026-02-27 (continuação)
+
+### Overview
+
+Implementação completa de auditoria forte (identidade real) e policy baseada em escopo para o sistema de decisões editoriais, complementando o sistema de event-sourcing já existente.
+
+### Auditoria Forte
+
+#### Identidade Real no Backend
+
+O sistema agora extrai identidade do usuário do header `X-User-Id` com fallback para `workspace-owner`:
+
+```python
+# Headers suportados
+X-User-Id: user-john-doe      # Identidade real
+X-User-Role: editor|admin|viewer  # Role para policy
+```
+
+**Persistência no Evento:**
+
+```json
+{
+  "event_type": "EditorialGoldenMarked",
+  "actor_id": "user-john-doe",
+  "payload": {
+    "run_id": "run-abc123",
+    "scope": "global",
+    "justification": "Melhor versão",
+    "actor_role": "admin"
+  }
+}
+```
+
+**Fallback Chain:**
+1. `X-User-Id` header presente → usar valor
+2. Header ausente → `workspace-owner`
+3. `X-User-Role` header presente → normalizar (viewer|editor|admin)
+4. Role ausente → `editor` (para workspace-owner)
+
+### Policy por Escopo
+
+#### Matriz de Autorização
+
+| Role | global | objective |
+|------|--------|-----------|
+| admin | ✅ | ✅ |
+| editor | ❌ 403 | ✅ |
+| viewer | ❌ 403 | ❌ 403 |
+
+**Validações Mantidas:**
+- `justification` obrigatória (422 se vazia)
+- `scope=objective` exige `objective_key` (422 se ausente)
+- `run_id` deve pertencer ao `thread_id` (404 se inválido)
+- Role não autorizado (403)
+
+#### Métricas de Policy Denies
+
+Novas métricas para observabilidade de negações:
+
+```
+editorial_golden_policy_denied_total       # Total de negações
+editorial_golden_policy_denied_role:editor # Por role
+editorial_golden_policy_denied_scope:global # Por scope
+```
+
+### Timeline Editorial Aprimorada
+
+#### UX Improvements
+
+**Humanização por Scope:**
+- `scope: "global"` → "Golden global definido"
+- `scope: "objective"` → "Golden de objetivo definido"
+
+**Contexto do Ator:**
+- Mostra `actor_id` na timeline (ex: "por user-john-doe")
+- Mostra justificativa curta (truncada em 60 chars)
+
+**Filtro de Eventos:**
+- **Todos**: Mostra todos os eventos da timeline
+- **Editorial**: Filtra apenas `EditorialGoldenMarked`
+
+**Destaque Visual:**
+- Eventos editoriais têm borda e background âmbar
+- Botões de filtro com estado ativo/inativo
+
+### Contratos de API Atualizados
+
+#### POST /api/v2/threads/{thread_id}/editorial-decisions/golden
+
+**Headers Obrigatórios:**
+```
+Idempotency-Key: <string>
+X-User-Id: <string> (opcional, default: workspace-owner)
+X-User-Role: admin|editor|viewer (opcional, default: editor)
+```
+
+**Responses:**
+- `200` - Golden marcado com sucesso
+- `403` - Role não autorizado para o scope
+- `422` - Validação falhou (justificativa vazia, scope inválido)
+- `404` - Thread ou run não encontrado
+
+### Testes
+
+#### Backend (API v2)
+
+```bash
+PYTHONPATH=09-tools .venv/bin/python -m pytest \
+  09-tools/tests/test_vm_webapp_api_v2.py -v
+```
+
+**Novos testes:**
+- `test_editorial_golden_uses_actor_id_from_header` - Verifica actor_id do header
+- `test_editorial_golden_uses_fallback_actor_when_header_missing` - Fallback
+- `test_editorial_golden_policy_editor_cannot_global_scope` - Policy deny
+- `test_editorial_golden_policy_editor_can_objective_scope` - Policy allow
+- `test_editorial_golden_policy_admin_can_global_scope` - Admin global
+- `test_editorial_golden_policy_viewer_cannot_any_scope` - Viewer deny
+- `test_editorial_golden_policy_denial_increments_metrics` - Métricas
+
+#### Frontend (Workspace)
+
+```bash
+cd 09-tools/web/vm-ui && npm run test -- --run src/features/workspace/
+```
+
+**Novos testes:**
+- `returns details with actor and justification for editorial events`
+- `returns only label for non-editorial events`
+- `identifies editorial events`
+- `filters timeline events by editorial filter`
+- `provides timeline filter labels`
+
+### Build
+
+```bash
+cd 09-tools/web/vm-ui && npm run build
+```
+
+**Resultado:** ✓ built in 620ms
+
+### Commits Governança v3
+
+```
+18222c4 feat(audit): use real actor identity and role in editorial golden events
+3d4b99b feat(rbac): enforce scope-based policy for editorial golden decisions
+6537d38 feat(timeline): show editorial actor details and add editorial event filter
+```
+
+---
+
+**Aprovado para release.** ✅

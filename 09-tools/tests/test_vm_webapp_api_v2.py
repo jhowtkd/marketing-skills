@@ -1256,3 +1256,34 @@ def test_editorial_golden_policy_viewer_cannot_any_scope(tmp_path: Path) -> None
         json={"run_id": run_id, "scope": "objective", "objective_key": "obj-123", "justification": "tentativa viewer obj"},
     )
     assert resp_obj.status_code == 403, "viewer should not be allowed to mark objective golden"
+
+
+# TASK D: Observability - Policy denies metrics
+
+def test_editorial_golden_policy_denial_increments_metrics(tmp_path: Path) -> None:
+    """Negacao de policy deve incrementar metricas de deny"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "deny-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "deny-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "deny-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "deny-met-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    deny_total_before = metrics_before.get("counts", {}).get("editorial_golden_policy_denied_total", 0)
+
+    # Attempt editor + global (should be denied)
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "deny-met-attempt", "X-User-Id": "editor-1", "X-User-Role": "editor"},
+        json={"run_id": run_id, "scope": "global", "justification": "tentativa"},
+    )
+    assert resp.status_code == 403
+
+    # Verify metrics incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    deny_total_after = metrics_after.get("counts", {}).get("editorial_golden_policy_denied_total", 0)
+
+    assert deny_total_after == deny_total_before + 1, "editorial_golden_policy_denied_total should increment"
