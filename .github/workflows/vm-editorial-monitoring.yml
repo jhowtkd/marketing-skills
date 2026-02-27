@@ -1,0 +1,62 @@
+name: VM Editorial Governance Monitoring
+
+on:
+  # Manual trigger for diagnostics
+  workflow_dispatch:
+    inputs:
+      threshold_policy_denied:
+        description: 'Threshold for policy denials'
+        required: false
+        default: '10'
+      threshold_baseline_none:
+        description: 'Threshold for baseline=none count'
+        required: false
+        default: '50'
+  
+  # Scheduled check every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  check-editorial-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Check Editorial Metrics
+        id: check_metrics
+        run: |
+          python scripts/check_editorial_thresholds.py \
+            --endpoint ${{ secrets.VM_API_ENDPOINT || 'http://localhost:8000' }} \
+            --threshold-policy-denied ${{ github.event.inputs.threshold_policy_denied || '10' }} \
+            --threshold-baseline-none ${{ github.event.inputs.threshold_baseline_none || '50' }}
+        continue-on-error: true
+
+      - name: Upload diagnostic artifact on failure
+        if: steps.check_metrics.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-metrics-diagnostic-${{ github.run_id }}
+          path: |
+            diagnostic_metrics.txt
+            threshold_violations.json
+          retention-days: 7
+
+      - name: Notify on threshold breach
+        if: steps.check_metrics.outcome == 'failure'
+        run: |
+          echo "⚠️ EDITORIAL GOVERNANCE ALERT: Threshold violations detected"
+          echo "Check artifact 'editorial-metrics-diagnostic-${{ github.run_id }}' for details"
+          # Aqui poderia integrar com Slack, PagerDuty, etc.
+          exit 1
