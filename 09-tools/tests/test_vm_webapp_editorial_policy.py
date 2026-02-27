@@ -11,19 +11,279 @@ from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
 from vm_webapp.db import session_scope
+from vm_webapp.editorial_policy import (
+    BrandPolicy,
+    PolicyDecision,
+    PolicyEvaluator,
+    Role,
+    Scope,
+    create_evaluator_from_session,
+)
 from vm_webapp.settings import Settings
 
 
-def test_editorial_policy_model_exists():
-    """Modelo EditorialPolicy deve existir com campos corretos."""
-    from vm_webapp.models import EditorialPolicy
-    
-    # Verificar que o modelo existe e tem os campos esperados
-    assert hasattr(EditorialPolicy, 'brand_id')
-    assert hasattr(EditorialPolicy, 'editor_can_mark_objective')
-    assert hasattr(EditorialPolicy, 'editor_can_mark_global')
-    assert hasattr(EditorialPolicy, 'updated_at')
+# =============================================================================
+# Testes Unitários do Módulo editorial_policy
+# =============================================================================
 
+def test_policy_evaluator_admin_can_global():
+    """Admin pode marcar golden global."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role=Role.ADMIN, scope=Scope.GLOBAL)
+    assert result.allowed is True
+    assert "admin" in result.reason.lower()
+
+
+def test_policy_evaluator_admin_can_objective():
+    """Admin pode marcar golden objective."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role=Role.ADMIN, scope=Scope.OBJECTIVE)
+    assert result.allowed is True
+
+
+def test_policy_evaluator_viewer_cannot_any_scope():
+    """Viewer não pode marcar golden em nenhum escopo."""
+    evaluator = PolicyEvaluator()
+    
+    result_global = evaluator.evaluate(role=Role.VIEWER, scope=Scope.GLOBAL)
+    assert result_global.allowed is False
+    assert "viewer" in result_global.reason.lower()
+    
+    result_obj = evaluator.evaluate(role=Role.VIEWER, scope=Scope.OBJECTIVE)
+    assert result_obj.allowed is False
+
+
+def test_policy_evaluator_editor_can_objective_with_default_policy():
+    """Editor pode marcar objective com policy padrão."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role=Role.EDITOR, scope=Scope.OBJECTIVE)
+    assert result.allowed is True
+    assert "objective" in result.reason.lower()
+
+
+def test_policy_evaluator_editor_cannot_global_with_default_policy():
+    """Editor não pode marcar global com policy padrão (editor_can_mark_global=False)."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role=Role.EDITOR, scope=Scope.GLOBAL)
+    assert result.allowed is False
+    assert "global" in result.reason.lower()
+
+
+def test_policy_evaluator_editor_can_global_when_policy_allows():
+    """Editor pode marcar global quando policy permite."""
+    policy = BrandPolicy(editor_can_mark_global=True)
+    
+    class MockStore:
+        def get_policy(self, brand_id: str):
+            return policy
+    
+    evaluator = PolicyEvaluator(store=MockStore())
+    result = evaluator.evaluate(
+        role=Role.EDITOR, 
+        scope=Scope.GLOBAL, 
+        brand_id="test-brand"
+    )
+    assert result.allowed is True
+
+
+def test_policy_evaluator_editor_cannot_objective_when_policy_denies():
+    """Editor não pode marcar objective quando policy nega."""
+    policy = BrandPolicy(editor_can_mark_objective=False)
+    
+    class MockStore:
+        def get_policy(self, brand_id: str):
+            return policy
+    
+    evaluator = PolicyEvaluator(store=MockStore())
+    result = evaluator.evaluate(
+        role=Role.EDITOR, 
+        scope=Scope.OBJECTIVE, 
+        brand_id="test-brand"
+    )
+    assert result.allowed is False
+    assert "policy denies" in result.reason.lower()
+
+
+def test_policy_evaluator_fallback_to_default_when_store_none():
+    """Fallback para policy default quando store é None."""
+    evaluator = PolicyEvaluator(store=None)
+    result = evaluator.evaluate(role=Role.EDITOR, scope=Scope.OBJECTIVE)
+    assert result.allowed is True  # Default allows objective
+
+
+def test_policy_evaluator_fallback_to_default_when_brand_id_none():
+    """Fallback para policy default quando brand_id é None."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role=Role.EDITOR, scope=Scope.OBJECTIVE, brand_id=None)
+    assert result.allowed is True  # Default allows objective
+
+
+def test_policy_evaluator_fallback_to_default_when_policy_not_found():
+    """Fallback para policy default quando policy não existe no store."""
+    class EmptyStore:
+        def get_policy(self, brand_id: str):
+            return None
+    
+    evaluator = PolicyEvaluator(store=EmptyStore())
+    result = evaluator.evaluate(
+        role=Role.EDITOR, 
+        scope=Scope.OBJECTIVE, 
+        brand_id="nonexistent-brand"
+    )
+    assert result.allowed is True  # Default allows objective
+
+
+def test_policy_evaluator_handles_string_inputs():
+    """Evaluator deve aceitar strings em vez de enums."""
+    evaluator = PolicyEvaluator()
+    
+    result = evaluator.evaluate(role="admin", scope="global")
+    assert result.allowed is True
+    
+    result = evaluator.evaluate(role="editor", scope="objective")
+    assert result.allowed is True
+
+
+def test_policy_evaluator_unknown_role_denied():
+    """Roles desconhecidas são negadas."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role="unknown", scope="objective")
+    assert result.allowed is False
+    assert "unknown role" in result.reason.lower()
+
+
+def test_policy_evaluator_unknown_scope_denied():
+    """Scopes desconhecidos são negados para editor."""
+    evaluator = PolicyEvaluator()
+    result = evaluator.evaluate(role="editor", scope="unknown")
+    assert result.allowed is False
+    assert "unknown scope" in result.reason.lower()
+
+
+# =============================================================================
+# Policy Matrix Completa (documentação por código)
+# =============================================================================
+
+def test_policy_matrix_all_combinations():
+    """Matrix completa de role x scope x policy.
+    
+    Documentação executável de todas as combinações suportadas.
+    """
+    # (role, scope, editor_obj_flag, editor_global_flag, expected_allowed)
+    test_cases = [
+        # Admin: sempre pode tudo
+        ("admin", "global", False, False, True),
+        ("admin", "objective", False, False, True),
+        ("admin", "global", True, True, True),
+        
+        # Viewer: nunca pode nada
+        ("viewer", "global", True, True, False),
+        ("viewer", "objective", True, True, False),
+        
+        # Editor: depende da policy
+        ("editor", "objective", True, False, True),   # default
+        ("editor", "objective", False, False, False), # policy denies
+        ("editor", "global", False, False, False),    # default
+        ("editor", "global", False, True, True),      # policy allows
+    ]
+    
+    for role, scope, obj_flag, global_flag, expected in test_cases:
+        policy = BrandPolicy(
+            editor_can_mark_objective=obj_flag,
+            editor_can_mark_global=global_flag,
+        )
+        
+        class MockStore:
+            def get_policy(self, brand_id: str):
+                return policy
+        
+        evaluator = PolicyEvaluator(store=MockStore())
+        result = evaluator.evaluate(role=role, scope=scope, brand_id="test")
+        
+        assert result.allowed == expected, (
+            f"Failed for role={role}, scope={scope}, "
+            f"obj_flag={obj_flag}, global_flag={global_flag}"
+        )
+
+
+# =============================================================================
+# Integração com API e Database
+# =============================================================================
+
+def test_create_evaluator_from_session(tmp_path: Path) -> None:
+    """Factory function deve criar evaluator com policy do banco."""
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    
+    with session_scope(app.state.engine) as session:
+        # Criar brand e policy
+        from vm_webapp.repo import upsert_editorial_policy
+        upsert_editorial_policy(
+            session,
+            brand_id="test-brand-eval",
+            editor_can_mark_objective=False,
+            editor_can_mark_global=False,
+        )
+        
+        # Criar evaluator
+        evaluator = create_evaluator_from_session(session, "test-brand-eval")
+        
+        # Verificar que usa policy do banco
+        result = evaluator.evaluate(
+            role=Role.EDITOR, 
+            scope=Scope.OBJECTIVE, 
+            brand_id="test-brand-eval"
+        )
+        assert result.allowed is False  # Policy denies
+
+
+def test_evaluator_with_real_database_policy(tmp_path: Path) -> None:
+    """Evaluator deve funcionar com policy real do banco."""
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    # Criar brand
+    brand_id = client.post(
+        "/api/v2/brands", 
+        headers={"Idempotency-Key": "eval-b"}, 
+        json={"name": "Acme"}
+    ).json()["brand_id"]
+
+    # Configurar policy: editor pode tudo
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-policy",
+        headers={
+            "Idempotency-Key": "eval-policy",
+            "Authorization": "Bearer admin:admin"
+        },
+        json={
+            "editor_can_mark_objective": True,
+            "editor_can_mark_global": True,
+        }
+    )
+
+    # Criar evaluator e verificar
+    with session_scope(app.state.engine) as session:
+        evaluator = create_evaluator_from_session(session, brand_id)
+        
+        result_global = evaluator.evaluate(
+            role=Role.EDITOR, scope=Scope.GLOBAL, brand_id=brand_id
+        )
+        assert result_global.allowed is True
+
+
+# =============================================================================
+# Testes de API Endpoints (mantidos da Task A)
+# =============================================================================
 
 def test_get_editorial_policy_endpoint_returns_defaults(tmp_path: Path) -> None:
     """GET /api/v2/brands/{brand_id}/editorial-policy deve retornar defaults quando não existe."""

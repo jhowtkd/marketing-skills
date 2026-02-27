@@ -63,6 +63,12 @@ from vm_webapp.repo import (
     upsert_editorial_policy,
 )
 from vm_webapp.editorial_decisions import resolve_baseline
+from vm_webapp.editorial_policy import (
+    PolicyEvaluator,
+    Role,
+    Scope,
+    create_evaluator_from_session,
+)
 from vm_webapp.observability import render_prometheus
 from vm_webapp.stacking import build_context_pack
 
@@ -330,40 +336,20 @@ def _enforce_scope_policy_with_brand(
     """Enforce scope-based policy for editorial golden marking using brand policy.
     
     Raises 403 if actor_role is not allowed for the given scope based on brand policy.
+    Uses the PolicyEvaluator for deterministic decisions.
     """
-    # Admin always can do everything
-    if actor_role == "admin":
-        return
+    evaluator = create_evaluator_from_session(session, brand_id)
+    result = evaluator.evaluate(
+        role=actor_role,
+        scope=scope,
+        brand_id=brand_id,
+    )
     
-    # Viewer cannot mark golden at all
-    if actor_role == "viewer":
+    if not result.allowed:
         raise HTTPException(
             status_code=403,
             detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
         )
-    
-    # Editor: check brand policy
-    if actor_role == "editor":
-        policy = _get_policy_for_brand(session, brand_id)
-        
-        if scope == "objective" and not policy["editor_can_mark_objective"]:
-            raise HTTPException(
-                status_code=403,
-                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
-            )
-        
-        if scope == "global" and not policy["editor_can_mark_global"]:
-            raise HTTPException(
-                status_code=403,
-                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
-            )
-        
-        # Editor cannot do other scopes
-        if scope not in {"objective", "global"}:
-            raise HTTPException(
-                status_code=403,
-                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
-            )
 
 
 def project_command_event(session, *, event_id: str) -> None:
