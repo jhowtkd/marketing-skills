@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -1103,3 +1104,69 @@ def test_baseline_none_increments_metrics(tmp_path: Path) -> None:
 
     assert baseline_total_after == baseline_total_before + 1, "editorial_baseline_resolved_total should increment"
     assert baseline_none_after == baseline_none_before + 1, "editorial_baseline_source:none should increment"
+
+
+# TASK A: Auditoria forte (identidade real no backend)
+
+def test_editorial_golden_uses_actor_id_from_header(tmp_path: Path) -> None:
+    """Deve usar X-User-Id como actor_id no evento EditorialGoldenMarked"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "actor-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "actor-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "actor-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "actor-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark golden with specific user id
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "actor-mark", "X-User-Id": "user-john-doe", "X-User-Role": "editor"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-123", "justification": "test actor"},
+    )
+    assert resp.status_code == 200
+
+    # Verify event was created with correct actor
+    with session_scope(app.state.engine) as session:
+        from vm_webapp.repo import list_timeline_items_view
+        timeline_items = list_timeline_items_view(session, thread_id=thread_id)
+        golden_events = [item for item in timeline_items if item.event_type == "EditorialGoldenMarked"]
+        assert len(golden_events) == 1
+        event = golden_events[0]
+        assert event.actor_id == "user-john-doe", f"Expected actor_id='user-john-doe', got '{event.actor_id}'"
+        
+        # Verify payload contains actor_role
+        payload = json.loads(event.payload_json)
+        assert payload.get("actor_role") == "editor", f"Expected actor_role='editor', got '{payload.get('actor_role')}'"
+
+
+def test_editorial_golden_uses_fallback_actor_when_header_missing(tmp_path: Path) -> None:
+    """Deve fallback para workspace-owner quando X-User-Id nao presente"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "actor-fb-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "actor-fb-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "actor-fb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "actor-fb-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark golden without user id header (fallback)
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "actor-fb-mark"},  # No X-User-Id, No X-User-Role
+        json={"run_id": run_id, "scope": "global", "justification": "test fallback actor"},
+    )
+    assert resp.status_code == 200
+
+    # Verify event was created with fallback actor
+    with session_scope(app.state.engine) as session:
+        from vm_webapp.repo import list_timeline_items_view
+        timeline_items = list_timeline_items_view(session, thread_id=thread_id)
+        golden_events = [item for item in timeline_items if item.event_type == "EditorialGoldenMarked"]
+        assert len(golden_events) == 1
+        event = golden_events[0]
+        assert event.actor_id == "workspace-owner", f"Expected actor_id='workspace-owner', got '{event.actor_id}'"
+        
+        # Verify payload contains fallback actor_role (editor)
+        payload = json.loads(event.payload_json)
+        assert payload.get("actor_role") == "editor", f"Expected actor_role='editor', got '{payload.get('actor_role')}'"

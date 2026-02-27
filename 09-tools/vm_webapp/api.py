@@ -189,6 +189,34 @@ def _require_editorial_role(request: Request) -> str:
     return role
 
 
+def get_actor_context(request: Request) -> dict[str, str]:
+    """Extract actor identity and role from request headers.
+    
+    Returns dict with:
+    - actor_id: from X-User-Id header (fallback: workspace-owner)
+    - actor_role: from X-User-Role header (fallback: editor)
+    
+    Role normalization:
+    - workspace-owner -> editor
+    - viewer -> viewer
+    - editor -> editor  
+    - admin -> admin
+    """
+    actor_id = request.headers.get("X-User-Id", "workspace-owner")
+    raw_role = request.headers.get("X-User-Role", "workspace-owner")
+    
+    # Normalize role
+    if raw_role == "workspace-owner":
+        actor_role = "editor"
+    else:
+        actor_role = raw_role
+    
+    return {
+        "actor_id": actor_id,
+        "actor_role": actor_role,
+    }
+
+
 def project_command_event(session, *, event_id: str) -> None:
     row = get_event_by_id(session, event_id)
     if row is None:
@@ -1401,6 +1429,9 @@ def mark_editorial_golden_v2(
     # RBAC: validate user role
     _require_editorial_role(request)
     
+    # Get actor context (identity + role)
+    actor_ctx = get_actor_context(request)
+    
     # Validation: justification must not be empty
     if not payload.justification or not payload.justification.strip():
         raise HTTPException(status_code=422, detail="justification is required")
@@ -1431,7 +1462,8 @@ def mark_editorial_golden_v2(
             scope=payload.scope,
             objective_key=payload.objective_key,
             justification=payload.justification,
-            actor_id="workspace-owner",
+            actor_id=actor_ctx["actor_id"],
+            actor_role=actor_ctx["actor_role"],
             idempotency_key=idem,
         )
         project_command_event(session, event_id=result.event_id)

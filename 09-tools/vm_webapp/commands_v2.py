@@ -764,6 +764,7 @@ def mark_editorial_golden_command(
     objective_key: str | None,
     justification: str,
     actor_id: str,
+    actor_role: str | None = None,
     idempotency_key: str,
 ) -> CommandDedup:
     dedup = get_command_dedup(session, idempotency_key=idempotency_key)
@@ -788,6 +789,7 @@ def mark_editorial_golden_command(
             "scope": scope,
             "objective_key": objective_key,
             "justification": justification,
+            "actor_role": actor_role or "editor",
         },
     )
     saved = append_event(session, event)
