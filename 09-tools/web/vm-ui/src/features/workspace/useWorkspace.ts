@@ -118,11 +118,24 @@ export type EditorialRecommendation = {
   action_id: string;
   title: string;
   description: string;
+  impact_score: number;
+  effort_score: number;
+  priority_score: number;
+  why_priority: string;
 };
 
 export type EditorialRecommendations = {
   thread_id: string;
   recommendations: EditorialRecommendation[];
+  generated_at: string;
+};
+
+export type EditorialForecast = {
+  thread_id: string;
+  risk_score: number;
+  trend: "improving" | "stable" | "degrading";
+  drivers: string[];
+  recommended_focus: string;
   generated_at: string;
 };
 
@@ -197,6 +210,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [recommendations, setRecommendations] = useState<EditorialRecommendations | null>(null);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [editorialForecast, setEditorialForecast] = useState<EditorialForecast | null>(null);
+  const [loadingForecast, setLoadingForecast] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -352,6 +367,23 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
       // Fallback: keep current state (null or previous)
     } finally {
       setLoadingRecommendations(false);
+    }
+  };
+
+  const fetchEditorialForecast = async () => {
+    if (!activeThreadId) {
+      setEditorialForecast(null);
+      return;
+    }
+    setLoadingForecast(true);
+    try {
+      const data = await fetchJson<EditorialForecast>(`/api/v2/threads/${activeThreadId}/editorial-decisions/forecast`);
+      setEditorialForecast(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial forecast", e);
+      // Fallback: keep current state (null or previous)
+    } finally {
+      setLoadingForecast(false);
     }
   };
 
@@ -539,6 +571,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchEditorialAudit({ scope: auditScopeFilter, ...auditPagination });
     fetchEditorialInsights();
     fetchRecommendations();
+    fetchEditorialForecast();
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -601,5 +634,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadingRecommendations,
     refreshRecommendations: fetchRecommendations,
     executePlaybookAction,
+    editorialForecast,
+    loadingForecast,
+    refreshEditorialForecast: fetchEditorialForecast,
   };
 }
