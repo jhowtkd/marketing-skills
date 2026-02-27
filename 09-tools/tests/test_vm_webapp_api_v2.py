@@ -1482,3 +1482,133 @@ def test_editorial_audit_endpoint_returns_404_for_unknown_thread(tmp_path: Path)
 
     resp = client.get("/api/v2/threads/thread-inexistente/editorial-decisions/audit")
     assert resp.status_code == 404
+
+
+# ============================================================
+# GOVERNANCE v6: Editorial Insights & Reason Code Taxonomy
+# ============================================================
+
+def test_editorial_golden_accepts_reason_code(tmp_path: Path) -> None:
+    """Mark golden deve aceitar reason_code no payload."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rc-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rc-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rc-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rc-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    marked = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rc-mark", "X-User-Id": "admin-test", "X-User-Role": "admin"},
+        json={
+            "run_id": run_id,
+            "scope": "global",
+            "justification": "excelente clareza na mensagem",
+            "reason_code": "clarity"
+        },
+    )
+    assert marked.status_code == 200
+
+
+def test_editorial_golden_validates_reason_code_enum(tmp_path: Path) -> None:
+    """Mark golden deve rejeitar reason_code invalido."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rc2-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rc2-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rc2-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rc2-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # reason_code invalido deve retornar 422
+    marked = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rc2-mark", "X-User-Id": "admin-test", "X-User-Role": "admin"},
+        json={
+            "run_id": run_id,
+            "scope": "global",
+            "justification": "justification valida",
+            "reason_code": "invalid_code"
+        },
+    )
+    assert marked.status_code == 422
+
+
+def test_editorial_audit_includes_reason_code(tmp_path: Path) -> None:
+    """Audit endpoint deve retornar reason_code nos eventos."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rc3-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rc3-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rc3-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rc3-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rc3-mark", "X-User-Id": "admin-test", "X-User-Role": "admin"},
+        json={
+            "run_id": run_id,
+            "scope": "global",
+            "justification": "estrutura impecavel",
+            "reason_code": "structure"
+        },
+    )
+
+    audit = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/audit")
+    assert audit.status_code == 200
+    data = audit.json()
+    assert len(data["events"]) == 1
+    assert data["events"][0].get("reason_code") == "structure"
+
+
+def test_editorial_insights_endpoint_returns_governance_kpis(tmp_path: Path) -> None:
+    """Insights endpoint deve retornar KPIs de governança editorial."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "ins-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "ins-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "ins-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar runs e marcar golden
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "ins-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "ins-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
+
+    # Marcar golden com diferentes reason_codes
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "ins-mark1", "Authorization": "Bearer admin:admin"},
+        json={"run_id": run1_id, "scope": "global", "justification": "clareza", "reason_code": "clarity"},
+    )
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "ins-mark2", "Authorization": "Bearer admin:admin"},
+        json={"run_id": run2_id, "scope": "objective", "objective_key": "obj-1", "justification": "cta forte", "reason_code": "cta"},
+    )
+
+    insights = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/insights")
+    assert insights.status_code == 200
+    data = insights.json()
+
+    # Verificar estrutura da resposta
+    assert "totals" in data
+    assert "marked_total" in data["totals"]
+    assert "by_scope" in data["totals"]
+    assert "by_reason_code" in data["totals"]
+    assert "policy" in data
+    assert "denied_total" in data["policy"]
+    assert "baseline" in data
+    assert "resolved_total" in data["baseline"]
+    assert "by_source" in data["baseline"]
+    assert "recency" in data
+    assert "last_marked_at" in data["recency"]
+    assert "last_actor_id" in data["recency"]
+
+    # Verificar valores
+    assert data["totals"]["marked_total"] == 2
+    assert data["totals"]["by_scope"]["global"] == 1
+    assert data["totals"]["by_scope"]["objective"] == 1
+    assert data["totals"]["by_reason_code"]["clarity"] == 1
+    assert data["totals"]["by_reason_code"]["cta"] == 1

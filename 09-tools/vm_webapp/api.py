@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from vm_webapp.commands_v2 import (
@@ -445,6 +445,17 @@ class EditorialGoldenMarkRequest(BaseModel):
     scope: str
     objective_key: str | None = None
     justification: str
+    reason_code: str | None = None
+
+    @field_validator("reason_code")
+    @classmethod
+    def validate_reason_code(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = {"clarity", "structure", "cta", "persuasion", "accuracy", "tone", "other"}
+        if v not in allowed:
+            raise ValueError(f"reason_code must be one of: {', '.join(sorted(allowed))}")
+        return v
 
 
 class EditorialPolicyUpdateRequest(BaseModel):
@@ -1618,6 +1629,7 @@ def mark_editorial_golden_v2(
             scope=payload.scope,
             objective_key=payload.objective_key,
             justification=payload.justification,
+            reason_code=payload.reason_code,
             actor_id=actor_ctx["actor_id"],
             actor_role=actor_ctx["actor_role"],
             idempotency_key=idem,
@@ -1724,6 +1736,7 @@ def get_editorial_audit_v2(
                 "objective_key": payload.get("objective_key"),
                 "run_id": payload.get("run_id"),
                 "justification": payload.get("justification"),
+                "reason_code": payload.get("reason_code"),
             })
         
         # Apply pagination
@@ -1820,4 +1833,101 @@ def update_editorial_policy_v2(
             "editor_can_mark_objective": policy.editor_can_mark_objective,
             "editor_can_mark_global": policy.editor_can_mark_global,
             "updated_at": policy.updated_at,
+        }
+
+
+@router.get("/v2/threads/{thread_id}/editorial-decisions/insights")
+def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, object]:
+    """Get editorial governance insights for a thread.
+    
+    Returns aggregated KPIs including totals by scope, reason_code,
+    policy denials, baseline resolution stats, and recency metrics.
+    """
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        from sqlalchemy import select, func
+        from vm_webapp.models import TimelineItemView, EventLog
+        
+        # Query all EditorialGoldenMarked events for this thread
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        # Calculate totals
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        by_reason_code: dict[str, int] = {}
+        last_marked_at: str | None = None
+        last_actor_id: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            
+            reason_code = payload.get("reason_code") or "other"
+            by_reason_code[reason_code] = by_reason_code.get(reason_code, 0) + 1
+            
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+                last_actor_id = row.actor_id
+        
+        # Query policy denials from metrics (stored as events with denial info)
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        # Calculate baseline resolution stats from event log
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        resolved_total = len(baseline_rows)
+        by_source: dict[str, int] = {
+            "objective_golden": 0,
+            "global_golden": 0,
+            "previous": 0,
+            "none": 0,
+        }
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        return {
+            "thread_id": thread_id,
+            "totals": {
+                "marked_total": marked_total,
+                "by_scope": by_scope,
+                "by_reason_code": by_reason_code,
+            },
+            "policy": {
+                "denied_total": denied_total,
+            },
+            "baseline": {
+                "resolved_total": resolved_total,
+                "by_source": by_source,
+            },
+            "recency": {
+                "last_marked_at": last_marked_at,
+                "last_actor_id": last_actor_id,
+            },
         }

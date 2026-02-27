@@ -763,6 +763,7 @@ def mark_editorial_golden_command(
     scope: str,
     objective_key: str | None,
     justification: str,
+    reason_code: str | None = None,
     actor_id: str,
     actor_role: str | None = None,
     idempotency_key: str,
@@ -789,6 +790,7 @@ def mark_editorial_golden_command(
             "scope": scope,
             "objective_key": objective_key,
             "justification": justification,
+            "reason_code": reason_code,
             "actor_role": actor_role or "editor",
         },
     )
