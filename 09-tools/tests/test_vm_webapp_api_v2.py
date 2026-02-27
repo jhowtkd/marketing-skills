@@ -3699,3 +3699,112 @@ def test_get_editorial_slo_returns_404_for_unknown_brand(tmp_path: Path) -> None
 
     resp = client.get("/api/v2/brands/brand-inexistente/editorial-slo")
     assert resp.status_code == 404
+
+
+def test_get_editorial_drift_endpoint_returns_analysis(tmp_path: Path) -> None:
+    """GET /editorial-decisions/drift deve retornar análise de drift."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run sem marcar golden (vai gerar baseline_none alto = drift)
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    drift = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert drift.status_code == 200
+    data = drift.json()
+
+    # Verificar estrutura da resposta
+    assert "thread_id" in data
+    assert "drift_score" in data
+    assert "drift_severity" in data
+    assert "drift_flags" in data
+    assert "primary_driver" in data
+    assert "recommended_actions" in data
+    assert "details" in data
+    assert "generated_at" in data
+
+    # Verificar tipos e valores
+    assert isinstance(data["drift_score"], int)
+    assert 0 <= data["drift_score"] <= 100
+    assert data["drift_severity"] in ["none", "low", "medium", "high"]
+    assert isinstance(data["drift_flags"], list)
+    assert isinstance(data["primary_driver"], str)
+    assert isinstance(data["recommended_actions"], list)
+    assert isinstance(data["details"], dict)
+
+
+def test_get_editorial_drift_returns_404_for_unknown_thread(tmp_path: Path) -> None:
+    """GET /editorial-decisions/drift deve retornar 404 para thread inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/threads/thread-inexistente/editorial-decisions/drift")
+    assert resp.status_code == 404
+
+
+def test_get_editorial_drift_uses_slo_config(tmp_path: Path) -> None:
+    """Drift detection deve usar SLO config da brand quando disponível."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-slo-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Configurar SLO com thresholds estritos
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "drift-slo-config", "Authorization": "Bearer admin:admin"},
+        json={
+            "max_baseline_none_rate": 0.1,  # Muito restritivo
+            "max_policy_denied_rate": 0.05,
+            "min_confidence": 0.8,
+            "auto_remediation_enabled": False,
+        },
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-slo-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-slo-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run sem golden marks (vai violar o SLO estrito)
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-slo-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    drift = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert drift.status_code == 200
+    data = drift.json()
+    
+    # Com SLO estrito, deve ter drift detectado
+    assert data["drift_score"] > 0
+    assert len(data["drift_flags"]) > 0
+    assert "recommended_actions" in data
+
+
+def test_editorial_drift_increments_metrics(tmp_path: Path) -> None:
+    """Drift detection deve incrementar métricas."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-met-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    drift_total_before = metrics_before.get("counts", {}).get("editorial_drift_detected_total", 0)
+
+    # Detect drift
+    resp = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert resp.status_code == 200
+
+    # Verify metrics incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    drift_total_after = metrics_after.get("counts", {}).get("editorial_drift_detected_total", 0)
+
+    assert drift_total_after == drift_total_before + 1, "editorial_drift_detected_total should increment"
