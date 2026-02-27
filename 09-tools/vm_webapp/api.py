@@ -834,6 +834,10 @@ def get_workflow_run_baseline_v2(run_id: str, request: Request) -> dict[str, obj
             decisions=decisions,
         )
         
+    # Record metrics for baseline resolution
+    request.app.state.workflow_runtime.metrics.record_count("editorial_baseline_resolved_total")
+    request.app.state.workflow_runtime.metrics.record_count(f"editorial_baseline_source:{baseline['source']}")
+    
     return {
         "run_id": run_id,
         "baseline_run_id": baseline["baseline_run_id"],
@@ -1404,6 +1408,10 @@ def mark_editorial_golden_v2(
         project_command_event(session, event_id=result.event_id)
         response_payload = json.loads(result.response_json)
     
+    # Record metrics for golden marking
+    request.app.state.workflow_runtime.metrics.record_count("editorial_golden_marked_total")
+    request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_marked_scope:{payload.scope}")
+    
     return {
         "event_id": result.event_id,
         "thread_id": thread_id,
@@ -1437,6 +1445,9 @@ def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, o
             elif row.scope == "objective" and row.objective_key:
                 decision["objective_key"] = row.objective_key
                 objective_decisions.append(decision)
+    
+    # Record metric for decisions list
+    request.app.state.workflow_runtime.metrics.record_count("editorial_decisions_list_total")
     
     return {
         "global": global_decision,

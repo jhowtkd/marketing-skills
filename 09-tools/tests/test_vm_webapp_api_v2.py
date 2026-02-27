@@ -906,3 +906,100 @@ def test_baseline_endpoint_returns_404_for_unknown_run(tmp_path: Path) -> None:
 
     resp = client.get("/api/v2/workflow-runs/run-inexistente/baseline")
     assert resp.status_code == 404
+
+
+# Task: Observability metrics for editorial decisions
+
+def test_editorial_golden_increments_metrics(tmp_path: Path) -> None:
+    """Marcar golden deve incrementar metricas editorial_golden_marked_total e editorial_golden_marked_scope"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "met-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    golden_total_before = metrics_before.get("counts", {}).get("editorial_golden_marked_total", 0)
+    golden_scope_before = metrics_before.get("counts", {}).get("editorial_golden_marked_scope:global", 0)
+
+    # Mark as golden
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "met-mark"},
+        json={"run_id": run_id, "scope": "global", "justification": "melhor resultado"},
+    )
+    assert resp.status_code == 200
+
+    # Verify metrics were incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    golden_total_after = metrics_after.get("counts", {}).get("editorial_golden_marked_total", 0)
+    golden_scope_after = metrics_after.get("counts", {}).get("editorial_golden_marked_scope:global", 0)
+
+    assert golden_total_after == golden_total_before + 1, "editorial_golden_marked_total should increment by 1"
+    assert golden_scope_after == golden_scope_before + 1, "editorial_golden_marked_scope:global should increment by 1"
+
+
+def test_editorial_baseline_increments_metrics_with_correct_source(tmp_path: Path) -> None:
+    """Baseline deve incrementar metricas editorial_baseline_resolved_total e editorial_baseline_source com source correto"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "base-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "base-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "base-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Create two runs
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-met-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-met-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark run1 as global golden
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "base-met-mark"},
+        json={"run_id": run1_id, "scope": "global", "justification": "melhor resultado"},
+    )
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    baseline_total_before = metrics_before.get("counts", {}).get("editorial_baseline_resolved_total", 0)
+    baseline_source_before = metrics_before.get("counts", {}).get("editorial_baseline_source:global_golden", 0)
+
+    # Call baseline endpoint for run2 (should resolve to run1 via global_golden)
+    resp = client.get(f"/api/v2/workflow-runs/{run2_id}/baseline")
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "global_golden"
+
+    # Verify metrics were incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    baseline_total_after = metrics_after.get("counts", {}).get("editorial_baseline_resolved_total", 0)
+    baseline_source_after = metrics_after.get("counts", {}).get("editorial_baseline_source:global_golden", 0)
+
+    assert baseline_total_after == baseline_total_before + 1, "editorial_baseline_resolved_total should increment by 1"
+    assert baseline_source_after == baseline_source_before + 1, "editorial_baseline_source:global_golden should increment by 1"
+
+
+def test_editorial_decisions_list_increments_metrics(tmp_path: Path) -> None:
+    """Listar decisoes editoriais deve incrementar metrica editorial_decisions_list_total"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "list-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "list-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "list-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    list_total_before = metrics_before.get("counts", {}).get("editorial_decisions_list_total", 0)
+
+    # List decisions
+    resp = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions")
+    assert resp.status_code == 200
+
+    # Verify metrics were incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    list_total_after = metrics_after.get("counts", {}).get("editorial_decisions_list_total", 0)
+
+    assert list_total_after == list_total_before + 1, "editorial_decisions_list_total should increment by 1"
