@@ -1,10 +1,10 @@
 """Motor de recomendações operacionais para governança editorial.
 
 Analisa KPIs de insights e gera recomendações acionáveis com severidade,
-motivo e ação sugerida.
+motivo, ação sugerida e scores de priorização (impacto, esforço, prioridade).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -20,6 +20,44 @@ class EditorialRecommendation:
     action_id: str
     title: str
     description: str
+    impact_score: int = field(default=5)  # 1-10 (higher = more impact)
+    effort_score: int = field(default=5)  # 1-10 (higher = more effort)
+
+    @property
+    def priority_score(self) -> int:
+        """Calculate priority score based on impact and effort.
+        
+        Formula: impact * 10 - effort * 3
+        Higher impact increases priority, higher effort decreases it.
+        Range: approximately -20 to 97
+        """
+        return self.impact_score * 10 - self.effort_score * 3
+
+    @property
+    def why_priority(self) -> str:
+        """Generate human-readable explanation for priority."""
+        if self.priority_score >= 70:
+            return f"Alto impacto ({self.impact_score}/10) com esforço moderado ({self.effort_score}/10)"
+        elif self.priority_score >= 50:
+            return f"Bom equilíbrio entre impacto ({self.impact_score}/10) e esforço ({self.effort_score}/10)"
+        elif self.priority_score >= 30:
+            return f"Impacto moderado ({self.impact_score}/10) - considerar quando houver capacidade"
+        else:
+            return f"Requer mais esforço ({self.effort_score}/10) para o impacto ({self.impact_score}/10)"
+
+
+# Impact and effort mapping for different action types
+ACTION_METADATA: dict[str, dict[str, int]] = {
+    "create_objective_golden": {"impact": 9, "effort": 4},
+    "create_global_golden": {"impact": 8, "effort": 6},
+    "review_brand_policy": {"impact": 7, "effort": 8},
+    "run_editorial_review": {"impact": 8, "effort": 5},
+}
+
+
+def _get_action_metadata(action_id: str) -> dict[str, int]:
+    """Get impact and effort scores for an action."""
+    return ACTION_METADATA.get(action_id, {"impact": 5, "effort": 5})
 
 
 def analyze_baseline_none_rate(
@@ -44,12 +82,21 @@ def analyze_baseline_none_rate(
     if rate < threshold:
         return None
 
+    metadata = _get_action_metadata("create_objective_golden")
+    
+    # Adjust impact based on severity
+    impact = metadata["impact"]
+    if rate > 0.8:
+        impact = 10  # Critical
+
     return EditorialRecommendation(
         severity="warning" if rate < 0.8 else "critical",
         reason="baseline_none_rate_high",
         action_id="create_objective_golden",
         title="Criar Golden de Objetivo",
         description=f"{rate:.0%} das resoluções de baseline estão sem referência ({none_count}/{resolved}). Marque versões golden para melhorar a qualidade das comparações.",
+        impact_score=impact,
+        effort_score=metadata["effort"],
     )
 
 
@@ -68,12 +115,21 @@ def analyze_policy_denials(
     if denied_total < threshold:
         return None
 
+    metadata = _get_action_metadata("review_brand_policy")
+    
+    # Adjust impact based on severity
+    impact = metadata["impact"]
+    if denied_total >= 10:
+        impact = 9  # High impact due to severity
+
     return EditorialRecommendation(
         severity="warning" if denied_total < 10 else "critical",
         reason="policy_denials_increasing",
         action_id="review_brand_policy",
         title="Revisar Policy da Brand",
         description=f"{denied_total} tentativas de marcação foram bloqueadas por policy. Considere ajustar as regras ou revisar os critérios de autorização.",
+        impact_score=impact,
+        effort_score=metadata["effort"],
     )
 
 
@@ -89,6 +145,8 @@ def analyze_recency_gap(
     Returns:
         Recomendação se inatividade detectada, None caso contrário
     """
+    metadata = _get_action_metadata("run_editorial_review")
+    
     if last_marked_at is None:
         return EditorialRecommendation(
             severity="info",
@@ -96,6 +154,8 @@ def analyze_recency_gap(
             action_id="run_editorial_review",
             title="Rodar Revisão Editorial",
             description="Nenhuma marcação golden foi feita neste thread. Inicie uma revisão editorial para identificar versões de referência.",
+            impact_score=metadata["impact"],
+            effort_score=metadata["effort"],
         )
 
     try:
@@ -106,12 +166,19 @@ def analyze_recency_gap(
         if days_since < gap_days:
             return None
 
+        # Adjust impact based on recency gap
+        impact = metadata["impact"]
+        if days_since > 14:
+            impact = 9  # Higher impact for larger gaps
+
         return EditorialRecommendation(
             severity="info" if days_since < 14 else "warning",
             reason="recent_marks_absent",
             action_id="run_editorial_review",
             title="Rodar Revisão Editorial",
             description=f"Última marcação há {days_since} dias. Considere revisar novas versões para manter a qualidade do baseline.",
+            impact_score=impact,
+            effort_score=metadata["effort"],
         )
     except (ValueError, TypeError):
         return None
@@ -139,12 +206,21 @@ def analyze_low_global_coverage(
     if rate >= threshold:
         return None
 
+    metadata = _get_action_metadata("create_global_golden")
+    
+    # Adjust impact based on coverage rate
+    impact = metadata["impact"]
+    if rate < 0.2:
+        impact = 9  # Very low coverage
+
     return EditorialRecommendation(
         severity="info",
         reason="low_global_coverage",
         action_id="create_global_golden",
         title="Criar Golden Global",
         description=f"Apenas {rate:.0%} das marcações são globais. Considere marcar mais versões como referência global para o thread.",
+        impact_score=impact,
+        effort_score=metadata["effort"],
     )
 
 
@@ -155,7 +231,7 @@ def generate_recommendations(insights_data: dict) -> list[EditorialRecommendatio
         insights_data: dict retornado pelo endpoint /insights
 
     Returns:
-        Lista de recomendações acionáveis (pode ser vazia)
+        Lista de recomendações acionáveis ordenadas por priority_score desc
     """
     recommendations: list[EditorialRecommendation] = []
 
@@ -181,9 +257,8 @@ def generate_recommendations(insights_data: dict) -> list[EditorialRecommendatio
     ):
         recommendations.append(rec)
 
-    # Ordenar por severidade: critical > warning > info
-    severity_order = {"critical": 0, "warning": 1, "info": 2}
-    recommendations.sort(key=lambda r: severity_order.get(r.severity, 3))
+    # Ordenar por priority_score descendente (maior prioridade primeiro)
+    recommendations.sort(key=lambda r: r.priority_score, reverse=True)
 
     return recommendations
 
@@ -197,6 +272,10 @@ def recommendations_to_dict(recommendations: list[EditorialRecommendation]) -> l
             "action_id": r.action_id,
             "title": r.title,
             "description": r.description,
+            "impact_score": r.impact_score,
+            "effort_score": r.effort_score,
+            "priority_score": r.priority_score,
+            "why_priority": r.why_priority,
         }
         for r in recommendations
     ]
