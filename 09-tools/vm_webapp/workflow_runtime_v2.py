@@ -42,6 +42,7 @@ from vm_webapp.workflow_profiles import (
     resolve_workflow_plan_with_contract,
 )
 from vm_webapp.workspace import Workspace
+from vm_webapp.editorial_decisions import derive_objective_key
 
 
 class StageExecutionError(RuntimeError):
@@ -903,6 +904,7 @@ class WorkflowRuntimeV2:
             "description": plan.get("description", ""),
             "skill_overrides": skill_overrides,
             "stages": plan.get("stages", []),
+            "objective_key": derive_objective_key(request_text),
             "created_at": now_iso(),
         }
         self._write_json(self._run_plan_path(run_id), payload)

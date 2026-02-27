@@ -60,6 +60,7 @@ from vm_webapp.repo import (
     list_timeline_items_view,
     touch_thread_activity,
 )
+from vm_webapp.editorial_decisions import resolve_baseline
 from vm_webapp.observability import render_prometheus
 from vm_webapp.stacking import build_context_pack
 
@@ -630,6 +631,14 @@ def list_workflow_runs_v2(
                     effective_mode = str(plan_payload.get("effective_mode", row.stack_path))
                 except Exception:
                     pass
+            # Read objective_key from plan.json
+            objective_key = ""
+            if plan_path.exists():
+                try:
+                    objective_key = str(plan_payload.get("objective_key", ""))
+                except Exception:
+                    pass
+            
             payload_rows.append(
                 {
                     "run_id": row.run_id,
@@ -641,6 +650,7 @@ def list_workflow_runs_v2(
                     "request_text": row.user_request,
                     "requested_mode": requested_mode,
                     "effective_mode": effective_mode,
+                    "objective_key": objective_key,
                 }
             )
     return {
@@ -769,6 +779,66 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
         "pending_approvals": pending,
         "created_at": run.created_at,
         "updated_at": run.updated_at,
+        "objective_key": str(plan_payload.get("objective_key", "")),
+    }
+
+
+@router.get("/v2/workflow-runs/{run_id}/baseline")
+def get_workflow_run_baseline_v2(run_id: str, request: Request) -> dict[str, object]:
+    pump_event_worker(request, max_events=20)
+    with session_scope(request.app.state.engine) as session:
+        run = get_run(session, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+        
+        # Get all runs in thread ordered by creation
+        runs = list_runs_by_thread(session, run.thread_id)
+        
+        # Get editorial decisions
+        decisions_rows = list_editorial_decisions_view(session, thread_id=run.thread_id)
+        decisions: dict[str, Any] = {"global": None, "objective": {}}
+        for row in decisions_rows:
+            if row.scope == "global":
+                decisions["global"] = {"run_id": row.run_id}
+            elif row.scope == "objective" and row.objective_key:
+                decisions["objective"][row.objective_key] = {"run_id": row.run_id}
+        
+        # Get objective_key from plan.json
+        run_root = Path(request.app.state.workspace.root) / "runs" / run_id
+        plan_path = run_root / "plan.json"
+        objective_key = ""
+        if plan_path.exists():
+            try:
+                plan_payload = json.loads(plan_path.read_text(encoding="utf-8"))
+                objective_key = str(plan_payload.get("objective_key", ""))
+            except Exception:
+                pass
+        
+        # Resolve baseline
+        runs_data = [{"run_id": r.run_id, "objective_key": objective_key if r.run_id == run_id else ""} for r in runs]
+        # Fill objective_key for other runs
+        for r in runs_data:
+            if r["run_id"] != run_id:
+                r_plan_path = Path(request.app.state.workspace.root) / "runs" / r["run_id"] / "plan.json"
+                if r_plan_path.exists():
+                    try:
+                        r_plan = json.loads(r_plan_path.read_text(encoding="utf-8"))
+                        r["objective_key"] = str(r_plan.get("objective_key", ""))
+                    except Exception:
+                        pass
+        
+        baseline = resolve_baseline(
+            active_run_id=run_id,
+            active_objective_key=objective_key if objective_key else None,
+            runs=runs_data,
+            decisions=decisions,
+        )
+        
+    return {
+        "run_id": run_id,
+        "baseline_run_id": baseline["baseline_run_id"],
+        "source": baseline["source"],
+        "objective_key": objective_key,
     }
 
 

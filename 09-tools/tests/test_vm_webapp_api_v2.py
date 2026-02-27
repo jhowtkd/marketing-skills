@@ -812,3 +812,97 @@ def test_editorial_golden_returns_404_for_run_outside_thread(tmp_path: Path) -> 
         json={"run_id": run_id, "scope": "global", "justification": "nao deve funcionar"},
     )
     assert resp.status_code == 404
+
+
+# Task 5: Objective Key and Baseline Endpoint
+
+def test_workflow_run_includes_objective_key_in_list_and_detail(tmp_path: Path) -> None:
+    """Contrato aditivo: objective_key presente em list e detail de runs"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "obj-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "obj-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "obj-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "obj-run"}, json={"request_text": "Campanha Lancamento", "mode": "content_calendar"}).json()["run_id"]
+
+    # Check list endpoint includes objective_key
+    listed = client.get(f"/api/v2/threads/{thread_id}/workflow-runs")
+    assert listed.status_code == 200
+    runs = listed.json()["runs"]
+    run = next((r for r in runs if r["run_id"] == run_id), None)
+    assert run is not None
+    assert "objective_key" in run, "objective_key missing in list endpoint"
+    assert run["objective_key"] != "", "objective_key should not be empty"
+
+    # Check detail endpoint includes objective_key
+    detail = client.get(f"/api/v2/workflow-runs/{run_id}")
+    assert detail.status_code == 200
+    assert "objective_key" in detail.json(), "objective_key missing in detail endpoint"
+    assert detail.json()["objective_key"] != "", "objective_key should not be empty"
+
+
+def test_workflow_run_baseline_endpoint_respects_priority(tmp_path: Path) -> None:
+    """Baseline respeita prioridade: objective > global > previous. Nunca retorna a propria run."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "base-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "base-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "base-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Create 3 runs with same objective
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-run1"}, json={"request_text": "Campanha Lancamento", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-run2"}, json={"request_text": "Campanha Lancamento", "mode": "content_calendar"}).json()["run_id"]
+    run3_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-run3"}, json={"request_text": "Campanha Lancamento", "mode": "content_calendar"}).json()["run_id"]
+
+    # Get objective_key from one of the runs
+    detail = client.get(f"/api/v2/workflow-runs/{run1_id}")
+    objective_key = detail.json()["objective_key"]
+
+    # Mark run1 as global golden
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "base-mark-global"},
+        json={"run_id": run1_id, "scope": "global", "justification": "melhor run global"},
+    )
+
+    # Mark run2 as objective golden (same objective as run3)
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "base-mark-obj"},
+        json={"run_id": run2_id, "scope": "objective", "objective_key": objective_key, "justification": "melhor run objetivo"},
+    )
+
+    # Check baseline for run3 - should be run2 (objective_golden has priority)
+    baseline = client.get(f"/api/v2/workflow-runs/{run3_id}/baseline")
+    assert baseline.status_code == 200
+    baseline_data = baseline.json()
+    assert baseline_data["baseline_run_id"] == run2_id, "Expected objective_golden to win"
+    assert baseline_data["source"] == "objective_golden"
+    assert baseline_data["objective_key"] == objective_key
+
+    # Check baseline for run2 - should be run1 (global_golden, cannot be itself)
+    baseline2 = client.get(f"/api/v2/workflow-runs/{run2_id}/baseline")
+    assert baseline2.status_code == 200
+    baseline2_data = baseline2.json()
+    assert baseline2_data["baseline_run_id"] == run1_id, "Expected global_golden"
+    assert baseline2_data["source"] == "global_golden"
+
+    # Check baseline for run1 - should be run2 (objective_golden, same objective as run3)
+    # run1 cannot be baseline for itself, but run2 (objective_golden) is valid
+    baseline1 = client.get(f"/api/v2/workflow-runs/{run1_id}/baseline")
+    assert baseline1.status_code == 200
+    baseline1_data = baseline1.json()
+    assert baseline1_data["baseline_run_id"] == run2_id, "Expected objective_golden for run1"
+    assert baseline1_data["source"] == "objective_golden"
+
+
+def test_baseline_endpoint_returns_404_for_unknown_run(tmp_path: Path) -> None:
+    """404 para run_id inexistente no endpoint de baseline"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/workflow-runs/run-inexistente/baseline")
+    assert resp.status_code == 404
