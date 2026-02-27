@@ -663,3 +663,70 @@ def test_grant_unknown_approval_returns_404(tmp_path: Path) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "approval not found: apr-missing"
+
+
+def test_list_workflow_runs_exposes_requested_and_effective_modes(tmp_path: Path) -> None:
+    """Contract test: list workflow runs must expose request_text, requested_mode, effective_mode.
+    
+    This test prevents regression of the run binding bug where the frontend
+    needs these fields to correctly display run context.
+    """
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+
+    # Setup: create brand, project, thread
+    client.post(
+        "/api/v2/brands", headers={"Idempotency-Key": "list-b"}, json={"name": "Acme"}
+    )
+    brand_id = client.get("/api/v2/brands").json()["brands"][0]["brand_id"]
+
+    client.post(
+        "/api/v2/projects",
+        headers={"Idempotency-Key": "list-p"},
+        json={"brand_id": brand_id, "name": "Launch"},
+    )
+    project_id = client.get("/api/v2/projects", params={"brand_id": brand_id}).json()[
+        "projects"
+    ][0]["project_id"]
+
+    thread = client.post(
+        "/api/v2/threads",
+        headers={"Idempotency-Key": "list-t"},
+        json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"},
+    ).json()
+    thread_id = thread["thread_id"]
+
+    # Start a workflow run with specific mode
+    started = client.post(
+        f"/api/v2/threads/{thread_id}/workflow-runs",
+        headers={"Idempotency-Key": "list-run"},
+        json={"request_text": "Generate quarterly marketing plan", "mode": "content_calendar"},
+    )
+    assert started.status_code == 200
+    run_id = started.json()["run_id"]
+
+    # Call list workflow runs endpoint
+    listed = client.get(f"/api/v2/threads/{thread_id}/workflow-runs")
+    assert listed.status_code == 200
+    
+    runs = listed.json()["runs"]
+    assert len(runs) >= 1
+    
+    # Find our run in the list
+    run = next((r for r in runs if r["run_id"] == run_id), None)
+    assert run is not None, f"Run {run_id} not found in list"
+    
+    # Contract assertions - these fields are required by the frontend for run binding
+    assert "request_text" in run, "request_text field missing from run list item"
+    assert run["request_text"] == "Generate quarterly marketing plan", "request_text mismatch"
+    
+    assert "requested_mode" in run, "requested_mode field missing from run list item"
+    assert run["requested_mode"] == "content_calendar", "requested_mode mismatch"
+    
+    assert "effective_mode" in run, "effective_mode field missing from run list item"
+    assert run["effective_mode"] == "foundation_stack", "effective_mode mismatch"

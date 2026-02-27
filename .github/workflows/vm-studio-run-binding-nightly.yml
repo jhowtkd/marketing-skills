@@ -1,0 +1,117 @@
+name: vm-studio-run-binding-nightly
+
+on:
+  # Nightly schedule (2 AM UTC)
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # Manual trigger for on-demand runs
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL for testing (default: http://localhost:5173)'
+        required: false
+        default: 'http://localhost:5173'
+      browser:
+        description: 'Browser to run tests (chromium, firefox, webkit)'
+        required: false
+        default: 'chromium'
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      
+      - name: Install dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        working-directory: ./09-tools/web/vm-ui
+        run: npx playwright install --with-deps chromium
+      
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
+      
+      - name: Run Playwright tests
+        working-directory: ./09-tools/web/vm-ui
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:5173' }
+        run: |
+          if [ "${{ github.event.inputs.browser }}" != "" ]; then
+            npx playwright test --project=${{ github.event.inputs.browser }}
+          else
+            npx playwright test
+          fi
+      
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: 09-tools/web/vm-ui/playwright-report/
+          retention-days: 7
+      
+      - name: Upload test traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: 09-tools/web/vm-ui/test-results/
+          retention-days: 7
+      
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: 09-tools/web/vm-ui/test-results/**/*.png
+          retention-days: 7
+
+  # Optional: Run against a deployed environment
+  e2e-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event.inputs.base_url != '' && github.event.inputs.base_url != 'http://localhost:5173'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      
+      - name: Install dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        working-directory: ./09-tools/web/vm-ui
+        run: npx playwright install --with-deps chromium
+      
+      - name: Run Playwright tests against staging
+        working-directory: ./09-tools/web/vm-ui
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
+          CI: true
+        run: npx playwright test
+      
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-staging
+          path: 09-tools/web/vm-ui/playwright-report/
+          retention-days: 7
