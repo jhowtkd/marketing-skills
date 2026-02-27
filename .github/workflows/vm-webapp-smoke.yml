@@ -27,6 +27,21 @@ jobs:
       - run: uv run pytest 09-tools/tests/test_vm_webapp_event_driven_e2e.py -q
       - run: uv run pytest 09-tools/tests/test_vm_webapp_platform_e2e.py -q
 
+  editorial-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Test editorial decisions backend
+        run: |
+          uv run pytest 09-tools/tests/test_vm_webapp_editorial_decisions.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_editorial_decisions_endpoints_mark_and_list -q
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_workflow_run_baseline_endpoint_respects_priority -q
+
   frontend-gate:
     runs-on: ubuntu-latest
     steps:
@@ -39,9 +54,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Run run-binding tests
+      - name: Test frontend
         working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx
+        run: |
+          npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx src/features/workspace/useWorkspace.editorialDecision.test.tsx src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
