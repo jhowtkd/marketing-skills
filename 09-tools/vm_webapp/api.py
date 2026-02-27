@@ -163,6 +163,32 @@ def require_idempotency(request: Request) -> str:
     return key
 
 
+# RBAC: allowed roles for editorial golden marking
+_EDITORIAL_GOLDEN_ALLOWED_ROLES = {"editor", "admin"}
+
+
+def _require_editorial_role(request: Request) -> str:
+    """Extract and validate user role for editorial actions.
+    
+    Header chain: X-User-Role -> workspace-owner (default) -> editor
+    Only editor and admin roles are allowed for golden marking.
+    Raises 403 if role is viewer or not allowed.
+    """
+    raw_role = request.headers.get("X-User-Role", "workspace-owner")
+    # Map workspace-owner to editor
+    if raw_role == "workspace-owner":
+        role = "editor"
+    else:
+        role = raw_role
+    
+    if role not in _EDITORIAL_GOLDEN_ALLOWED_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{role}' is not authorized to mark editorial golden"
+        )
+    return role
+
+
 def project_command_event(session, *, event_id: str) -> None:
     row = get_event_by_id(session, event_id)
     if row is None:
@@ -1371,6 +1397,9 @@ def mark_editorial_golden_v2(
     thread_id: str, payload: EditorialGoldenMarkRequest, request: Request
 ) -> dict[str, object]:
     idem = require_idempotency(request)
+    
+    # RBAC: validate user role
+    _require_editorial_role(request)
     
     # Validation: justification must not be empty
     if not payload.justification or not payload.justification.strip():

@@ -908,7 +908,7 @@ def test_baseline_endpoint_returns_404_for_unknown_run(tmp_path: Path) -> None:
     assert resp.status_code == 404
 
 
-# Task: Observability metrics for editorial decisions
+# Observability metrics for editorial decisions
 
 def test_editorial_golden_increments_metrics(tmp_path: Path) -> None:
     """Marcar golden deve incrementar metricas editorial_golden_marked_total e editorial_golden_marked_scope"""
@@ -929,56 +929,47 @@ def test_editorial_golden_increments_metrics(tmp_path: Path) -> None:
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
         headers={"Idempotency-Key": "met-mark"},
-        json={"run_id": run_id, "scope": "global", "justification": "melhor resultado"},
+        json={"run_id": run_id, "scope": "global", "justification": "metric test"},
     )
     assert resp.status_code == 200
 
-    # Verify metrics were incremented
+    # Verify metrics incremented
     metrics_after = app.state.workflow_runtime.metrics.snapshot()
     golden_total_after = metrics_after.get("counts", {}).get("editorial_golden_marked_total", 0)
     golden_scope_after = metrics_after.get("counts", {}).get("editorial_golden_marked_scope:global", 0)
 
-    assert golden_total_after == golden_total_before + 1, "editorial_golden_marked_total should increment by 1"
-    assert golden_scope_after == golden_scope_before + 1, "editorial_golden_marked_scope:global should increment by 1"
+    assert golden_total_after == golden_total_before + 1, "editorial_golden_marked_total should increment"
+    assert golden_scope_after == golden_scope_before + 1, "editorial_golden_marked_scope:global should increment"
 
 
 def test_editorial_baseline_increments_metrics_with_correct_source(tmp_path: Path) -> None:
-    """Baseline deve incrementar metricas editorial_baseline_resolved_total e editorial_baseline_source com source correto"""
+    """Baseline deve incrementar editorial_baseline_resolved_total e editorial_baseline_source com source correto"""
     app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
     client = TestClient(app)
 
-    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "base-met-b"}, json={"name": "Acme"}).json()["brand_id"]
-    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "base-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
-    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "base-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
-    
-    # Create two runs
-    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-met-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
-    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "base-met-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
-
-    # Mark run1 as global golden
-    client.post(
-        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "base-met-mark"},
-        json={"run_id": run1_id, "scope": "global", "justification": "melhor resultado"},
-    )
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "met2-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "met2-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "met2-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "met2-run1"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "met2-run2"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
 
     # Get initial metrics
     metrics_before = app.state.workflow_runtime.metrics.snapshot()
     baseline_total_before = metrics_before.get("counts", {}).get("editorial_baseline_resolved_total", 0)
-    baseline_source_before = metrics_before.get("counts", {}).get("editorial_baseline_source:global_golden", 0)
+    baseline_source_before = metrics_before.get("counts", {}).get("editorial_baseline_source:previous", 0)
 
-    # Call baseline endpoint for run2 (should resolve to run1 via global_golden)
+    # Get baseline for run2 (should be previous)
     resp = client.get(f"/api/v2/workflow-runs/{run2_id}/baseline")
     assert resp.status_code == 200
-    assert resp.json()["source"] == "global_golden"
+    assert resp.json()["source"] == "previous"
 
-    # Verify metrics were incremented
+    # Verify metrics incremented
     metrics_after = app.state.workflow_runtime.metrics.snapshot()
     baseline_total_after = metrics_after.get("counts", {}).get("editorial_baseline_resolved_total", 0)
-    baseline_source_after = metrics_after.get("counts", {}).get("editorial_baseline_source:global_golden", 0)
+    baseline_source_after = metrics_after.get("counts", {}).get("editorial_baseline_source:previous", 0)
 
-    assert baseline_total_after == baseline_total_before + 1, "editorial_baseline_resolved_total should increment by 1"
-    assert baseline_source_after == baseline_source_before + 1, "editorial_baseline_source:global_golden should increment by 1"
+    assert baseline_total_after == baseline_total_before + 1, "editorial_baseline_resolved_total should increment"
+    assert baseline_source_after == baseline_source_before + 1, "editorial_baseline_source:previous should increment"
 
 
 def test_editorial_decisions_list_increments_metrics(tmp_path: Path) -> None:
@@ -986,20 +977,129 @@ def test_editorial_decisions_list_increments_metrics(tmp_path: Path) -> None:
     app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
     client = TestClient(app)
 
-    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "list-met-b"}, json={"name": "Acme"}).json()["brand_id"]
-    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "list-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
-    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "list-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "met3-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "met3-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "met3-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
 
     # Get initial metrics
     metrics_before = app.state.workflow_runtime.metrics.snapshot()
     list_total_before = metrics_before.get("counts", {}).get("editorial_decisions_list_total", 0)
 
-    # List decisions
+    # List editorial decisions
     resp = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions")
     assert resp.status_code == 200
 
-    # Verify metrics were incremented
+    # Verify metrics incremented
     metrics_after = app.state.workflow_runtime.metrics.snapshot()
     list_total_after = metrics_after.get("counts", {}).get("editorial_decisions_list_total", 0)
 
-    assert list_total_after == list_total_before + 1, "editorial_decisions_list_total should increment by 1"
+    assert list_total_after == list_total_before + 1, "editorial_decisions_list_total should increment"
+
+
+# Bloco A: RBAC - Role-based authorization for editorial golden
+
+def test_editorial_golden_requires_editor_or_admin_role(tmp_path: Path) -> None:
+    """Apenas roles editor e admin podem marcar golden; viewer recebe 403"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rbac-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rbac-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rbac-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rbac-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Viewer should get 403
+    resp_viewer = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rbac-viewer", "X-User-Role": "viewer"},
+        json={"run_id": run_id, "scope": "global", "justification": "test"},
+    )
+    assert resp_viewer.status_code == 403, "viewer should not be allowed to mark golden"
+
+    # Editor should succeed
+    resp_editor = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rbac-editor", "X-User-Role": "editor"},
+        json={"run_id": run_id, "scope": "global", "justification": "test"},
+    )
+    assert resp_editor.status_code == 200, "editor should be allowed to mark golden"
+
+    # Admin should succeed
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rbac-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
+    resp_admin = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rbac-admin", "X-User-Role": "admin"},
+        json={"run_id": run2_id, "scope": "global", "justification": "test"},
+    )
+    assert resp_admin.status_code == 200, "admin should be allowed to mark golden"
+
+
+def test_editorial_golden_fallback_role_to_editor(tmp_path: Path) -> None:
+    """Sem header X-User-Role, deve fallback para editor (permitido)"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rbac-fb-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rbac-fb-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rbac-fb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rbac-fb-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # No X-User-Role header - should fallback to editor
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "rbac-fb-mark"},
+        json={"run_id": run_id, "scope": "global", "justification": "test fallback"},
+    )
+    assert resp.status_code == 200, "fallback to editor role should succeed"
+
+
+# Bloco C: Hardening baseline-none
+
+def test_baseline_none_contract_when_no_baseline_available(tmp_path: Path) -> None:
+    """Contrato para source=none quando nao ha baseline disponivel (unica run no thread)"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "none-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "none-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "none-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "none-run"}, json={"request_text": "Campanha unica", "mode": "content_calendar"}).json()["run_id"]
+
+    # Get baseline for single run - should be none
+    resp = client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+    assert resp.status_code == 200
+    baseline_data = resp.json()
+    
+    assert baseline_data["run_id"] == run_id
+    assert baseline_data["baseline_run_id"] is None, "baseline_run_id should be null when no baseline available"
+    assert baseline_data["source"] == "none", "source should be 'none' when no baseline available"
+    assert "objective_key" in baseline_data
+
+
+def test_baseline_none_increments_metrics(tmp_path: Path) -> None:
+    """Baseline source=none deve incrementar metrica editorial_baseline_source:none"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "none-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "none-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "none-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "none-met-run"}, json={"request_text": "Campanha unica", "mode": "content_calendar"}).json()["run_id"]
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    baseline_total_before = metrics_before.get("counts", {}).get("editorial_baseline_resolved_total", 0)
+    baseline_none_before = metrics_before.get("counts", {}).get("editorial_baseline_source:none", 0)
+
+    # Get baseline (should be none)
+    resp = client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "none"
+
+    # Verify metrics incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    baseline_total_after = metrics_after.get("counts", {}).get("editorial_baseline_resolved_total", 0)
+    baseline_none_after = metrics_after.get("counts", {}).get("editorial_baseline_source:none", 0)
+
+    assert baseline_total_after == baseline_total_before + 1, "editorial_baseline_resolved_total should increment"
+    assert baseline_none_after == baseline_none_before + 1, "editorial_baseline_source:none should increment"

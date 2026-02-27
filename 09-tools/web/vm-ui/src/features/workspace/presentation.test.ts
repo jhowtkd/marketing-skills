@@ -30,6 +30,19 @@ describe("run presentation", () => {
     expect(toHumanTimelineEvent("UnknownEvent")).toBe("UnknownEvent");
   });
 
+  it("humanizes EditorialGoldenMarked with global scope", () => {
+    expect(toHumanTimelineEvent({ event_type: "EditorialGoldenMarked", payload: { scope: "global" } })).toBe("Golden global definido");
+  });
+
+  it("humanizes EditorialGoldenMarked with objective scope", () => {
+    expect(toHumanTimelineEvent({ event_type: "EditorialGoldenMarked", payload: { scope: "objective" } })).toBe("Golden de objetivo definido");
+  });
+
+  it("falls back to generic label for EditorialGoldenMarked without payload", () => {
+    expect(toHumanTimelineEvent("EditorialGoldenMarked")).toBe("Golden marcado");
+    expect(toHumanTimelineEvent({ event_type: "EditorialGoldenMarked", payload: undefined })).toBe("Golden marcado");
+  });
+
   it("flags statuses that require resume action", () => {
     expect(canResumeRunStatus("waiting_approval")).toBe(true);
     expect(canResumeRunStatus("waiting")).toBe(true);

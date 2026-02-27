@@ -222,7 +222,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         <div className="mt-3 flex flex-col gap-2 max-h-64 overflow-auto">
           {sortedTimeline.map((event) => (
             <div key={event.event_id} className="rounded-lg border border-slate-200 p-2 text-xs">
-              <div className="font-semibold text-slate-700">{toHumanTimelineEvent(event.event_type)}</div>
+              <div className="font-semibold text-slate-700">{toHumanTimelineEvent({ event_type: event.event_type, payload: event.payload })}</div>
               <div className="text-slate-500">{formatDateTime(event.created_at)}</div>
               {devMode ? (
                 <div className="text-[11px] text-slate-400 mt-1">

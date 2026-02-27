@@ -15,7 +15,15 @@ export function toHumanRunName(input: { index: number; requestText?: string; cre
   return `Versao ${input.index} · ${short} · ${hhmm}`;
 }
 
-export function toHumanTimelineEvent(eventType: string): string {
+export type TimelineEvent = {
+  event_type: string;
+  payload?: Record<string, unknown>;
+};
+
+export function toHumanTimelineEvent(event: string | TimelineEvent): string {
+  const eventType = typeof event === "string" ? event : event.event_type;
+  const payload = typeof event === "string" ? undefined : event.payload;
+
   const map: Record<string, string> = {
     ThreadModeAdded: "Modo adicionado ao job",
     ThreadModeRemoved: "Modo removido do job",
@@ -33,6 +41,17 @@ export function toHumanTimelineEvent(eventType: string): string {
     ToolInvoked: "Ferramenta executada",
     EditorialGoldenMarked: "Golden marcado",
   };
+
+  // Special handling for EditorialGoldenMarked with scope awareness
+  if (eventType === "EditorialGoldenMarked" && payload) {
+    const scope = payload.scope as string | undefined;
+    if (scope === "global") {
+      return "Golden global definido";
+    } else if (scope === "objective") {
+      return "Golden de objetivo definido";
+    }
+  }
+
   return map[eventType] ?? eventType;
 }
 
