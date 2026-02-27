@@ -66,6 +66,26 @@ export type ResolvedBaseline = {
   objective_key: string;
 };
 
+export type EditorialAuditEvent = {
+  event_id: string;
+  event_type: string;
+  actor_id: string;
+  actor_role: string;
+  scope: "global" | "objective";
+  objective_key?: string;
+  run_id: string;
+  justification: string;
+  occurred_at: string;
+};
+
+export type EditorialAuditResponse = {
+  thread_id: string;
+  events: EditorialAuditEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 type PostJsonLike = <T>(url: string, payload: unknown, prefix: string) => Promise<T>;
 
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
@@ -132,6 +152,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [deepEvaluationByRun, setDeepEvaluationByRun] = useState<Record<string, DeepEvaluationState>>({});
   const [editorialDecisions, setEditorialDecisions] = useState<EditorialDecisions | null>(null);
   const [resolvedBaseline, setResolvedBaseline] = useState<ResolvedBaseline | null>(null);
+  const [editorialAudit, setEditorialAudit] = useState<EditorialAuditResponse | null>(null);
+  const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
+  const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
@@ -223,6 +246,33 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
       setEditorialDecisions(data);
     } catch (e) {
       console.error("Failed to fetch editorial decisions", e);
+      // Fallback: keep current state (null or previous)
+    }
+  };
+
+  const fetchEditorialAudit = async (params?: { scope?: string; limit?: number; offset?: number }) => {
+    if (!activeThreadId) {
+      setEditorialAudit(null);
+      return;
+    }
+    const searchParams = new URLSearchParams();
+    if (params?.scope && params.scope !== "all") {
+      searchParams.set("scope", params.scope);
+    }
+    if (params?.limit) {
+      searchParams.set("limit", String(params.limit));
+    }
+    if (params?.offset !== undefined) {
+      searchParams.set("offset", String(params.offset));
+    }
+    const queryString = searchParams.toString();
+    const url = `/api/v2/threads/${activeThreadId}/editorial-decisions/audit${queryString ? `?${queryString}` : ""}`;
+    
+    try {
+      const data = await fetchJson<EditorialAuditResponse>(url);
+      setEditorialAudit(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial audit", e);
       // Fallback: keep current state (null or previous)
     }
   };
@@ -383,6 +433,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchRuns();
     fetchTimeline();
     fetchEditorialDecisions();
+    fetchEditorialAudit({ scope: auditScopeFilter, ...auditPagination });
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -432,5 +483,11 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,
     refreshPrimaryArtifact: () => fetchPrimaryArtifact(),
+    editorialAudit,
+    auditScopeFilter,
+    setAuditScopeFilter,
+    auditPagination,
+    setAuditPagination,
+    refreshEditorialAudit: fetchEditorialAudit,
   };
 }

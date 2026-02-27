@@ -18,8 +18,12 @@ import {
   isEditorialEvent,
   filterTimelineEvents,
   TIMELINE_FILTER_LABELS,
+  AUDIT_SCOPE_FILTER_LABELS,
+  formatAuditEvent,
+  toHumanActorRole,
   type BaselineSource,
   type TimelineFilter,
+  type AuditScopeFilter,
 } from "./presentation";
 import { useWorkspace } from "./useWorkspace";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
@@ -61,6 +65,12 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     refreshRuns,
     refreshTimeline,
     refreshPrimaryArtifact,
+    editorialAudit,
+    auditScopeFilter,
+    setAuditScopeFilter,
+    auditPagination,
+    setAuditPagination,
+    refreshEditorialAudit,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
@@ -518,6 +528,137 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  const editorialAuditSection = (
+    <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+            Auditoria
+          </p>
+          <h3 className="mt-2 font-serif text-xl text-slate-900">Decisoes Editoriais</h3>
+        </div>
+        {/* Scope Filter */}
+        <div className="flex gap-1">
+          {(["all", "global", "objective"] as AuditScopeFilter[]).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => {
+                setAuditScopeFilter(filter);
+                setAuditPagination({ ...auditPagination, offset: 0 });
+                refreshEditorialAudit({ scope: filter, limit: auditPagination.limit, offset: 0 });
+              }}
+              className={`px-2 py-1 text-xs rounded-full transition-colors ${
+                auditScopeFilter === filter
+                  ? "bg-[var(--vm-primary)] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {AUDIT_SCOPE_FILTER_LABELS[filter]}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {!editorialAudit || editorialAudit.events.length === 0 ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          {hasActiveThread
+            ? "Nenhuma decisao editorial registrada. As marcacoes golden aparecerao aqui."
+            : "Escolha um job para visualizar o historico de decisoes editoriais."}
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-col gap-2 max-h-80 overflow-auto">
+            {editorialAudit.events.map((event) => {
+              const display = formatAuditEvent(event);
+              return (
+                <div
+                  key={display.eventId}
+                  className={`rounded-lg border p-3 text-sm ${
+                    display.scope === "global"
+                      ? "border-amber-200 bg-amber-50/50"
+                      : "border-blue-200 bg-blue-50/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800">
+                      {display.scope === "global" ? "Golden Global" : "Golden Objetivo"}
+                    </span>
+                    <span className="text-xs text-slate-500">{display.formattedDate}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Run:</span> {display.runId.slice(0, 12)}...
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    <span className="font-medium">Actor:</span>{" "}
+                    {display.actorId} ({toHumanActorRole(display.actorRole)})
+                  </div>
+                  {display.objectiveKey && (
+                    <div className="mt-1 text-xs text-slate-600">
+                      <span className="font-medium">Objetivo:</span> {display.objectiveKey}
+                    </div>
+                  )}
+                  {display.justification && (
+                    <div className="mt-2 text-xs text-slate-700 italic">
+                      &quot;{display.justification}&quot;
+                    </div>
+                  )}
+                  {devMode && (
+                    <div className="mt-2 text-[10px] text-slate-400">
+                      {display.eventId} · {display.eventType}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Pagination */}
+          {editorialAudit.total > auditPagination.limit && (
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={auditPagination.offset === 0}
+                onClick={() => {
+                  const newOffset = Math.max(0, auditPagination.offset - auditPagination.limit);
+                  setAuditPagination({ ...auditPagination, offset: newOffset });
+                  refreshEditorialAudit({
+                    scope: auditScopeFilter,
+                    limit: auditPagination.limit,
+                    offset: newOffset,
+                  });
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+              >
+                Anterior
+              </button>
+              <span className="text-xs text-slate-500">
+                {auditPagination.offset + 1} -{" "}
+                {Math.min(auditPagination.offset + auditPagination.limit, editorialAudit.total)} de{" "}
+                {editorialAudit.total}
+              </span>
+              <button
+                type="button"
+                disabled={auditPagination.offset + auditPagination.limit >= editorialAudit.total}
+                onClick={() => {
+                  const newOffset = auditPagination.offset + auditPagination.limit;
+                  setAuditPagination({ ...auditPagination, offset: newOffset });
+                  refreshEditorialAudit({
+                    scope: auditScopeFilter,
+                    limit: auditPagination.limit,
+                    offset: newOffset,
+                  });
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+              >
+                Proximo
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -596,6 +737,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             </section>
           ) : null}
           {timelineSection}
+          {editorialAuditSection}
         </>
       )}
 

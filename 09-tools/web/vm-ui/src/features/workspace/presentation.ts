@@ -163,3 +163,72 @@ export function filterTimelineEvents<T extends { event_type: string }>(
   if (filter === "editorial") return events.filter((e) => isEditorialEvent(e.event_type));
   return events;
 }
+
+// Editorial Audit helpers
+export type AuditScopeFilter = "all" | "global" | "objective";
+
+export const AUDIT_SCOPE_FILTER_LABELS: Record<AuditScopeFilter, string> = {
+  all: "Todos",
+  global: "Global",
+  objective: "Objetivo",
+};
+
+export type EditorialAuditEventDisplay = {
+  eventId: string;
+  eventType: string;
+  actorId: string;
+  actorRole: string;
+  scope: "global" | "objective";
+  scopeLabel: string;
+  objectiveKey?: string;
+  runId: string;
+  justification: string;
+  occurredAt: string;
+  formattedDate: string;
+};
+
+export function formatAuditEvent(event: {
+  event_id: string;
+  event_type: string;
+  actor_id: string;
+  actor_role: string;
+  scope: "global" | "objective";
+  objective_key?: string;
+  run_id: string;
+  justification: string;
+  occurred_at: string;
+}): EditorialAuditEventDisplay {
+  const occurredDate = new Date(event.occurred_at);
+  const formattedDate = occurredDate.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  return {
+    eventId: event.event_id,
+    eventType: event.event_type,
+    actorId: event.actor_id,
+    actorRole: event.actor_role,
+    scope: event.scope,
+    scopeLabel: event.scope === "global" ? "Global" : "Objetivo",
+    objectiveKey: event.objective_key,
+    runId: event.run_id,
+    justification: event.justification,
+    occurredAt: event.occurred_at,
+    formattedDate,
+  };
+}
+
+export function toHumanActorRole(role: string): string {
+  const map: Record<string, string> = {
+    admin: "Administrador",
+    editor: "Editor",
+    viewer: "Visualizador",
+  };
+  return map[role] ?? role;
+}
