@@ -16,6 +16,7 @@ from vm_webapp.models import (
     CommandDedup,
     EditorialDecisionView,
     EditorialPolicy,
+    EditorialSLO,
     EventLog,
     Project,
     ProjectView,
@@ -523,3 +524,40 @@ def upsert_editorial_policy(
     session.add(policy)
     session.flush()
     return policy
+
+
+def get_editorial_slo(session: Session, brand_id: str) -> EditorialSLO | None:
+    """Get editorial SLO configuration for a brand. Returns None if not found."""
+    return session.get(EditorialSLO, brand_id)
+
+
+def upsert_editorial_slo(
+    session: Session,
+    *,
+    brand_id: str,
+    max_baseline_none_rate: float = 0.5,
+    max_policy_denied_rate: float = 0.2,
+    min_confidence: float = 0.4,
+    auto_remediation_enabled: bool = False,
+) -> EditorialSLO:
+    """Create or update editorial SLO configuration for a brand."""
+    existing = session.get(EditorialSLO, brand_id)
+    if existing is not None:
+        existing.max_baseline_none_rate = max_baseline_none_rate
+        existing.max_policy_denied_rate = max_policy_denied_rate
+        existing.min_confidence = min_confidence
+        existing.auto_remediation_enabled = auto_remediation_enabled
+        existing.updated_at = _now_iso()
+        session.flush()
+        return existing
+    
+    slo = EditorialSLO(
+        brand_id=brand_id,
+        max_baseline_none_rate=max_baseline_none_rate,
+        max_policy_denied_rate=max_policy_denied_rate,
+        min_confidence=min_confidence,
+        auto_remediation_enabled=auto_remediation_enabled,
+    )
+    session.add(slo)
+    session.flush()
+    return slo

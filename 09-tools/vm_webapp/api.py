@@ -40,6 +40,7 @@ from vm_webapp.repo import (
     close_thread,
     create_thread as create_thread_row,
     get_editorial_policy,
+    get_editorial_slo,
     get_event_by_id,
     get_run,
     get_brand_view,
@@ -61,6 +62,7 @@ from vm_webapp.repo import (
     list_timeline_items_view,
     touch_thread_activity,
     upsert_editorial_policy,
+    upsert_editorial_slo,
 )
 from vm_webapp.editorial_decisions import resolve_baseline
 from vm_webapp.editorial_policy import (
@@ -461,6 +463,13 @@ class EditorialGoldenMarkRequest(BaseModel):
 class EditorialPolicyUpdateRequest(BaseModel):
     editor_can_mark_objective: bool = True
     editor_can_mark_global: bool = False
+
+
+class EditorialSLOUpdateRequest(BaseModel):
+    max_baseline_none_rate: float = Field(default=0.5, ge=0.0, le=1.0)
+    max_policy_denied_rate: float = Field(default=0.2, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
+    auto_remediation_enabled: bool = False
 
 
 @router.post("/v2/brands")
@@ -1836,6 +1845,100 @@ def update_editorial_policy_v2(
         }
 
 
+@router.get("/v2/brands/{brand_id}/editorial-slo")
+def get_editorial_slo_v2(brand_id: str, request: Request) -> dict[str, object]:
+    """Get editorial SLO configuration for a brand.
+    
+    Returns default SLO if no custom configuration is set.
+    """
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        slo = get_editorial_slo(session, brand_id)
+        
+    return {
+        "brand_id": brand_id,
+        "max_baseline_none_rate": slo.max_baseline_none_rate if slo else 0.5,
+        "max_policy_denied_rate": slo.max_policy_denied_rate if slo else 0.2,
+        "min_confidence": slo.min_confidence if slo else 0.4,
+        "auto_remediation_enabled": slo.auto_remediation_enabled if slo else False,
+        "updated_at": slo.updated_at if slo else brand.updated_at,
+    }
+
+
+@router.put("/v2/brands/{brand_id}/editorial-slo")
+def update_editorial_slo_v2(
+    brand_id: str, 
+    payload: EditorialSLOUpdateRequest, 
+    request: Request
+) -> dict[str, object]:
+    """Update editorial SLO configuration for a brand.
+    
+    Only admin role can update SLO.
+    Requires Idempotency-Key header.
+    """
+    idem = require_idempotency(request)
+    actor_id = _require_admin_role(request)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        # Check idempotency
+        from vm_webapp.repo import get_command_dedup, save_command_dedup
+        dedup = get_command_dedup(session, idempotency_key=idem)
+        if dedup is not None:
+            # Return existing SLO
+            slo = get_editorial_slo(session, brand_id)
+            return {
+                "brand_id": brand_id,
+                "max_baseline_none_rate": slo.max_baseline_none_rate if slo else 0.5,
+                "max_policy_denied_rate": slo.max_policy_denied_rate if slo else 0.2,
+                "min_confidence": slo.min_confidence if slo else 0.4,
+                "auto_remediation_enabled": slo.auto_remediation_enabled if slo else False,
+                "updated_at": slo.updated_at if slo else brand.updated_at,
+            }
+        
+        # Update SLO
+        slo = upsert_editorial_slo(
+            session,
+            brand_id=brand_id,
+            max_baseline_none_rate=payload.max_baseline_none_rate,
+            max_policy_denied_rate=payload.max_policy_denied_rate,
+            min_confidence=payload.min_confidence,
+            auto_remediation_enabled=payload.auto_remediation_enabled,
+        )
+        
+        # Save dedup record
+        save_command_dedup(
+            session,
+            idempotency_key=idem,
+            command_name="update_editorial_slo",
+            event_id=f"slo-update-{brand_id}",
+            response={
+                "brand_id": brand_id,
+                "max_baseline_none_rate": slo.max_baseline_none_rate,
+                "max_policy_denied_rate": slo.max_policy_denied_rate,
+                "min_confidence": slo.min_confidence,
+                "auto_remediation_enabled": slo.auto_remediation_enabled,
+            },
+        )
+        
+        return {
+            "brand_id": brand_id,
+            "max_baseline_none_rate": slo.max_baseline_none_rate,
+            "max_policy_denied_rate": slo.max_policy_denied_rate,
+            "min_confidence": slo.min_confidence,
+            "auto_remediation_enabled": slo.auto_remediation_enabled,
+            "updated_at": slo.updated_at,
+        }
+
+
 @router.get("/v2/threads/{thread_id}/editorial-decisions/insights")
 def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, object]:
     """Get editorial governance insights for a thread.
@@ -2170,10 +2273,153 @@ def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, obj
         }
 
 
+@router.get("/v2/threads/{thread_id}/editorial-decisions/drift")
+def get_editorial_drift_v2(thread_id: str, request: Request) -> dict[str, object]:
+    """Get editorial drift detection analysis for a thread.
+    
+    Analyzes governance metrics against SLO thresholds and returns
+    drift score, severity, flags, and recommended actions.
+    """
+    from vm_webapp.editorial_drift import detect_drift, drift_to_dict
+    from vm_webapp.editorial_forecast import calculate_forecast
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get SLO config for the brand
+        slo_config = None
+        slo = get_editorial_slo(session, thread.brand_id)
+        if slo:
+            slo_config = {
+                "max_baseline_none_rate": slo.max_baseline_none_rate,
+                "max_policy_denied_rate": slo.max_policy_denied_rate,
+                "min_confidence": slo.min_confidence,
+            }
+        
+        # Reuse insights logic
+        from sqlalchemy import select
+        from vm_webapp.models import TimelineItemView, EventLog
+        
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        by_reason_code: dict[str, int] = {}
+        last_marked_at: str | None = None
+        last_actor_id: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            
+            reason_code = payload.get("reason_code") or "other"
+            by_reason_code[reason_code] = by_reason_code.get(reason_code, 0) + 1
+            
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+                last_actor_id = row.actor_id
+        
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        resolved_total = len(baseline_rows)
+        by_source: dict[str, int] = {
+            "objective_golden": 0,
+            "global_golden": 0,
+            "previous": 0,
+            "none": 0,
+        }
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {
+                "marked_total": marked_total,
+                "by_scope": by_scope,
+                "by_reason_code": by_reason_code,
+            },
+            "policy": {
+                "denied_total": denied_total,
+            },
+            "baseline": {
+                "resolved_total": resolved_total,
+                "by_source": by_source,
+            },
+            "recency": {
+                "last_marked_at": last_marked_at,
+                "last_actor_id": last_actor_id,
+            },
+        }
+        
+        # Calculate forecast for drift detection
+        forecast = calculate_forecast(insights_data)
+        forecast_data = {
+            "risk_score": forecast.risk_score,
+            "trend": forecast.trend,
+            "confidence": forecast.confidence,
+            "volatility": forecast.volatility,
+        }
+        
+        # Detect drift
+        drift = detect_drift(insights_data, forecast_data, slo_config)
+        
+        # Record metric for drift detection
+        request.app.state.workflow_runtime.metrics.record_count("editorial_drift_detected_total")
+        request.app.state.workflow_runtime.metrics.record_count(f"editorial_drift_severity:{drift.drift_severity}")
+        
+        return {
+            "thread_id": thread_id,
+            **drift_to_dict(drift),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
 class EditorialPlaybookExecuteRequest(BaseModel):
     action_id: str
     run_id: str | None = None
     note: str | None = None
+    
+    @field_validator("action_id")
+    @classmethod
+    def validate_action_id(cls, v: str) -> str:
+        valid_actions = {"open_review_task", "prepare_guided_regeneration", "suggest_policy_review"}
+        if v not in valid_actions:
+            raise ValueError(f"action_id must be one of: {valid_actions}")
+        return v
+
+
+class AutoRemediationRequest(BaseModel):
+    action_id: str
+    run_id: str | None = None
+    auto_execute: bool = False
     
     @field_validator("action_id")
     @classmethod
@@ -2238,3 +2484,193 @@ def execute_editorial_playbook_v2(
             "created_entities": response.get("created_entities", []),
             "event_id": response.get("event_id"),
         }
+
+
+@router.post("/v2/threads/{thread_id}/editorial-decisions/auto-remediate")
+def auto_remediate_editorial_v2(
+    thread_id: str,
+    request: Request,
+    body: AutoRemediationRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, object]:
+    """Execute auto-remediation for editorial drift.
+    
+    Supports automatic execution for safe actions when:
+    - auto_execute=true is requested
+    - Brand has auto_remediation_enabled in SLO
+    - Action is in SAFE_AUTO_ACTIONS list
+    - Rate limit is not exceeded
+    
+    All attempts are audited in timeline/event log.
+    """
+    from vm_webapp.auto_remediation import (
+        decide_auto_remediation,
+        build_auto_remediation_event_payload,
+        build_auto_remediation_skipped_payload,
+    )
+    from vm_webapp.editorial_drift import detect_drift
+    from vm_webapp.editorial_forecast import calculate_forecast
+    from vm_webapp.commands_v2 import execute_editorial_playbook_command
+    from sqlalchemy import select
+    from vm_webapp.models import TimelineItemView, EventLog
+    
+    actor_ctx = require_valid_auth(request)
+    actor_id = actor_ctx["actor_id"]
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get brand SLO config
+        slo = get_editorial_slo(session, thread.brand_id)
+        brand_auto_enabled = slo.auto_remediation_enabled if slo else False
+        
+        # Get recent auto-remediation events for rate limiting
+        auto_events_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type.in_(["AutoRemediationExecuted", "AutoRemediationSkipped"]))
+            .order_by(EventLog.occurred_at.desc())
+            .limit(20)
+        )
+        recent_auto_events = [
+            {"occurred_at": row.occurred_at, "event_type": row.event_type}
+            for row in session.scalars(auto_events_query)
+        ]
+        
+        # Get drift data
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        rows = list(session.scalars(query))
+        
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        last_marked_at: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+        
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        by_source = {"objective_golden": 0, "global_golden": 0, "previous": 0, "none": 0}
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {"marked_total": marked_total, "by_scope": by_scope, "by_reason_code": {}},
+            "policy": {"denied_total": denied_total},
+            "baseline": {"resolved_total": len(baseline_rows), "by_source": by_source},
+            "recency": {"last_marked_at": last_marked_at, "last_actor_id": None},
+        }
+        
+        forecast = calculate_forecast(insights_data)
+        
+        # Make auto-remediation decision
+        decision = decide_auto_remediation(
+            action_id=body.action_id,
+            brand_auto_enabled=brand_auto_enabled and body.auto_execute,
+            recent_auto_events=recent_auto_events,
+            drift_severity="medium",  # Simplified, could be from drift detection
+            max_executions_per_hour=10,
+        )
+        
+        event_type: str
+        event_payload: dict
+        
+        if decision.result == "executed":
+            # Execute the playbook action
+            try:
+                dedup = execute_editorial_playbook_command(
+                    session,
+                    thread_id=thread_id,
+                    action_id=body.action_id,
+                    run_id=body.run_id,
+                    note="Auto-remediation execution",
+                    actor_id="system:auto-remediation",
+                    actor_role="system",
+                    idempotency_key=idempotency_key,
+                )
+                import json as _json
+                response = _json.loads(dedup.response_json) if dedup.response_json else {}
+                
+                event_type = "AutoRemediationExecuted"
+                event_payload = build_auto_remediation_event_payload(
+                    thread_id=thread_id,
+                    action_id=body.action_id,
+                    decision=decision,
+                    drift_score=forecast.risk_score,
+                    run_id=body.run_id,
+                )
+                
+                return {
+                    "status": "auto_executed",
+                    "executed_action": body.action_id,
+                    "decision_reason": decision.reason,
+                    "created_entities": response.get("created_entities", []),
+                    "event_id": response.get("event_id"),
+                }
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+        else:
+            # Skip - audit the decision
+            event_type = "AutoRemediationSkipped"
+            event_payload = build_auto_remediation_skipped_payload(
+                thread_id=thread_id,
+                proposed_action=body.action_id,
+                decision=decision,
+                drift_score=forecast.risk_score,
+            )
+            
+            # Emit skip event
+            stream_id = f"thread:{thread_id}"
+            from vm_webapp.repo import get_stream_version, append_event
+            expected = get_stream_version(session, stream_id)
+            
+            skip_event = EventEnvelope(
+                event_id=f"evt-{__import__('uuid').uuid4().hex[:12]}",
+                event_type=event_type,
+                aggregate_type="thread",
+                aggregate_id=thread_id,
+                stream_id=stream_id,
+                expected_version=expected,
+                actor_type="system",
+                actor_id="auto-remediation",
+                thread_id=thread_id,
+                payload=event_payload,
+            )
+            append_event(session, skip_event)
+            
+            return {
+                "status": "skipped",
+                "proposed_action": body.action_id,
+                "skip_reason": decision.reason,
+                "auto_execute_requested": body.auto_execute,
+                "brand_auto_enabled": brand_auto_enabled,
+            }

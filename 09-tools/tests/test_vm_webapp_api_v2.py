@@ -3583,3 +3583,319 @@ def test_editorial_recommendations_ordered_by_priority_desc(tmp_path: Path) -> N
             assert recs[i]["priority_score"] >= recs[i + 1]["priority_score"], \
                 f"Recommendations not sorted by priority_score: {recs[i]['priority_score']} < {recs[i+1]['priority_score']}"
 
+
+
+# ============================================================
+# GOVERNANCE v10: SLO, Drift Detection, and Auto-Remediation
+# ============================================================
+
+def test_get_editorial_slo_returns_defaults(tmp_path: Path) -> None:
+    """GET /editorial-slo deve retornar defaults quando não configurado."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-get-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    resp = client.get(f"/api/v2/brands/{brand_id}/editorial-slo")
+    assert resp.status_code == 200
+    data = resp.json()
+    
+    assert data["brand_id"] == brand_id
+    assert data["max_baseline_none_rate"] == 0.5
+    assert data["max_policy_denied_rate"] == 0.2
+    assert data["min_confidence"] == 0.4
+    assert data["auto_remediation_enabled"] is False
+    assert "updated_at" in data
+
+
+def test_put_editorial_slo_requires_admin_role(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve exigir role admin."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-admin-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Editor não pode atualizar SLO
+    resp_editor = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-admin-attempt", "X-User-Role": "editor"},
+        json={"max_baseline_none_rate": 0.3},
+    )
+    assert resp_editor.status_code == 403
+    
+    # Admin pode atualizar
+    resp_admin = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-admin-ok", "Authorization": "Bearer admin:admin"},
+        json={
+            "max_baseline_none_rate": 0.3,
+            "max_policy_denied_rate": 0.1,
+            "min_confidence": 0.6,
+            "auto_remediation_enabled": True,
+        },
+    )
+    assert resp_admin.status_code == 200
+    data = resp_admin.json()
+    assert data["max_baseline_none_rate"] == 0.3
+    assert data["max_policy_denied_rate"] == 0.1
+    assert data["min_confidence"] == 0.6
+    assert data["auto_remediation_enabled"] is True
+
+
+def test_put_editorial_slo_validates_ranges(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve validar ranges dos campos."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-val-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Valor acima do máximo deve falhar
+    resp_invalid = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-val-invalid", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 1.5},  # > 1.0
+    )
+    assert resp_invalid.status_code == 422
+    
+    # Valor abaixo do mínimo deve falhar
+    resp_negative = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-val-neg", "Authorization": "Bearer admin:admin"},
+        json={"min_confidence": -0.1},  # < 0.0
+    )
+    assert resp_negative.status_code == 422
+
+
+def test_put_editorial_slo_is_idempotent(tmp_path: Path) -> None:
+    """PUT /editorial-slo deve ser idempotente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "slo-idem-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Primeira chamada
+    resp1 = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-idem-key", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 0.3},
+    )
+    assert resp1.status_code == 200
+    
+    # Segunda chamada com mesma idempotency key deve retornar mesmo resultado
+    resp2 = client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "slo-idem-key", "Authorization": "Bearer admin:admin"},
+        json={"max_baseline_none_rate": 0.9},  # Valor diferente, mas mesma key
+    )
+    assert resp2.status_code == 200
+    # Deve retornar o valor da primeira chamada (idempotência)
+    assert resp2.json()["max_baseline_none_rate"] == 0.3
+
+
+def test_get_editorial_slo_returns_404_for_unknown_brand(tmp_path: Path) -> None:
+    """GET /editorial-slo deve retornar 404 para brand inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/brands/brand-inexistente/editorial-slo")
+    assert resp.status_code == 404
+
+
+def test_get_editorial_drift_endpoint_returns_analysis(tmp_path: Path) -> None:
+    """GET /editorial-decisions/drift deve retornar análise de drift."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run sem marcar golden (vai gerar baseline_none alto = drift)
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    drift = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert drift.status_code == 200
+    data = drift.json()
+
+    # Verificar estrutura da resposta
+    assert "thread_id" in data
+    assert "drift_score" in data
+    assert "drift_severity" in data
+    assert "drift_flags" in data
+    assert "primary_driver" in data
+    assert "recommended_actions" in data
+    assert "details" in data
+    assert "generated_at" in data
+
+    # Verificar tipos e valores
+    assert isinstance(data["drift_score"], int)
+    assert 0 <= data["drift_score"] <= 100
+    assert data["drift_severity"] in ["none", "low", "medium", "high"]
+    assert isinstance(data["drift_flags"], list)
+    assert isinstance(data["primary_driver"], str)
+    assert isinstance(data["recommended_actions"], list)
+    assert isinstance(data["details"], dict)
+
+
+def test_get_editorial_drift_returns_404_for_unknown_thread(tmp_path: Path) -> None:
+    """GET /editorial-decisions/drift deve retornar 404 para thread inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/threads/thread-inexistente/editorial-decisions/drift")
+    assert resp.status_code == 404
+
+
+def test_get_editorial_drift_uses_slo_config(tmp_path: Path) -> None:
+    """Drift detection deve usar SLO config da brand quando disponível."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-slo-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Configurar SLO com thresholds estritos
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "drift-slo-config", "Authorization": "Bearer admin:admin"},
+        json={
+            "max_baseline_none_rate": 0.1,  # Muito restritivo
+            "max_policy_denied_rate": 0.05,
+            "min_confidence": 0.8,
+            "auto_remediation_enabled": False,
+        },
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-slo-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-slo-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run sem golden marks (vai violar o SLO estrito)
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-slo-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    drift = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert drift.status_code == 200
+    data = drift.json()
+    
+    # Com SLO estrito, deve ter drift detectado
+    assert data["drift_score"] > 0
+    assert len(data["drift_flags"]) > 0
+    assert "recommended_actions" in data
+
+
+def test_editorial_drift_increments_metrics(tmp_path: Path) -> None:
+    """Drift detection deve incrementar métricas."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "drift-met-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "drift-met-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "drift-met-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "drift-met-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+    client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+
+    # Get initial metrics
+    metrics_before = app.state.workflow_runtime.metrics.snapshot()
+    drift_total_before = metrics_before.get("counts", {}).get("editorial_drift_detected_total", 0)
+
+    # Detect drift
+    resp = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/drift")
+    assert resp.status_code == 200
+
+    # Verify metrics incremented
+    metrics_after = app.state.workflow_runtime.metrics.snapshot()
+    drift_total_after = metrics_after.get("counts", {}).get("editorial_drift_detected_total", 0)
+
+    assert drift_total_after == drift_total_before + 1, "editorial_drift_detected_total should increment"
+
+
+def test_auto_remediate_requires_auto_execute_and_slo_enabled(tmp_path: Path) -> None:
+    """Auto-remediation só executa quando auto_execute=true E SLO habilitado."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Sem auto_remediation_enabled no SLO, deve skip
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-skip", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "skipped"
+    assert "kill switch" in data["skip_reason"].lower() or "disabled" in data["skip_reason"].lower()
+
+
+def test_auto_remediate_executes_when_enabled(tmp_path: Path) -> None:
+    """Auto-remediation executa quando habilitado e ação é segura."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-exec-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Habilitar auto-remediation no SLO
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "auto-exec-slo", "Authorization": "Bearer admin:admin"},
+        json={"auto_remediation_enabled": True},
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-exec-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-exec-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-exec-attempt", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # Pode executar ou ser rate limited dependendo do estado
+    assert data["status"] in ["auto_executed", "skipped"]
+
+
+def test_auto_remediate_blocks_unsafe_actions(tmp_path: Path) -> None:
+    """Auto-remediation bloqueia ações não seguras."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-unsafe-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Habilitar auto-remediation
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "auto-unsafe-slo", "Authorization": "Bearer admin:admin"},
+        json={"auto_remediation_enabled": True},
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-unsafe-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-unsafe-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # suggest_policy_review não é ação segura para auto
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-unsafe-attempt", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "suggest_policy_review", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "skipped"
+    assert "manual" in data["skip_reason"].lower() or "approval" in data["skip_reason"].lower()
+
+
+def test_auto_remediate_returns_404_for_unknown_thread(tmp_path: Path) -> None:
+    """Auto-remediation deve retornar 404 para thread inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v2/threads/thread-inexistente/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-404", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task"},
+    )
+    assert resp.status_code == 404

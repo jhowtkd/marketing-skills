@@ -238,3 +238,20 @@ class EditorialPolicy(Base):
     editor_can_mark_objective: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     editor_can_mark_global: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class EditorialSLO(Base):
+    """SLO (Service Level Objective) configuration for editorial governance per brand."""
+
+    __tablename__ = "editorial_slos"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # Maximum allowed baseline_source:none rate (0.0 - 1.0, default 0.5 = 50%)
+    max_baseline_none_rate: Mapped[float] = mapped_column(nullable=False, default=0.5)
+    # Maximum allowed policy denied rate (0.0 - 1.0, default 0.2 = 20%)
+    max_policy_denied_rate: Mapped[float] = mapped_column(nullable=False, default=0.2)
+    # Minimum required forecast confidence (0.0 - 1.0, default 0.4)
+    min_confidence: Mapped[float] = mapped_column(nullable=False, default=0.4)
+    # Enable auto-remediation for this brand
+    auto_remediation_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
