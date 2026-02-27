@@ -20,6 +20,207 @@ class EditorialForecast:
     trend: Trend
     drivers: list[str]
     recommended_focus: str
+    confidence: float  # 0-1
+    volatility: int  # 0-100
+    calibration_notes: list[str]
+
+
+def _calculate_window_metrics(events: list[dict], short_window: int = 7, long_window: int = 30) -> dict:
+    """Calculate metrics for short and long windows.
+    
+    Args:
+        events: List of event dicts with 'occurred_at' timestamp
+        short_window: Short window size in days (default 7)
+        long_window: Long window size in days (default 30)
+    
+    Returns:
+        Dict with short_window_count, long_window_count, and recency_ratio
+    """
+    if not events:
+        return {"short_window_count": 0, "long_window_count": 0, "recency_ratio": 0.0}
+    
+    now = datetime.now(timezone.utc)
+    
+    def days_since_event(event: dict) -> int:
+        try:
+            event_dt = datetime.fromisoformat(str(event.get("occurred_at", "")).replace("Z", "+00:00"))
+            return (now - event_dt).days
+        except (ValueError, TypeError):
+            return long_window + 1  # Assume old if invalid
+    
+    short_count = sum(1 for e in events if days_since_event(e) <= short_window)
+    long_count = sum(1 for e in events if days_since_event(e) <= long_window)
+    
+    # Recency ratio: how concentrated events are in short vs long window
+    recency_ratio = short_count / long_count if long_count > 0 else 0.0
+    
+    return {
+        "short_window_count": short_count,
+        "long_window_count": long_count,
+        "recency_ratio": recency_ratio,
+    }
+
+
+def _calculate_confidence(
+    insights_data: dict,
+    window_metrics: dict,
+    driver_count: int
+) -> float:
+    """Calculate confidence score (0-1) based on data quality.
+    
+    Higher confidence when:
+    - More data points (resolved_total)
+    - More recent activity (recency_ratio)
+    - Clear drivers (not ambiguous)
+    
+    Returns:
+        Confidence score between 0.0 and 1.0
+    """
+    confidence = 0.5  # Base confidence
+    
+    # Data volume factor (0-0.3)
+    resolved_total = insights_data.get("baseline", {}).get("resolved_total", 0)
+    if resolved_total >= 10:
+        confidence += 0.3
+    elif resolved_total >= 5:
+        confidence += 0.2
+    elif resolved_total >= 1:
+        confidence += 0.1
+    
+    # Recency factor (0-0.3)
+    recency_ratio = window_metrics.get("recency_ratio", 0)
+    if recency_ratio >= 0.5:
+        confidence += 0.3
+    elif recency_ratio >= 0.3:
+        confidence += 0.2
+    elif recency_ratio > 0:
+        confidence += 0.1
+    
+    # Driver clarity factor (0-0.2)
+    # More drivers = more signals = higher confidence
+    if driver_count >= 3:
+        confidence += 0.2
+    elif driver_count >= 2:
+        confidence += 0.1
+    elif driver_count == 0:
+        confidence -= 0.1  # No drivers reduces confidence
+    
+    # Golden marks factor (0-0.2)
+    marked_total = insights_data.get("totals", {}).get("marked_total", 0)
+    if marked_total >= 5:
+        confidence += 0.2
+    elif marked_total >= 2:
+        confidence += 0.1
+    elif marked_total == 0:
+        confidence -= 0.1  # No golden marks reduces confidence
+    
+    return max(0.0, min(1.0, confidence))
+
+
+def _calculate_volatility(
+    insights_data: dict,
+    window_metrics: dict
+) -> int:
+    """Calculate volatility score (0-100) based on recent activity variance.
+    
+    Higher volatility when:
+    - Big gap between short and long window activity
+    - High policy denial rate
+    - Inconsistent baseline resolution
+    
+    Returns:
+        Volatility score between 0 and 100
+    """
+    volatility = 30  # Base volatility (moderate)
+    
+    # Recency volatility (0-40)
+    short_count = window_metrics.get("short_window_count", 0)
+    long_count = window_metrics.get("long_window_count", 0)
+    
+    if long_count > 0:
+        activity_ratio = short_count / long_count
+        # High ratio = recent burst = high volatility
+        # Low ratio with long activity = stable = low volatility
+        if activity_ratio > 0.8:
+            volatility += 40  # Recent burst
+        elif activity_ratio > 0.5:
+            volatility += 25
+        elif activity_ratio > 0.2:
+            volatility += 10
+        else:
+            volatility -= 10  # Stable pattern
+    
+    # Policy denial volatility (0-20)
+    denied_total = insights_data.get("policy", {}).get("denied_total", 0)
+    marked_total = insights_data.get("totals", {}).get("marked_total", 0)
+    total_attempts = denied_total + marked_total
+    
+    if total_attempts > 0:
+        denial_rate = denied_total / total_attempts
+        if denial_rate > 0.3:
+            volatility += 20  # High denial rate = unstable
+        elif denial_rate > 0.1:
+            volatility += 10
+    
+    # Baseline source volatility (0-10)
+    by_source = insights_data.get("baseline", {}).get("by_source", {})
+    resolved_total = sum(by_source.values()) if by_source else 0
+    if resolved_total > 0:
+        none_rate = by_source.get("none", 0) / resolved_total
+        if none_rate > 0.5:
+            volatility += 10  # Unstable baseline
+    
+    return max(0, min(100, volatility))
+
+
+def _generate_calibration_notes(
+    insights_data: dict,
+    window_metrics: dict,
+    confidence: float,
+    volatility: int
+) -> list[str]:
+    """Generate human-readable calibration notes.
+    
+    Returns:
+        List of calibration notes explaining the forecast
+    """
+    notes: list[str] = []
+    
+    # Window analysis
+    short_count = window_metrics.get("short_window_count", 0)
+    long_count = window_metrics.get("long_window_count", 0)
+    
+    if short_count > 0 and long_count > short_count * 2:
+        notes.append(f"Atividade concentrada: {short_count} eventos recentes vs {long_count} total")
+    elif short_count == 0 and long_count > 0:
+        notes.append("Sem atividade nos últimos 7 dias - risco de staleness")
+    elif short_count >= 3:
+        notes.append(f"Alta atividade recente: {short_count} eventos na última semana")
+    
+    # Confidence explanation
+    if confidence >= 0.8:
+        notes.append("Alta confiança: dados históricos robustos")
+    elif confidence >= 0.6:
+        notes.append("Confiança moderada: tendência consistente nos dados")
+    elif confidence >= 0.4:
+        notes.append("Confiança baixa: dados limitados ou inconsistentes")
+    else:
+        notes.append("Confiança muito baixa: insuficiência de dados")
+    
+    # Volatility explanation
+    if volatility >= 70:
+        notes.append("Alta volatilidade: padrões instáveis detectados")
+    elif volatility >= 40:
+        notes.append("Volatilidade moderada: alguma variabilidade nos eventos")
+    else:
+        notes.append("Baixa volatilidade: padrão estável")
+    
+    # Data volume note
+    resolved_total = insights_data.get("baseline", {}).get("resolved_total", 0)
+    if resolved_total < 3:
+        notes.append(f"Amostra pequena: apenas {resolved_total} resoluções de baseline")
+    
+    return notes[:4]  # Limit to 4 notes max
 
 
 def calculate_forecast(insights_data: dict) -> EditorialForecast:
@@ -37,6 +238,11 @@ def calculate_forecast(insights_data: dict) -> EditorialForecast:
     - improving: baseline_none_rate diminuindo OU marcas recentes
     - degrading: baseline_none_rate alto E sem marcas recentes
     - stable: outros casos
+    
+    Calibration:
+    - confidence: baseado em volume de dados, recency, driver count
+    - volatility: baseado em variação de atividade recente
+    - calibration_notes: explicações operacionais
     """
     risk_score = 0
     drivers: list[str] = []
@@ -129,6 +335,31 @@ def calculate_forecast(insights_data: dict) -> EditorialForecast:
     elif none_rate < 0.3 and marked_total > 2:  # type: ignore
         trend = "improving"
 
+    # Build events list for window analysis
+    # Approximate events from insights data
+    events: list[dict] = []
+    
+    # Add golden marked events (approximate)
+    for _ in range(marked_total):
+        if last_marked_at:
+            events.append({"occurred_at": last_marked_at})
+    
+    # Add policy denied events
+    for _ in range(denied_total):
+        events.append({"occurred_at": last_marked_at or datetime.now(timezone.utc).isoformat()})
+    
+    # Calculate window metrics
+    window_metrics = _calculate_window_metrics(events)
+    
+    # Calculate confidence and volatility
+    confidence = _calculate_confidence(insights_data, window_metrics, len(drivers))
+    volatility = _calculate_volatility(insights_data, window_metrics)
+    
+    # Generate calibration notes
+    calibration_notes = _generate_calibration_notes(
+        insights_data, window_metrics, confidence, volatility
+    )
+
     # Determinar foco recomendado
     recommended_focus = _determine_recommended_focus(drivers, risk_score)
 
@@ -137,6 +368,9 @@ def calculate_forecast(insights_data: dict) -> EditorialForecast:
         trend=trend,
         drivers=drivers,
         recommended_focus=recommended_focus,
+        confidence=confidence,
+        volatility=volatility,
+        calibration_notes=calibration_notes,
     )
 
 
@@ -166,4 +400,7 @@ def forecast_to_dict(forecast: EditorialForecast) -> dict:
         "trend": forecast.trend,
         "drivers": forecast.drivers,
         "recommended_focus": forecast.recommended_focus,
+        "confidence": forecast.confidence,
+        "volatility": forecast.volatility,
+        "calibration_notes": forecast.calibration_notes,
     }

@@ -3461,6 +3461,9 @@ def test_editorial_forecast_endpoint_returns_risk_assessment(tmp_path: Path) -> 
     assert "trend" in data
     assert "drivers" in data
     assert "recommended_focus" in data
+    assert "confidence" in data
+    assert "volatility" in data
+    assert "calibration_notes" in data
     assert "generated_at" in data
 
     # Verificar tipos e valores
@@ -3469,6 +3472,14 @@ def test_editorial_forecast_endpoint_returns_risk_assessment(tmp_path: Path) -> 
     assert data["trend"] in ["improving", "stable", "degrading"]
     assert isinstance(data["drivers"], list)
     assert isinstance(data["recommended_focus"], str)
+    
+    # Verificar novos campos de calibração
+    assert isinstance(data["confidence"], float)
+    assert 0.0 <= data["confidence"] <= 1.0
+    assert isinstance(data["volatility"], int)
+    assert 0 <= data["volatility"] <= 100
+    assert isinstance(data["calibration_notes"], list)
+    assert all(isinstance(note, str) for note in data["calibration_notes"])
 
 
 def test_editorial_forecast_returns_404_for_unknown_thread(tmp_path: Path) -> None:
@@ -3478,6 +3489,38 @@ def test_editorial_forecast_returns_404_for_unknown_thread(tmp_path: Path) -> No
 
     resp = client.get("/api/v2/threads/thread-inexistente/editorial-decisions/forecast")
     assert resp.status_code == 404
+
+
+def test_editorial_forecast_calibration_with_rich_data(tmp_path: Path) -> None:
+    """Forecast com dados ricos deve ter confiança alta e notas de calibração."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "cal-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "cal-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "cal-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar múltiplas runs e marcar golden para criar dados ricos
+    for i in range(5):
+        run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": f"cal-run{i}"}, json={"request_text": f"Campanha {i}", "mode": "content_calendar"}).json()["run_id"]
+        client.get(f"/api/v2/workflow-runs/{run_id}/baseline")
+        # Marcar como golden global (alternando objective)
+        client.post(
+            f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+            headers={"Idempotency-Key": f"cal-mark{i}", "Authorization": "Bearer admin:admin"},
+            json={"run_id": run_id, "scope": "global" if i % 2 == 0 else "objective", "objective_key": f"obj-{i}" if i % 2 == 1 else None, "justification": f"Test {i}"},
+        )
+
+    forecast = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/forecast")
+    assert forecast.status_code == 200
+    data = forecast.json()
+
+    # Com dados ricos, deve ter confiança razoável
+    assert data["confidence"] >= 0.4
+    # Deve ter notas de calibração
+    assert len(data["calibration_notes"]) >= 1
+    # Volatilidade deve estar no range válido
+    assert 0 <= data["volatility"] <= 100
 
 
 def test_editorial_recommendations_include_priority_scores(tmp_path: Path) -> None:

@@ -2160,6 +2160,9 @@ def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, obj
             "trend": forecast.trend,
             "drivers": forecast.drivers,
             "recommended_focus": forecast.recommended_focus,
+            "confidence": forecast.confidence,
+            "volatility": forecast.volatility,
+            "calibration_notes": forecast.calibration_notes,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
