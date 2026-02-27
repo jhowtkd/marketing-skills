@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
@@ -2041,4 +2041,74 @@ def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[s
             "thread_id": thread_id,
             "recommendations": recommendations_to_dict(recommendations),
             "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class EditorialPlaybookExecuteRequest(BaseModel):
+    action_id: str
+    run_id: str | None = None
+    note: str | None = None
+    
+    @field_validator("action_id")
+    @classmethod
+    def validate_action_id(cls, v: str) -> str:
+        valid_actions = {"open_review_task", "prepare_guided_regeneration", "suggest_policy_review"}
+        if v not in valid_actions:
+            raise ValueError(f"action_id must be one of: {valid_actions}")
+        return v
+
+
+@router.post("/v2/threads/{thread_id}/editorial-decisions/playbook/execute")
+def execute_editorial_playbook_v2(
+    thread_id: str,
+    request: Request,
+    body: EditorialPlaybookExecuteRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, object]:
+    """Execute an editorial recovery playbook action with one click.
+    
+    Actions:
+    - open_review_task: Creates a review task for editorial review
+    - prepare_guided_regeneration: Prepares context for guided regeneration
+    - suggest_policy_review: Suggests reviewing brand editorial policy
+    
+    Emits EditorialPlaybookExecuted event and returns created entities.
+    """
+    from vm_webapp.commands_v2 import execute_editorial_playbook_command
+    
+    # Get actor context (identity + role)
+    actor_ctx = require_valid_auth(request)
+    actor_id = actor_ctx["actor_id"]
+    actor_role = actor_ctx.get("actor_role", "editor")
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        try:
+            dedup = execute_editorial_playbook_command(
+                session,
+                thread_id=thread_id,
+                action_id=body.action_id,
+                run_id=body.run_id,
+                note=body.note,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                idempotency_key=idempotency_key,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        
+        import json as _json
+        response = _json.loads(dedup.response_json) if dedup.response_json else {}
+        
+        return {
+            "status": "success",
+            "executed_action": body.action_id,
+            "created_entities": response.get("created_entities", []),
+            "event_id": response.get("event_id"),
         }

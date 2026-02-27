@@ -809,3 +809,106 @@ def mark_editorial_golden_command(
         },
     )
     return get_command_dedup(session, idempotency_key=idempotency_key)
+
+
+VALID_PLAYBOOK_ACTIONS = {
+    "open_review_task",
+    "prepare_guided_regeneration", 
+    "suggest_policy_review",
+}
+
+
+def execute_editorial_playbook_command(
+    session: Session,
+    *,
+    thread_id: str,
+    action_id: str,
+    run_id: str | None,
+    note: str | None,
+    actor_id: str,
+    actor_role: str | None = None,
+    idempotency_key: str,
+) -> CommandDedup:
+    """Execute an editorial playbook action and emit event.
+    
+    Args:
+        session: Database session
+        thread_id: Thread ID
+        action_id: One of VALID_PLAYBOOK_ACTIONS
+        run_id: Optional run ID for context
+        note: Optional note/context for the action
+        actor_id: Actor executing the action
+        actor_role: Optional actor role
+        idempotency_key: For deduplication
+        
+    Returns:
+        CommandDedup record
+        
+    Raises:
+        ValueError: If action_id is not valid
+    """
+    if action_id not in VALID_PLAYBOOK_ACTIONS:
+        raise ValueError(f"Invalid action_id: {action_id}. Must be one of: {VALID_PLAYBOOK_ACTIONS}")
+    
+    dedup = get_command_dedup(session, idempotency_key=idempotency_key)
+    if dedup is not None:
+        return dedup
+
+    stream_id = f"thread:{thread_id}"
+    expected = get_stream_version(session, stream_id)
+    
+    event = EventEnvelope(
+        event_id=f"evt-{uuid4().hex[:12]}",
+        event_type="EditorialPlaybookExecuted",
+        aggregate_type="thread",
+        aggregate_id=thread_id,
+        stream_id=stream_id,
+        expected_version=expected,
+        actor_type="human",
+        actor_id=actor_id,
+        thread_id=thread_id,
+        payload={
+            "thread_id": thread_id,
+            "action_id": action_id,
+            "run_id": run_id,
+            "note": note or "",
+            "actor_role": actor_role or "editor",
+        },
+    )
+    saved = append_event(session, event)
+    
+    # Build created_entities based on action
+    created_entities: list[dict] = []
+    if action_id == "open_review_task":
+        created_entities.append({
+            "entity_type": "review_task",
+            "entity_id": f"review-{uuid4().hex[:8]}",
+            "status": "open",
+        })
+    elif action_id == "prepare_guided_regeneration":
+        created_entities.append({
+            "entity_type": "regeneration_context",
+            "entity_id": run_id or f"regen-{uuid4().hex[:8]}",
+            "status": "pending",
+        })
+    elif action_id == "suggest_policy_review":
+        created_entities.append({
+            "entity_type": "policy_suggestion",
+            "entity_id": f"policy-sugg-{uuid4().hex[:8]}",
+            "status": "suggested",
+        })
+    
+    save_command_dedup(
+        session,
+        idempotency_key=idempotency_key,
+        command_name="execute_editorial_playbook",
+        event_id=saved.event_id,
+        response={
+            "event_id": saved.event_id,
+            "thread_id": thread_id,
+            "action_id": action_id,
+            "run_id": run_id,
+            "created_entities": created_entities,
+        },
+    )
+    return get_command_dedup(session, idempotency_key=idempotency_key)

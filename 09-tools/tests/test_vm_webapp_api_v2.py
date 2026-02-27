@@ -1645,3 +1645,73 @@ def test_editorial_recommendations_endpoint_returns_actionable_items(tmp_path: P
         assert "action_id" in rec
         assert "title" in rec
         assert "description" in rec
+
+
+def test_editorial_playbook_execute_endpoint_creates_action_and_emits_event(tmp_path: Path) -> None:
+    """Playbook execute endpoint deve executar acao e emitir evento de timeline."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "pb-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "pb-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "pb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run para usar no playbook
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "pb-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+
+    # Executar acao do playbook
+    result = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/playbook/execute",
+        headers={"Idempotency-Key": "pb-exec1", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task", "run_id": run_id, "note": "Revisar estrutura"},
+    )
+    
+    assert result.status_code == 200
+    data = result.json()
+    
+    # Verificar estrutura da resposta
+    assert "status" in data
+    assert "executed_action" in data
+    assert "created_entities" in data
+    assert data["status"] == "success"
+    assert data["executed_action"] == "open_review_task"
+    
+    # Verificar que created_entities foi populado
+    assert len(data["created_entities"]) >= 1
+    assert data["created_entities"][0]["entity_type"] == "review_task"
+
+
+def test_editorial_playbook_execute_validates_action_id(tmp_path: Path) -> None:
+    """Playbook execute deve rejeitar action_id invalido."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "pb-b2"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "pb-p2"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "pb-t2"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+
+    result = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/playbook/execute",
+        headers={"Idempotency-Key": "pb-exec2", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "invalid_action"},
+    )
+    
+    assert result.status_code == 422
+
+
+def test_editorial_playbook_requires_idempotency_key(tmp_path: Path) -> None:
+    """Playbook execute deve exigir Idempotency-Key."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "pb-b3"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "pb-p3"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "pb-t3"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+
+    result = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/playbook/execute",
+        headers={"Authorization": "Bearer admin:admin"},  # sem Idempotency-Key
+        json={"action_id": "open_review_task"},
+    )
+    
+    assert result.status_code == 422
