@@ -1,0 +1,181 @@
+name: vm-editorial-ops-nightly
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      threads:
+        description: "Comma-separated list of thread IDs to include (default: all)"
+        required: false
+        default: ""
+
+jobs:
+  collect-and-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Collect editorial insights
+        id: collect
+        run: |
+          # Start the webapp in background for API access
+          uv run python -c "
+          import subprocess
+          import time
+          import json
+          import sys
+          
+          # Start app
+          proc = subprocess.Popen(
+              ['uv', 'run', 'python', '-m', 'vm_webapp.app'],
+              cwd='09-tools',
+              env={'VM_DB_PATH': '/tmp/test_workspace.sqlite3', 'VM_WORKSPACE_ROOT': '/tmp/test_vm'},
+          )
+          time.sleep(3)  # Wait for startup
+          
+          try:
+              import urllib.request
+              
+              # Get all threads (you may need to adjust this endpoint)
+              # For now, we'll query a sample set or use input
+              thread_ids = '${{ github.event.inputs.threads }}'.split(',') if '${{ github.event.inputs.threads }}' else []
+              
+              insights = []
+              for thread_id in thread_ids:
+                  if not thread_id.strip():
+                      continue
+                  try:
+                      url = f'http://localhost:8000/api/v2/threads/{thread_id.strip()}/editorial-decisions/insights'
+                      req = urllib.request.Request(url)
+                      with urllib.request.urlopen(req, timeout=10) as resp:
+                          data = json.loads(resp.read().decode())
+                          insights.append(data)
+                  except Exception as e:
+                      print(f'Warning: Failed to fetch {thread_id}: {e}', file=sys.stderr)
+              
+              # If no specific threads, create sample data for demo
+              if not insights:
+                  insights = [{
+                      'thread_id': 'sample',
+                      'totals': {'marked_total': 0, 'by_scope': {'global': 0, 'objective': 0}, 'by_reason_code': {}},
+                      'policy': {'denied_total': 0},
+                      'baseline': {'resolved_total': 0, 'by_source': {'objective_golden': 0, 'global_golden': 0, 'previous': 0, 'none': 0}},
+                      'recency': {'last_marked_at': None, 'last_actor_id': None}
+                  }]
+              
+              with open('/tmp/insights.json', 'w') as f:
+                  json.dump(insights, f)
+              
+              print(f'Collected {len(insights)} thread insights')
+          finally:
+              proc.terminate()
+              proc.wait()
+          "
+          
+          # Copy the insights file for the next step
+          cp /tmp/insights.json ./insights.json
+
+      - name: Generate report
+        run: |
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file ./insights.json \
+            --output ./editorial-ops-report.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-ops-report
+          path: |
+            ./editorial-ops-report.md
+            ./insights.json
+          retention-days: 30
+
+      - name: Publish summary
+        run: |
+          echo "## Editorial Operations Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Include report content
+          cat ./editorial-ops-report.md >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📄 Full report available as artifact: \\"editorial-ops-report\\"" >> $GITHUB_STEP_SUMMARY
+
+  test-report-generator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test report generator with sample data
+        run: |
+          # Create sample insights
+          echo '[
+            {
+              "thread_id": "t-1",
+              "totals": {"marked_total": 5, "by_scope": {"global": 2, "objective": 3}, "by_reason_code": {"clarity": 2, "cta": 3}},
+              "policy": {"denied_total": 1},
+              "baseline": {"resolved_total": 8, "by_source": {"objective_golden": 3, "global_golden": 2, "previous": 2, "none": 1}},
+              "recency": {"last_marked_at": "2026-02-27T10:00:00Z", "last_actor_id": "user-1"}
+            },
+            {
+              "thread_id": "t-2",
+              "totals": {"marked_total": 3, "by_scope": {"global": 1, "objective": 2}, "by_reason_code": {"structure": 3}},
+              "policy": {"denied_total": 0},
+              "baseline": {"resolved_total": 5, "by_source": {"objective_golden": 2, "global_golden": 1, "previous": 1, "none": 1}},
+              "recency": {"last_marked_at": "2026-02-26T15:00:00Z", "last_actor_id": "user-2"}
+            }
+          ]' > /tmp/sample-insights.json
+
+          # Generate report
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file /tmp/sample-insights.json \
+            --output /tmp/test-report.md
+
+          # Verify output
+          cat /tmp/test-report.md
+          
+          # Check for expected content
+          grep -q "Total Threads" /tmp/test-report.md || (echo "Missing Total Threads" && exit 1)
+          grep -q "Total Golden Marked" /tmp/test-report.md || (echo "Missing Total Golden Marked" && exit 1)
+          
+          echo "✅ Report generator test passed"
+
+      - name: Test report generator JSON output
+        run: |
+          echo '[{"thread_id": "t-1", "totals": {"marked_total": 1}, "policy": {"denied_total": 0}, "baseline": {"by_source": {"none": 1}}}]}' > /tmp/minimal.json
+          
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file /tmp/minimal.json \
+            --format json \
+            --output /tmp/test-report.json
+          
+          # Verify JSON structure
+          python3 -c "
+          import json
+          with open('/tmp/test-report.json') as f:
+              data = json.load(f)
+              assert 'generated_at' in data
+              assert 'metrics' in data
+              print('JSON structure valid')
+          "
+          
+          echo "✅ JSON output test passed"
