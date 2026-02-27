@@ -258,3 +258,232 @@ Hook `useWorkspace` exporta:
 3. `feat(vm-ui): add editorial audit panel with scope filter and pagination`
 4. `ci(vm-webapp): gate multi-tenant editorial policy and audit coverage`
 5. `docs(release): append governance v5 multitenant policy and studio audit ui`
+
+---
+
+## Governança v8: Forecast Preditivo + Priorização Automática
+
+### Overview
+Forecast determinístico e explicável para avaliação de risco editorial, combinado com priorização automática de ações baseada em impacto e esforço.
+
+---
+
+### A) Forecast Preditivo (Backend)
+
+#### Módulo `editorial_forecast.py`
+Motor de forecast determinístico sem ML externo:
+
+```python
+from vm_webapp.editorial_forecast import calculate_forecast, EditorialForecast
+
+forecast = calculate_forecast(insights_data)
+# forecast.risk_score: 0-100
+# forecast.trend: improving|stable|degrading
+# forecast.drivers: list[str]
+# forecast.recommended_focus: str
+```
+
+#### Heurísticas de Risco
+| Fator | Threshold | Score | Driver |
+|-------|-----------|-------|--------|
+| baseline_none_rate | > 70% | +40 | baseline_none_rate_critical |
+| baseline_none_rate | > 50% | +30 | baseline_none_rate_high |
+| baseline_none_rate | > 30% | +15 | baseline_none_rate_moderate |
+| policy_denials | > 5 | +25 | policy_denials_critical |
+| policy_denials | > 0 | +15 | policy_denials_present |
+| recency_gap | > 14 dias | +25 | recency_gap_large |
+| recency_gap | > 7 dias | +15 | recency_gap_moderate |
+| no_golden_marks | any | +40 | no_golden_marks |
+| low_global_coverage | < 20% | +15 | low_global_coverage |
+
+#### Endpoint
+**GET /api/v2/threads/{thread_id}/editorial-decisions/forecast**
+
+Response:
+```json
+{
+  "thread_id": "thread-xxx",
+  "risk_score": 65,
+  "trend": "degrading",
+  "drivers": ["baseline_none_rate_high", "recency_gap_moderate"],
+  "recommended_focus": "Aumentar cobertura de golden",
+  "generated_at": "2026-02-27T18:00:00Z"
+}
+```
+
+#### Trend Detection
+- **improving**: marcações recentes (< 3 dias) OU baseline_none_rate < 30%
+- **degrading**: sem marcas OU denials > 3
+- **stable**: outros casos
+
+#### Test Coverage
+- `test_editorial_forecast_endpoint_returns_risk_assessment`: contrato
+- `test_editorial_forecast_returns_404_for_unknown_thread`: error handling
+
+---
+
+### B) Priorização Automática de Ações
+
+#### Atributos de Prioridade
+Cada recomendação agora inclui:
+
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| `impact_score` | int (1-10) | Impacto da ação no sistema |
+| `effort_score` | int (1-10) | Esforço necessário para execução |
+| `priority_score` | int | Calculado: impact * 10 - effort * 3 |
+| `why_priority` | string | Explicação legível da prioridade |
+
+#### Action Metadata
+```python
+ACTION_METADATA = {
+    "create_objective_golden": {"impact": 9, "effort": 4},
+    "create_global_golden": {"impact": 8, "effort": 6},
+    "review_brand_policy": {"impact": 7, "effort": 8},
+    "run_editorial_review": {"impact": 8, "effort": 5},
+}
+```
+
+#### Ordenação
+Recomendações ordenadas por `priority_score` descendente:
+```python
+recommendations.sort(key=lambda r: r.priority_score, reverse=True)
+```
+
+#### Test Coverage
+- `test_editorial_recommendations_include_priority_scores`: campos presentes
+- `test_editorial_recommendations_ordered_by_priority_desc`: ordenação
+
+---
+
+### C) UI de Forecast + Priorização (Studio)
+
+#### Tipos Atualizados (`useWorkspace.ts`)
+```typescript
+type EditorialRecommendation = {
+  // ... campos existentes
+  impact_score: number;
+  effort_score: number;
+  priority_score: number;
+  why_priority: string;
+};
+
+type EditorialForecast = {
+  thread_id: string;
+  risk_score: number;
+  trend: "improving" | "stable" | "degrading";
+  drivers: string[];
+  recommended_focus: string;
+  generated_at: string;
+};
+```
+
+#### Estado Adicionado
+```typescript
+const [editorialForecast, setEditorialForecast] = useState<EditorialForecast | null>(null);
+const [loadingForecast, setLoadingForecast] = useState(false);
+```
+
+#### Forecast Panel
+Exibe:
+- **Risk Score**: 0-100 com cor (verde/amarelo/vermelho)
+- **Trend**: ícone + label localizado (📈 Melhorando, 📉 Degradando, ➡️ Estável)
+- **Drivers**: lista de fatores de risco
+- **Recommended Focus**: ação sugerida
+
+#### Recommendation Badges
+Para cada recomendação:
+- **Rank**: #1, #2, #3...
+- **Impact Badge**: Alto/Médio/Baixo + valor
+- **Effort Badge**: Alto/Médio/Baixo + valor
+- **Priority Score**: valor calculado
+- **Why Priority**: explicação em tooltip
+
+#### Test Coverage
+- `WorkspaceEditorialForecast.test.tsx`: 17 testes
+  - Loading, empty, e estados com dados
+  - Cores de risco (red/yellow/green)
+  - Labels de trend
+  - Badges de impacto/esforço
+
+---
+
+### D) Report Noturno com Forecast Delta
+
+#### Script Atualizado (`editorial_ops_report.py`)
+Novas opções:
+```bash
+--forecasts-file FORECASTS_FILE     # Dados de forecast
+--previous-report PREVIOUS_REPORT   # Cálculo de delta
+```
+
+#### Delta Calculation
+| Indicador | Significado |
+|-----------|-------------|
+| 📈 +N | Risco aumentou significativamente (> 5 pontos) |
+| 📉 -N | Risco diminuiu significativamente (< -5 pontos) |
+| ➡️ stable | Risco estável (± 5 pontos) |
+| 🆕 new | Thread novo (sem histórico) |
+
+#### Top 3 Threads de Maior Risco
+Report destaca:
+```markdown
+## ⚠️ Top 3 Threads by Risk
+
+### 1. thread-xxx
+- **Risk Score:** 75/100
+- **Trend:** 📉 degrading
+- **Recommended Focus:** Criar golden references urgentemente
+```
+
+#### Workflow Atualizado
+Passos adicionados:
+1. Coleta de forecasts para cada thread
+2. Download do report anterior (para delta)
+3. Cálculo de deltas e ordenação por risco
+4. Geração de relatório com seções Forecast e Top Risks
+
+---
+
+## Métricas de Editorial (v8 - Adicionadas)
+
+| Métrica | Tipo | Descrição |
+|---------|------|-----------|
+| `editorial_forecast_requested_total` | Counter | Total de requests de forecast |
+
+---
+
+## Test Summary
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Backend API v2 | 42 (+2) | PASS |
+| Backend Editorial Forecast | 2 | PASS |
+| Backend Editorial Recommendations | 2 | PASS |
+| Frontend Workspace | 66 (+17) | PASS |
+
+### Novos Testes v8
+- Backend Forecast: +2 (endpoint + error handling)
+- Backend Prioritization: +2 (scores + ordenação)
+- Frontend Forecast: +17 (panel + badges)
+
+---
+
+## CI Gates (atualizados)
+
+### editorial-ops-nightly
+```yaml
+- Collect insights AND forecasts
+- Download previous report for delta
+- Generate report with --forecasts-file and --previous-report
+- Highlight top 3 risk threads
+```
+
+---
+
+## Commits v8
+1. `feat(forecast): add deterministic editorial risk forecast endpoint`
+2. `feat(editorial): prioritize recommended actions by impact and effort`
+3. `feat(vm-ui): add editorial forecast panel and prioritized recommended actions`
+4. `ci(observability): include forecast deltas in nightly editorial ops report`
+5. `docs(release): append governance v8 forecast and action prioritization notes`
