@@ -1287,3 +1287,94 @@ def test_editorial_golden_policy_denial_increments_metrics(tmp_path: Path) -> No
     deny_total_after = metrics_after.get("counts", {}).get("editorial_golden_policy_denied_total", 0)
 
     assert deny_total_after == deny_total_before + 1, "editorial_golden_policy_denied_total should increment"
+
+
+# TASK A: Auth real (não confiar em headers)
+
+def test_editorial_golden_uses_bearer_auth_token(tmp_path: Path) -> None:
+    """Deve usar token Bearer para extrair actor_id e role"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auth-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auth-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auth-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "auth-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark golden with Bearer token (simulado - formato: Bearer <user_id>:<role>)
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={
+            "Idempotency-Key": "auth-mark",
+            "Authorization": "Bearer user-real:admin"
+        },
+        json={"run_id": run_id, "scope": "global", "justification": "test bearer auth"},
+    )
+    assert resp.status_code == 200, f"Bearer auth should succeed, got {resp.status_code}: {resp.text}"
+
+    # Verify event was created with correct actor from token
+    with session_scope(app.state.engine) as session:
+        from vm_webapp.repo import list_timeline_items_view
+        timeline_items = list_timeline_items_view(session, thread_id=thread_id)
+        golden_events = [item for item in timeline_items if item.event_type == "EditorialGoldenMarked"]
+        assert len(golden_events) == 1
+        event = golden_events[0]
+        assert event.actor_id == "user-real", f"Expected actor_id='user-real', got '{event.actor_id}'"
+        
+        # Verify payload contains role from token
+        payload = json.loads(event.payload_json)
+        assert payload.get("actor_role") == "admin", f"Expected actor_role='admin', got '{payload.get('actor_role')}'"
+
+
+def test_editorial_golden_fallback_to_headers_without_auth(tmp_path: Path) -> None:
+    """Sem Authorization header, deve fallback para X-User-Id/X-User-Role"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auth-fb-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auth-fb-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auth-fb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "auth-fb-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # No Authorization header - should fallback to X-User-* headers
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={
+            "Idempotency-Key": "auth-fb-mark",
+            "X-User-Id": "legacy-user",
+            "X-User-Role": "editor"
+        },
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-123", "justification": "test fallback"},
+    )
+    assert resp.status_code == 200, f"Fallback headers should succeed, got {resp.status_code}"
+
+    # Verify event uses fallback headers
+    with session_scope(app.state.engine) as session:
+        from vm_webapp.repo import list_timeline_items_view
+        timeline_items = list_timeline_items_view(session, thread_id=thread_id)
+        golden_events = [item for item in timeline_items if item.event_type == "EditorialGoldenMarked"]
+        assert len(golden_events) == 1
+        event = golden_events[0]
+        assert event.actor_id == "legacy-user", f"Expected actor_id='legacy-user', got '{event.actor_id}'"
+
+
+def test_editorial_golden_rejects_invalid_auth(tmp_path: Path) -> None:
+    """Token inválido deve retornar 401"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auth-inv-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auth-inv-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auth-inv-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "auth-inv-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Invalid Bearer token
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={
+            "Idempotency-Key": "auth-inv-mark",
+            "Authorization": "Bearer invalid-token-format"
+        },
+        json={"run_id": run_id, "scope": "global", "justification": "test invalid"},
+    )
+    assert resp.status_code == 401, f"Invalid token should return 401, got {resp.status_code}"

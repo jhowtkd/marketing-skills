@@ -189,19 +189,57 @@ def _require_editorial_role(request: Request) -> str:
     return role
 
 
+def _parse_bearer_token(auth_header: str | None) -> dict[str, str] | None:
+    """Parse Bearer token and extract actor_id and role.
+    
+    Expected format: "Bearer <actor_id>:<role>"
+    Returns None if invalid format or missing.
+    """
+    if not auth_header:
+        return None
+    
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    
+    token = parts[1]
+    token_parts = token.split(":", 1)
+    if len(token_parts) != 2:
+        return None
+    
+    actor_id, role = token_parts
+    
+    # Normalize role
+    if role == "workspace-owner":
+        normalized_role = "editor"
+    else:
+        normalized_role = role
+    
+    return {
+        "actor_id": actor_id,
+        "actor_role": normalized_role,
+    }
+
+
 def get_actor_context(request: Request) -> dict[str, str]:
-    """Extract actor identity and role from request headers.
+    """Extract actor identity and role from request.
+    
+    Priority (highest to lowest):
+    1. Authorization: Bearer <actor_id>:<role>
+    2. X-User-Id and X-User-Role headers (legacy fallback)
+    3. workspace-owner / editor (default fallback)
     
     Returns dict with:
-    - actor_id: from X-User-Id header (fallback: workspace-owner)
-    - actor_role: from X-User-Role header (fallback: editor)
-    
-    Role normalization:
-    - workspace-owner -> editor
-    - viewer -> viewer
-    - editor -> editor  
-    - admin -> admin
+    - actor_id: extracted or default
+    - actor_role: normalized (admin|editor|viewer)
     """
+    # Try Bearer token first
+    auth_header = request.headers.get("Authorization")
+    bearer_ctx = _parse_bearer_token(auth_header)
+    if bearer_ctx:
+        return bearer_ctx
+    
+    # Fallback to legacy headers
     actor_id = request.headers.get("X-User-Id", "workspace-owner")
     raw_role = request.headers.get("X-User-Role", "workspace-owner")
     
@@ -215,6 +253,30 @@ def get_actor_context(request: Request) -> dict[str, str]:
         "actor_id": actor_id,
         "actor_role": actor_role,
     }
+
+
+def require_valid_auth(request: Request) -> dict[str, str]:
+    """Require valid authentication for editorial actions.
+    
+    Similar to get_actor_context but raises 401 for invalid Bearer tokens.
+    Legacy headers (X-User-*) are accepted as valid fallback.
+    
+    Returns dict with actor_id and actor_role.
+    """
+    auth_header = request.headers.get("Authorization")
+    
+    # If Authorization header is present, it must be valid
+    if auth_header:
+        bearer_ctx = _parse_bearer_token(auth_header)
+        if bearer_ctx is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or malformed Authorization token"
+            )
+        return bearer_ctx
+    
+    # No Authorization header - use legacy fallback
+    return get_actor_context(request)
 
 
 # Policy matrix for editorial golden marking by scope
@@ -1452,8 +1514,8 @@ def mark_editorial_golden_v2(
     # RBAC: validate user role
     _require_editorial_role(request)
     
-    # Get actor context (identity + role)
-    actor_ctx = get_actor_context(request)
+    # Get actor context (identity + role) - require valid auth
+    actor_ctx = require_valid_auth(request)
     
     # Policy: enforce scope-based authorization
     try:
