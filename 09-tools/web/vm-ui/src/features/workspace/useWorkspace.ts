@@ -112,6 +112,20 @@ export type EditorialAuditResponse = {
   offset: number;
 };
 
+export type EditorialRecommendation = {
+  severity: "info" | "warning" | "critical";
+  reason: string;
+  action_id: string;
+  title: string;
+  description: string;
+};
+
+export type EditorialRecommendations = {
+  thread_id: string;
+  recommendations: EditorialRecommendation[];
+  generated_at: string;
+};
+
 type PostJsonLike = <T>(url: string, payload: unknown, prefix: string) => Promise<T>;
 
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
@@ -181,6 +195,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [editorialAudit, setEditorialAudit] = useState<EditorialAuditResponse | null>(null);
   const [editorialInsights, setEditorialInsights] = useState<EditorialInsights | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [recommendations, setRecommendations] = useState<EditorialRecommendations | null>(null);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -319,6 +335,48 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
       // Fallback: keep current state (null or previous)
     } finally {
       setLoadingInsights(false);
+    }
+  };
+
+  const fetchRecommendations = async () => {
+    if (!activeThreadId) {
+      setRecommendations(null);
+      return;
+    }
+    setLoadingRecommendations(true);
+    try {
+      const data = await fetchJson<EditorialRecommendations>(`/api/v2/threads/${activeThreadId}/editorial-decisions/recommendations`);
+      setRecommendations(data);
+    } catch (e) {
+      console.error("Failed to fetch recommendations", e);
+      // Fallback: keep current state (null or previous)
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
+
+  const executePlaybookAction = async (actionId: string, runId?: string, note?: string) => {
+    if (!activeThreadId) return;
+    try {
+      const result = await postJson<{
+        status: string;
+        executed_action: string;
+        created_entities: Array<{ entity_type: string; entity_id: string }>;
+      }>(
+        `/api/v2/threads/${activeThreadId}/editorial-decisions/playbook/execute`,
+        {
+          action_id: actionId,
+          run_id: runId,
+          note: note,
+        },
+        "/api"
+      );
+      // Refresh recommendations after executing action
+      await fetchRecommendations();
+      return result;
+    } catch (e) {
+      console.error("Failed to execute playbook action", e);
+      throw e;
     }
   };
 
@@ -480,6 +538,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchEditorialDecisions();
     fetchEditorialAudit({ scope: auditScopeFilter, ...auditPagination });
     fetchEditorialInsights();
+    fetchRecommendations();
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -538,5 +597,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     editorialInsights,
     loadingInsights,
     refreshEditorialInsights: fetchEditorialInsights,
+    recommendations,
+    loadingRecommendations,
+    refreshRecommendations: fetchRecommendations,
+    executePlaybookAction,
   };
 }

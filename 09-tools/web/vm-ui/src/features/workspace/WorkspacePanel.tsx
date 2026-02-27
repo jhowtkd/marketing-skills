@@ -77,6 +77,10 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     editorialInsights,
     loadingInsights,
     refreshEditorialInsights,
+    recommendations,
+    loadingRecommendations,
+    refreshRecommendations,
+    executePlaybookAction,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
@@ -788,6 +792,89 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  const editorialRecommendationsSection = (
+    <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+            Governanca
+          </p>
+          <h3 className="mt-2 font-serif text-xl text-slate-900">Ações Recomendadas</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => refreshRecommendations()}
+          disabled={loadingRecommendations || !hasActiveThread}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+        >
+          {loadingRecommendations ? "Atualizando..." : "Recarregar ações"}
+        </button>
+      </div>
+
+      {!hasActiveThread ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Escolha um job para visualizar as ações recomendadas.
+        </div>
+      ) : loadingRecommendations ? (
+        <div className="mt-3 flex items-center justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+        </div>
+      ) : !recommendations ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Erro ao carregar recomendações. Tente atualizar.
+        </div>
+      ) : recommendations.recommendations.length === 0 ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Nenhuma ação recomendada no momento. O sistema analisará os KPIs periodicamente.
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {recommendations.recommendations.map((rec, idx) => (
+            <div
+              key={`${rec.action_id}-${idx}`}
+              className={`rounded-xl border p-4 ${
+                rec.severity === "critical"
+                  ? "border-red-200 bg-red-50/50"
+                  : rec.severity === "warning"
+                  ? "border-amber-200 bg-amber-50/50"
+                  : "border-slate-200 bg-slate-50/50"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        rec.severity === "critical"
+                          ? "bg-red-100 text-red-700"
+                          : rec.severity === "warning"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {rec.severity === "critical" ? "Crítico" : rec.severity === "warning" ? "Atenção" : "Info"}
+                    </span>
+                    <h4 className="font-semibold text-slate-900">{rec.title}</h4>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{rec.description}</p>
+                  <p className="mt-1 text-xs text-slate-500">Motivo: {rec.reason}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => executePlaybookAction?.(rec.action_id, currentRunId || undefined)}
+                  disabled={!executePlaybookAction}
+                  className="rounded-lg bg-[var(--vm-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:opacity-90"
+                >
+                  Executar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -847,6 +934,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {timelineSection}
           {editorialAuditSection}
           {editorialInsightsSection}
+          {editorialRecommendationsSection}
         </>
       ) : (
         <>
@@ -870,6 +958,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {timelineSection}
           {editorialAuditSection}
           {editorialInsightsSection}
+          {editorialRecommendationsSection}
         </>
       )}
 
