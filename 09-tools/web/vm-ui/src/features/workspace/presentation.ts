@@ -232,3 +232,41 @@ export function toHumanActorRole(role: string): string {
   };
   return map[role] ?? role;
 }
+
+// Editorial Insights helpers
+export type ReasonCode = "clarity" | "structure" | "cta" | "persuasion" | "accuracy" | "tone" | "other";
+
+export const REASON_CODE_LABELS: Record<ReasonCode | string, string> = {
+  clarity: "Clareza",
+  structure: "Estrutura",
+  cta: "CTA",
+  persuasion: "Persuasão",
+  accuracy: "Precisão",
+  tone: "Tom",
+  other: "Outro",
+};
+
+export function toHumanReasonCode(code: string | undefined): string {
+  if (!code) return "Outro";
+  return REASON_CODE_LABELS[code] || code;
+}
+
+export function getTopReasonCode(byReasonCode: Record<string, number>): { code: string; count: number } | null {
+  const entries = Object.entries(byReasonCode);
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => b[1] - a[1]);
+  return { code: entries[0][0], count: entries[0][1] };
+}
+
+export function formatInsightsDate(dateString: string | null): string {
+  if (!dateString) return "Nunca";
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "Data inválida";
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

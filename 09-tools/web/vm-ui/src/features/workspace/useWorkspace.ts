@@ -76,6 +76,32 @@ export type EditorialAuditEvent = {
   run_id: string;
   justification: string;
   occurred_at: string;
+  reason_code?: string;
+};
+
+export type EditorialInsights = {
+  thread_id: string;
+  totals: {
+    marked_total: number;
+    by_scope: { global: number; objective: number };
+    by_reason_code: Record<string, number>;
+  };
+  policy: {
+    denied_total: number;
+  };
+  baseline: {
+    resolved_total: number;
+    by_source: {
+      objective_golden: number;
+      global_golden: number;
+      previous: number;
+      none: number;
+    };
+  };
+  recency: {
+    last_marked_at: string | null;
+    last_actor_id: string | null;
+  };
 };
 
 export type EditorialAuditResponse = {
@@ -153,6 +179,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [editorialDecisions, setEditorialDecisions] = useState<EditorialDecisions | null>(null);
   const [resolvedBaseline, setResolvedBaseline] = useState<ResolvedBaseline | null>(null);
   const [editorialAudit, setEditorialAudit] = useState<EditorialAuditResponse | null>(null);
+  const [editorialInsights, setEditorialInsights] = useState<EditorialInsights | null>(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -274,6 +302,23 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     } catch (e) {
       console.error("Failed to fetch editorial audit", e);
       // Fallback: keep current state (null or previous)
+    }
+  };
+
+  const fetchEditorialInsights = async () => {
+    if (!activeThreadId) {
+      setEditorialInsights(null);
+      return;
+    }
+    setLoadingInsights(true);
+    try {
+      const data = await fetchJson<EditorialInsights>(`/api/v2/threads/${activeThreadId}/editorial-decisions/insights`);
+      setEditorialInsights(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial insights", e);
+      // Fallback: keep current state (null or previous)
+    } finally {
+      setLoadingInsights(false);
     }
   };
 
@@ -434,6 +479,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchTimeline();
     fetchEditorialDecisions();
     fetchEditorialAudit({ scope: auditScopeFilter, ...auditPagination });
+    fetchEditorialInsights();
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -489,5 +535,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     auditPagination,
     setAuditPagination,
     refreshEditorialAudit: fetchEditorialAudit,
+    editorialInsights,
+    loadingInsights,
+    refreshEditorialInsights: fetchEditorialInsights,
   };
 }

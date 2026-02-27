@@ -21,6 +21,9 @@ import {
   AUDIT_SCOPE_FILTER_LABELS,
   formatAuditEvent,
   toHumanActorRole,
+  toHumanReasonCode,
+  getTopReasonCode,
+  formatInsightsDate,
   type BaselineSource,
   type TimelineFilter,
   type AuditScopeFilter,
@@ -71,6 +74,9 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     auditPagination,
     setAuditPagination,
     refreshEditorialAudit,
+    editorialInsights,
+    loadingInsights,
+    refreshEditorialInsights,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
@@ -659,6 +665,129 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  const editorialInsightsSection = (
+    <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+            Governanca
+          </p>
+          <h3 className="mt-2 font-serif text-xl text-slate-900">Insights Editoriais</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => refreshEditorialInsights()}
+          disabled={loadingInsights || !hasActiveThread}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+        >
+          {loadingInsights ? "Atualizando..." : "Atualizar insights"}
+        </button>
+      </div>
+
+      {!hasActiveThread ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Escolha um job para visualizar os insights de governanca editorial.
+        </div>
+      ) : loadingInsights ? (
+        <div className="mt-3 flex items-center justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+        </div>
+      ) : !editorialInsights ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Erro ao carregar insights. Tente atualizar.
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Total de marcacoes */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Total de Marcações
+            </p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {editorialInsights.totals.marked_total}
+            </p>
+            <div className="mt-1 flex gap-2 text-xs text-slate-600">
+              <span className="text-amber-600">{editorialInsights.totals.by_scope.global} global</span>
+              <span>·</span>
+              <span className="text-blue-600">{editorialInsights.totals.by_scope.objective} objetivo</span>
+            </div>
+          </div>
+
+          {/* Deny total */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Negados por Policy
+            </p>
+            <p className={`mt-1 text-2xl font-bold ${editorialInsights.policy.denied_total > 0 ? "text-red-600" : "text-slate-900"}`}>
+              {editorialInsights.policy.denied_total}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              tentativas bloqueadas
+            </p>
+          </div>
+
+          {/* Baseline none rate */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Sem Baseline
+            </p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {(() => {
+                const resolved = editorialInsights.baseline.resolved_total;
+                const noneCount = editorialInsights.baseline.by_source.none;
+                if (resolved === 0) return "0%";
+                return `${Math.round((noneCount / resolved) * 100)}%`;
+              })()}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              {editorialInsights.baseline.by_source.none} de {editorialInsights.baseline.resolved_total} resoluções
+            </p>
+          </div>
+
+          {/* Top reason code */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Motivo Principal
+            </p>
+            {(() => {
+              const top = getTopReasonCode(editorialInsights.totals.by_reason_code);
+              if (!top || editorialInsights.totals.marked_total === 0) {
+                return <p className="mt-1 text-lg font-medium text-slate-400">Nenhum</p>;
+              }
+              return (
+                <>
+                  <p className="mt-1 text-lg font-bold text-slate-900">
+                    {toHumanReasonCode(top.code)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {top.count} marcações ({Math.round((top.count / editorialInsights.totals.marked_total) * 100)}%)
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Ultima marcacao */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 sm:col-span-2 lg:col-span-4">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Última Marcação
+            </p>
+            <div className="mt-1 flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-900">
+                {formatInsightsDate(editorialInsights.recency.last_marked_at)}
+              </p>
+              {editorialInsights.recency.last_actor_id && (
+                <p className="text-xs text-slate-600">
+                  por {editorialInsights.recency.last_actor_id}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -716,6 +845,8 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             </section>
           ) : null}
           {timelineSection}
+          {editorialAuditSection}
+          {editorialInsightsSection}
         </>
       ) : (
         <>
@@ -738,6 +869,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           ) : null}
           {timelineSection}
           {editorialAuditSection}
+          {editorialInsightsSection}
         </>
       )}
 
