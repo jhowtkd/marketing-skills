@@ -56,6 +56,30 @@ jobs:
           uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q
           uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q
 
+  editorial-insights-gate-v6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Test editorial insights endpoint (Governanca v6)
+        run: |
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_editorial_insights_endpoint_returns_governance_kpis -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      - name: Install frontend dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+      - name: Test editorial insights UI
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run test -- --run src/features/workspace/WorkspacePanel.test.tsx
+
   frontend-gate:
     runs-on: ubuntu-latest
     steps:
