@@ -23,6 +23,7 @@ export type TimelineEvent = {
   event_type: string;
   created_at: string;
   payload: any;
+  actor_id?: string;
 };
 
 export type PrimaryArtifact = {
@@ -144,6 +145,35 @@ export type EditorialForecast = {
   generated_at: string;
 };
 
+export type EditorialSLO = {
+  brand_id: string;
+  max_baseline_none_rate: number;
+  max_policy_denied_rate: number;
+  min_confidence: number;
+  auto_remediation_enabled: boolean;
+  updated_at: string;
+};
+
+export type EditorialDrift = {
+  thread_id: string;
+  drift_score: number;
+  drift_severity: "none" | "low" | "medium" | "high";
+  drift_flags: string[];
+  primary_driver: string;
+  recommended_actions: string[];
+  details: Record<string, number | string>;
+  generated_at: string;
+};
+
+export type AutoRemediationEvent = {
+  event_type: "AutoRemediationExecuted" | "AutoRemediationSkipped";
+  occurred_at: string;
+  action_id?: string;
+  proposed_action?: string;
+  auto_executed: boolean;
+  reason: string;
+};
+
 type PostJsonLike = <T>(url: string, payload: unknown, prefix: string) => Promise<T>;
 
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
@@ -218,6 +248,12 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [editorialForecast, setEditorialForecast] = useState<EditorialForecast | null>(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [showSuppressedActions, setShowSuppressedActions] = useState(false);
+  const [editorialSLO, setEditorialSLO] = useState<EditorialSLO | null>(null);
+  const [loadingSLO, setLoadingSLO] = useState(false);
+  const [editorialDrift, setEditorialDrift] = useState<EditorialDrift | null>(null);
+  const [loadingDrift, setLoadingDrift] = useState(false);
+  const [autoRemediationHistory, setAutoRemediationHistory] = useState<AutoRemediationEvent[]>([]);
+  const [loadingAutoHistory, setLoadingAutoHistory] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -390,6 +426,116 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
       // Fallback: keep current state (null or previous)
     } finally {
       setLoadingForecast(false);
+    }
+  };
+
+  const fetchEditorialSLO = async (brandId: string) => {
+    if (!brandId) {
+      setEditorialSLO(null);
+      return;
+    }
+    setLoadingSLO(true);
+    try {
+      const data = await fetchJson<EditorialSLO>(`/api/v2/brands/${brandId}/editorial-slo`);
+      setEditorialSLO(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial SLO", e);
+      setEditorialSLO(null);
+    } finally {
+      setLoadingSLO(false);
+    }
+  };
+
+  const updateEditorialSLO = async (brandId: string, updates: Partial<Omit<EditorialSLO, "brand_id" | "updated_at">>) => {
+    if (!brandId) return null;
+    setLoadingSLO(true);
+    try {
+      const data = await postJson<EditorialSLO>(`/api/v2/brands/${brandId}/editorial-slo`, updates, "workspace");
+      setEditorialSLO(data);
+      return data;
+    } catch (e) {
+      console.error("Failed to update editorial SLO", e);
+      throw e;
+    } finally {
+      setLoadingSLO(false);
+    }
+  };
+
+  const fetchEditorialDrift = async () => {
+    if (!activeThreadId) {
+      setEditorialDrift(null);
+      return;
+    }
+    setLoadingDrift(true);
+    try {
+      const data = await fetchJson<EditorialDrift>(`/api/v2/threads/${activeThreadId}/editorial-decisions/drift`);
+      setEditorialDrift(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial drift", e);
+      setEditorialDrift(null);
+    } finally {
+      setLoadingDrift(false);
+    }
+  };
+
+  const triggerAutoRemediation = async () => {
+    if (!activeThreadId) return null;
+    try {
+      const data = await postJson<{
+        status: string;
+        executed: string[];
+        skipped: string[];
+        event_id?: string;
+      }>(
+        `/api/v2/threads/${activeThreadId}/editorial-decisions/auto-remediate`,
+        { auto_execute: true },
+        "workspace"
+      );
+      // Refresh auto-remediation history after trigger
+      await fetchAutoRemediationHistory();
+      return data;
+    } catch (e) {
+      console.error("Failed to trigger auto-remediation", e);
+      throw e;
+    }
+  };
+
+  const fetchAutoRemediationHistory = async () => {
+    if (!activeThreadId) {
+      setAutoRemediationHistory([]);
+      return;
+    }
+    setLoadingAutoHistory(true);
+    try {
+      // Get auto-remediation events from timeline
+      const data = await fetchJson<{
+        events: Array<{
+          event_type: string;
+          occurred_at: string;
+          payload?: {
+            action_id?: string;
+            proposed_action?: string;
+            auto_executed?: boolean;
+            reason?: string;
+          };
+        }>;
+      }>(`/api/v2/threads/${activeThreadId}/events?event_types=AutoRemediationExecuted,AutoRemediationSkipped&limit=10`);
+      
+      const history: AutoRemediationEvent[] = (data.events || []).map(event => ({
+        event_type: event.event_type as AutoRemediationEvent["event_type"],
+        occurred_at: event.occurred_at,
+        action_id: event.payload?.action_id,
+        proposed_action: event.payload?.proposed_action,
+        auto_executed: event.payload?.auto_executed ?? false,
+        reason: event.payload?.reason || "",
+      }));
+      
+      setAutoRemediationHistory(history);
+    } catch (e) {
+      console.error("Failed to fetch auto-remediation history", e);
+      setAutoRemediationHistory([]);
+    } finally {
+      setLoadingAutoHistory(false);
     }
   };
 
@@ -645,5 +791,19 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     refreshEditorialForecast: fetchEditorialForecast,
     showSuppressedActions,
     setShowSuppressedActions,
+    // Editorial SLO
+    editorialSLO,
+    loadingSLO,
+    refreshEditorialSLO: fetchEditorialSLO,
+    updateEditorialSLO,
+    // Editorial Drift
+    editorialDrift,
+    loadingDrift,
+    refreshEditorialDrift: fetchEditorialDrift,
+    // Auto-remediation
+    autoRemediationHistory,
+    loadingAutoHistory,
+    refreshAutoRemediationHistory: fetchAutoRemediationHistory,
+    triggerAutoRemediation,
   };
 }

@@ -85,14 +85,28 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     loadingInsights,
     refreshEditorialInsights,
     recommendations,
-    loadingRecommendations,
-    refreshRecommendations,
+    loadingRecommendations = false,
+    refreshRecommendations = () => undefined,
     executePlaybookAction,
     editorialForecast,
     loadingForecast,
     refreshEditorialForecast,
-    showSuppressedActions,
-    setShowSuppressedActions,
+    showSuppressedActions = false,
+    setShowSuppressedActions = () => undefined,
+    // Editorial SLO
+    editorialSLO = null,
+    loadingSLO = false,
+    refreshEditorialSLO = () => undefined,
+    updateEditorialSLO = async () => undefined,
+    // Editorial Drift
+    editorialDrift = null,
+    loadingDrift = false,
+    refreshEditorialDrift = () => undefined,
+    // Auto-remediation
+    autoRemediationHistory = [],
+    loadingAutoHistory = false,
+    refreshAutoRemediationHistory = () => undefined,
+    triggerAutoRemediation = async () => undefined,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
@@ -1038,6 +1052,264 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  // Editorial Control Center Section
+  const editorialControlCenterSection = (
+    <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+            Governança
+          </p>
+          <h3 className="mt-2 font-serif text-xl text-slate-900">Control Center</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            refreshEditorialDrift();
+            refreshAutoRemediationHistory();
+            if (runDetail?.brand_id) {
+              refreshEditorialSLO(runDetail.brand_id);
+            }
+          }}
+          disabled={loadingDrift || loadingAutoHistory || !hasActiveThread}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+        >
+          {loadingDrift || loadingAutoHistory ? "Atualizando..." : "Recarregar"}
+        </button>
+      </div>
+
+      {!hasActiveThread ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Escolha um job para visualizar o Control Center editorial.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {/* Drift Detection Panel */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-slate-800">Detecção de Drift</h4>
+              {editorialDrift && (
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                  editorialDrift.drift_severity === "high"
+                    ? "bg-red-100 text-red-700"
+                    : editorialDrift.drift_severity === "medium"
+                    ? "bg-amber-100 text-amber-700"
+                    : editorialDrift.drift_severity === "low"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-green-100 text-green-700"
+                }`}>
+                  Score: {editorialDrift.drift_score}/100
+                </span>
+              )}
+            </div>
+            
+            {loadingDrift ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+              </div>
+            ) : !editorialDrift ? (
+              <p className="text-sm text-slate-500">Clique em "Recarregar" para analisar drift.</p>
+            ) : (
+              <div className="space-y-2">
+                {editorialDrift.drift_flags.length > 0 ? (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-600">Flags detectadas:</p>
+                    <ul className="text-sm text-slate-700 space-y-1">
+                      {editorialDrift.drift_flags.map((flag, idx) => (
+                        <li key={idx} className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          {flag.replace(/_/g, " ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm text-green-700">✓ Nenhum drift detectado</p>
+                )}
+                
+                {editorialDrift.primary_driver && (
+                  <p className="text-xs text-slate-600">
+                    <span className="font-medium">Driver principal:</span>{" "}
+                    {editorialDrift.primary_driver.replace(/_/g, " ")}
+                  </p>
+                )}
+                
+                {editorialDrift.recommended_actions.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-slate-600">Ações recomendadas:</p>
+                    <ul className="text-sm text-slate-700 space-y-1 mt-1">
+                      {editorialDrift.recommended_actions.map((action, idx) => (
+                        <li key={idx} className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          {action.replace(/_/g, " ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Auto-remediation Panel */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-slate-800">Auto-Remediação</h4>
+              {editorialSLO && (
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                  editorialSLO.auto_remediation_enabled
+                    ? "bg-green-100 text-green-700"
+                    : "bg-slate-100 text-slate-600"
+                }`}>
+                  {editorialSLO.auto_remediation_enabled ? "Ativada" : "Desativada"}
+                </span>
+              )}
+            </div>
+
+            {loadingSLO ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+              </div>
+            ) : !editorialSLO ? (
+              <p className="text-sm text-slate-500">Carregando configuração SLO...</p>
+            ) : (
+              <div className="space-y-3">
+                {/* Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Habilitar auto-remediação</p>
+                    <p className="text-xs text-slate-500">
+                      Executa ações seguras automaticamente quando drift é detectado
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!runDetail?.brand_id) return;
+                      try {
+                        await updateEditorialSLO(runDetail.brand_id, {
+                          auto_remediation_enabled: !editorialSLO.auto_remediation_enabled,
+                        });
+                      } catch (e) {
+                        // Error handled in hook
+                      }
+                    }}
+                    disabled={!runDetail?.brand_id}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      editorialSLO.auto_remediation_enabled
+                        ? "bg-[var(--vm-primary)]"
+                        : "bg-slate-200"
+                    } disabled:opacity-50`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        editorialSLO.auto_remediation_enabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Manual Trigger */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await triggerAutoRemediation();
+                    } catch (e) {
+                      // Error handled in hook
+                    }
+                  }}
+                  disabled={!editorialSLO.auto_remediation_enabled}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Executar remediação manual
+                </button>
+                {!editorialSLO.auto_remediation_enabled && (
+                  <p className="text-xs text-slate-400 text-center">
+                    Ative a auto-remediação para habilitar execução manual
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Execution History */}
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <h5 className="text-sm font-medium text-slate-700 mb-2">Histórico de execuções</h5>
+              {loadingAutoHistory ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+                </div>
+              ) : autoRemediationHistory.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhuma execução registrada.</p>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-auto">
+                  {autoRemediationHistory.map((event, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-lg border p-2 text-sm ${
+                        event.event_type === "AutoRemediationExecuted"
+                          ? "border-green-200 bg-green-50/50"
+                          : "border-slate-200 bg-slate-50/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`font-medium ${
+                          event.event_type === "AutoRemediationExecuted"
+                            ? "text-green-800"
+                            : "text-slate-600"
+                        }`}>
+                          {event.event_type === "AutoRemediationExecuted" ? "Executado" : "Ignorado"}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {new Date(event.occurred_at).toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                      {event.action_id && (
+                        <p className="text-xs text-slate-600 mt-1">
+                          Ação: {event.action_id.replace(/_/g, " ")}
+                        </p>
+                      )}
+                      {event.reason && (
+                        <p className="text-xs text-slate-500 mt-1">{event.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SLO Thresholds Display */}
+          {editorialSLO && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+              <h4 className="font-semibold text-slate-800 mb-3">Limites SLO</h4>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs text-slate-500">Max Baseline None</p>
+                  <p className="text-lg font-medium text-slate-800">
+                    {(editorialSLO.max_baseline_none_rate * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Max Policy Denied</p>
+                  <p className="text-lg font-medium text-slate-800">
+                    {(editorialSLO.max_policy_denied_rate * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Min Confiança</p>
+                  <p className="text-lg font-medium text-slate-800">
+                    {(editorialSLO.min_confidence * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -1064,6 +1336,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               }`}
             >
               Studio
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView("control")}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-all duration-200 ${
+                activeView === "control" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+              }`}
+            >
+              Control
             </button>
           </div>
         </div>
@@ -1099,6 +1380,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {editorialInsightsSection}
           {editorialForecastSection}
           {editorialRecommendationsSection}
+          {editorialControlCenterSection}
         </>
       ) : (
         <>
@@ -1124,6 +1406,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {editorialInsightsSection}
           {editorialForecastSection}
           {editorialRecommendationsSection}
+          {editorialControlCenterSection}
         </>
       )}
 

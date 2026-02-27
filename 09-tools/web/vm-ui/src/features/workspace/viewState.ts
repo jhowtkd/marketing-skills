@@ -1,4 +1,4 @@
-export type WorkspaceView = "chat" | "studio";
+export type WorkspaceView = "chat" | "studio" | "control";
 
 const KEY_PREFIX = "vm.job.activeView:";
 const memoryStore = new Map<string, WorkspaceView>();
@@ -8,7 +8,7 @@ export function readWorkspaceView(jobId: string | null): WorkspaceView {
   const key = `${KEY_PREFIX}${jobId}`;
   try {
     const raw = window.localStorage.getItem(key);
-    if (raw === "chat" || raw === "studio") return raw;
+    if (raw === "chat" || raw === "studio" || raw === "control") return raw;
   } catch {
     // ignore localStorage errors and fallback to memory
   }
