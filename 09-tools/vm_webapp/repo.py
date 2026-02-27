@@ -14,6 +14,7 @@ from vm_webapp.models import (
     BrandView,
     CampaignView,
     CommandDedup,
+    EditorialDecisionView,
     EventLog,
     Project,
     ProjectView,
@@ -478,5 +479,15 @@ def list_approvals_view(session: Session, *, thread_id: str) -> list[ApprovalVie
             select(ApprovalView)
             .where(ApprovalView.thread_id == thread_id)
             .order_by(ApprovalView.approval_id.asc())
+        )
+    )
+
+
+def list_editorial_decisions_view(session: Session, *, thread_id: str) -> list[EditorialDecisionView]:
+    return list(
+        session.scalars(
+            select(EditorialDecisionView)
+            .where(EditorialDecisionView.thread_id == thread_id)
+            .order_by(EditorialDecisionView.updated_at.desc())
         )
     )

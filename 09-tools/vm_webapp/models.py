@@ -216,3 +216,16 @@ class ContextVersion(Base):
     scope_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class EditorialDecisionView(Base):
+    __tablename__ = "editorial_decisions_view"
+
+    decision_key: Mapped[str] = mapped_column(String(256), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    objective_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    justification: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

@@ -9,6 +9,7 @@ from vm_webapp.models import (
     ApprovalView,
     BrandView,
     CampaignView,
+    EditorialDecisionView,
     EventLog,
     ProjectView,
     TaskView,
@@ -204,3 +205,27 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
                     occurred_at=event.occurred_at,
                 )
             )
+
+    if event.event_type == "EditorialGoldenMarked":
+        thread_id = payload.get("thread_id", event.thread_id or "")
+        scope = payload.get("scope", "global")
+        objective_key = payload.get("objective_key")
+        decision_key = f"{thread_id}|{scope}|{objective_key or '-'}"
+        row = session.get(EditorialDecisionView, decision_key)
+        if row is None:
+            row = EditorialDecisionView(
+                decision_key=decision_key,
+                thread_id=thread_id,
+                scope=scope,
+                objective_key=objective_key,
+                run_id=payload.get("run_id", ""),
+                justification=payload.get("justification", ""),
+                event_id=event.event_id,
+                updated_at=event.occurred_at,
+            )
+            session.add(row)
+        else:
+            row.run_id = payload.get("run_id", row.run_id)
+            row.justification = payload.get("justification", row.justification)
+            row.event_id = event.event_id
+            row.updated_at = event.occurred_at
