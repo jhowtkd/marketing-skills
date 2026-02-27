@@ -24,6 +24,7 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
         requested_mode: "content_calendar",
         request_text: "Plano v2",
         created_at: "2026-02-27T12:00:00Z",
+        objective_key: "plano-abc123",
       },
       {
         run_id: "run-1",
@@ -31,10 +32,11 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
         requested_mode: "content_calendar",
         request_text: "Plano v1",
         created_at: "2026-02-26T12:00:00Z",
+        objective_key: "plano-abc123",
       },
     ],
     effectiveActiveRunId: "run-2",
-    runDetail: { status: "completed" },
+    runDetail: { status: "completed", objective_key: "plano-abc123" },
     timeline: [],
     primaryArtifact: {
       stageDir: "final",
@@ -54,6 +56,9 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
       },
     },
     deepEvaluationByRun: {},
+    editorialDecisions: null,
+    resolvedBaseline: { baseline_run_id: "run-1", source: "previous", objective_key: "plano-abc123" },
+    localBaseline: { run_id: "run-1", objective_key: "plano-abc123" },
     loadingPrimaryArtifact: false,
     startRun: vi.fn(),
     resumeRun: vi.fn(),
@@ -61,6 +66,7 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
     refreshTimeline: vi.fn(),
     refreshPrimaryArtifact: vi.fn(),
     loadArtifactForRun: vi.fn(),
+    markGoldenDecision: vi.fn(),
     ...overrides,
   };
 }
@@ -72,7 +78,7 @@ describe("Workspace quality flow", () => {
     render(<WorkspacePanel activeThreadId="t1" activeRunId="run-2" onSelectRun={() => {}} devMode={false} />);
 
     expect(screen.getByText("Score geral")).toBeInTheDocument();
-    expect(screen.getByText("Comparando com a versao anterior")).toBeInTheDocument();
+    expect(screen.getByText(/Comparando com:/)).toBeInTheDocument();
     expect(screen.getByText("Diff entre versoes")).toBeInTheDocument();
   });
 

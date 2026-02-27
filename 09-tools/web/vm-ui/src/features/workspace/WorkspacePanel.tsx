@@ -4,6 +4,7 @@ import QualityScoreCard from "../quality/QualityScoreCard";
 import VersionDiffPanel from "../quality/VersionDiffPanel";
 import { computeQualityScore } from "../quality/score";
 import ArtifactPreview from "../inbox/ArtifactPreview";
+import GoldenDecisionModal from "./GoldenDecisionModal";
 import {
   canResumeRunStatus,
   pickBaselineRun,
@@ -12,6 +13,8 @@ import {
   toHumanRunName,
   toHumanStatus,
   toHumanTimelineEvent,
+  isGoldenForRun,
+  type BaselineSource,
 } from "./presentation";
 import { useWorkspace } from "./useWorkspace";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
@@ -42,11 +45,14 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     primaryArtifact,
     artifactsByRun,
     deepEvaluationByRun = {},
+    editorialDecisions,
+    resolvedBaseline,
     loadingPrimaryArtifact,
     startRun,
     resumeRun,
     requestDeepEvaluation,
     loadArtifactForRun,
+    markGoldenDecision,
     refreshRuns,
     refreshTimeline,
     refreshPrimaryArtifact,
@@ -59,6 +65,8 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const [requestText, setRequestText] = useState<string>("");
   const [activeView, setActiveView] = useState<WorkspaceView>("studio");
   const [guidedModalOpen, setGuidedModalOpen] = useState(false);
+  const [goldenModalOpen, setGoldenModalOpen] = useState(false);
+  const [goldenModalScope, setGoldenModalScope] = useState<"global" | "objective">("global");
 
   useEffect(() => {
     setActiveView(readWorkspaceView(activeThreadId));
@@ -85,10 +93,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const showDeepEvalFallback = Boolean(
     activeDeepEvaluation && (activeDeepEvaluation.status === "error" || activeDeepEvaluation.fallbackApplied)
   );
-  const baselineRun = useMemo(
-    () => pickBaselineRun(runs, activeRun?.run_id ?? null),
-    [runs, activeRun?.run_id]
-  );
+
+  // Use resolved baseline from API, fallback to local calculation
+  const baselineSource: BaselineSource = resolvedBaseline?.source ?? "none";
+  const baselineRunId = resolvedBaseline?.baseline_run_id ?? null;
+  const baselineRun = baselineRunId ? runs.find((r) => r.run_id === baselineRunId) ?? null : null;
   const baselineArtifact = baselineRun ? artifactsByRun?.[baselineRun.run_id] ?? null : null;
   const baselineText = baselineArtifact?.content ?? baselineRun?.request_text ?? "";
   const baselineScore = useMemo(
@@ -102,11 +111,33 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
       ? summarizeRequestText(activeRequestText)
       : "Ainda nao existe uma versao ativa para este job.";
 
+  // Check golden status for active run
+  const activeRunGoldenStatus = activeRun
+    ? isGoldenForRun(activeRun.run_id, editorialDecisions)
+    : { isGlobalGolden: false, isObjectiveGolden: false };
+
   useEffect(() => {
     if (!baselineRun) return;
     if (Object.prototype.hasOwnProperty.call(artifactsByRun ?? {}, baselineRun.run_id)) return;
     loadArtifactForRun?.(baselineRun.run_id);
   }, [baselineRun, artifactsByRun, loadArtifactForRun]);
+
+  const handleMarkGolden = async (scope: "global" | "objective") => {
+    if (!activeRun) return;
+    setGoldenModalScope(scope);
+    setGoldenModalOpen(true);
+  };
+
+  const handleGoldenSubmit = async ({ justification }: { justification: string }) => {
+    if (!activeRun) return;
+    await markGoldenDecision({
+      runId: activeRun.run_id,
+      scope: goldenModalScope,
+      objectiveKey: activeRun.objective_key,
+      justification,
+    });
+    setGoldenModalOpen(false);
+  };
 
   const versionsSection = (
     <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
@@ -127,29 +158,45 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
-          {runs.map((r, idx) => (
-            <div
-              key={r.run_id}
-              onClick={() => onSelectRun(r.run_id)}
-              className={`cursor-pointer rounded-2xl border p-3 text-sm transition-all duration-200 ${
-                currentRunId === r.run_id
-                  ? "border-[var(--vm-primary)] bg-[var(--vm-warm)] shadow-sm ring-1 ring-[color:var(--vm-primary)]/20"
-                  : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-slate-900">
-                  {toHumanRunName({
-                    index: idx + 1,
-                    requestText: r.request_text || r.requested_mode,
-                    createdAt: r.created_at,
-                  })}
-                </span>
-                <span className="text-xs font-semibold text-slate-500">{toHumanStatus(r.status)}</span>
+          {runs.map((r, idx) => {
+            const goldenStatus = isGoldenForRun(r.run_id, editorialDecisions);
+            return (
+              <div
+                key={r.run_id}
+                onClick={() => onSelectRun(r.run_id)}
+                className={`cursor-pointer rounded-2xl border p-3 text-sm transition-all duration-200 ${
+                  currentRunId === r.run_id
+                    ? "border-[var(--vm-primary)] bg-[var(--vm-warm)] shadow-sm ring-1 ring-[color:var(--vm-primary)]/20"
+                    : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-slate-900">
+                    {toHumanRunName({
+                      index: idx + 1,
+                      requestText: r.request_text || r.requested_mode,
+                      createdAt: r.created_at,
+                    })}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">{toHumanStatus(r.status)}</span>
+                </div>
+                {/* Golden Badges */}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {goldenStatus.isGlobalGolden && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      Golden global
+                    </span>
+                  )}
+                  {goldenStatus.isObjectiveGolden && (
+                    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                      Golden objetivo
+                    </span>
+                  )}
+                </div>
+                {devMode ? <div className="text-[11px] text-slate-400 mt-1">ID: {r.run_id}</div> : null}
               </div>
-              {devMode ? <div className="text-[11px] text-slate-400 mt-1">ID: {r.run_id}</div> : null}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
@@ -199,8 +246,21 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           <h2 className="mt-2 font-serif text-2xl text-slate-900">Versao ativa</h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">{canvasSummary}</p>
         </div>
-        <div className="rounded-full border border-slate-200 bg-[var(--vm-warm)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary-strong)]">
-          {activeStatus ? toHumanStatus(activeStatus) : hasActiveThread ? "Sem versao selecionada" : "Selecione um job"}
+        <div className="flex flex-col items-end gap-2">
+          <div className="rounded-full border border-slate-200 bg-[var(--vm-warm)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vm-primary-strong)]">
+            {activeStatus ? toHumanStatus(activeStatus) : hasActiveThread ? "Sem versao selecionada" : "Selecione um job"}
+          </div>
+          {/* Golden Badges for active run */}
+          {activeRunGoldenStatus.isGlobalGolden && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              Golden global
+            </span>
+          )}
+          {activeRunGoldenStatus.isObjectiveGolden && (
+            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+              Golden objetivo
+            </span>
+          )}
         </div>
       </div>
 
@@ -324,6 +384,29 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
                 Recarregar
               </button>
             </div>
+
+            {/* Golden Decision Buttons */}
+            {hasActiveRun && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                <span className="text-xs font-medium text-slate-600">Marcar como:</span>
+                <button
+                  type="button"
+                  disabled={activeRunGoldenStatus.isGlobalGolden}
+                  onClick={() => handleMarkGolden("global")}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-50 hover:bg-amber-100"
+                >
+                  {activeRunGoldenStatus.isGlobalGolden ? "Golden global" : "Definir como golden global"}
+                </button>
+                <button
+                  type="button"
+                  disabled={activeRunGoldenStatus.isObjectiveGolden}
+                  onClick={() => handleMarkGolden("objective")}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 disabled:opacity-50 hover:bg-blue-100"
+                >
+                  {activeRunGoldenStatus.isObjectiveGolden ? "Golden objetivo" : "Definir como golden deste objetivo"}
+                </button>
+              </div>
+            )}
           </div>
 
           {hasActiveRun ? (
@@ -333,8 +416,9 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
                   Avaliacao profunda indisponivel. Exibindo score heuristico local.
                 </p>
               ) : null}
+              {/* Baseline Source Label */}
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                {toComparisonLabel(Boolean(baselineScore))}
+                {toComparisonLabel(baselineSource)}
               </p>
               <QualityScoreCard current={currentScore} baseline={baselineScore} />
               {baselineScore ? (
@@ -479,6 +563,13 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           startRun({ mode: activeRun.requested_mode, requestText: payload.requestText });
           setGuidedModalOpen(false);
         }}
+      />
+
+      <GoldenDecisionModal
+        isOpen={goldenModalOpen}
+        scope={goldenModalScope}
+        onClose={() => setGoldenModalOpen(false)}
+        onSubmit={handleGoldenSubmit}
       />
 
       {currentRunId && runDetail && devMode ? (
