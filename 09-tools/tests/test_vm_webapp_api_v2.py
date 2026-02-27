@@ -747,7 +747,7 @@ def test_editorial_decisions_endpoints_mark_and_list(tmp_path: Path) -> None:
 
     marked = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "ed-mark-1"},
+        headers={"Idempotency-Key": "ed-mark-1", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run_id, "scope": "global", "justification": "melhor equilibrio editorial"},
     )
     assert marked.status_code == 200
@@ -769,7 +769,7 @@ def test_editorial_golden_validates_justification_empty(tmp_path: Path) -> None:
 
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "val-mark-empty"},
+        headers={"Idempotency-Key": "val-mark-empty", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run_id, "scope": "global", "justification": ""},
     )
     assert resp.status_code == 422
@@ -787,7 +787,7 @@ def test_editorial_golden_validates_scope_objective_without_key(tmp_path: Path) 
 
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "val-mark-obj"},
+        headers={"Idempotency-Key": "val-mark-obj", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run_id, "scope": "objective", "justification": "bom resultado"},
     )
     assert resp.status_code == 422
@@ -806,10 +806,10 @@ def test_editorial_golden_returns_404_for_run_outside_thread(tmp_path: Path) -> 
     # Create run in thread2
     run_id = client.post(f"/api/v2/threads/{thread2_id}/workflow-runs", headers={"Idempotency-Key": "404-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
 
-    # Try to mark golden in thread1 with run from thread2
+    # Try to mark golden in thread1 with run from thread2 (admin should get 404, not 403)
     resp = client.post(
         f"/api/v2/threads/{thread1_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "404-mark"},
+        headers={"Idempotency-Key": "404-mark", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run_id, "scope": "global", "justification": "nao deve funcionar"},
     )
     assert resp.status_code == 404
@@ -862,17 +862,17 @@ def test_workflow_run_baseline_endpoint_respects_priority(tmp_path: Path) -> Non
     detail = client.get(f"/api/v2/workflow-runs/{run1_id}")
     objective_key = detail.json()["objective_key"]
 
-    # Mark run1 as global golden
+    # Mark run1 as global golden (need admin)
     client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "base-mark-global"},
+        headers={"Idempotency-Key": "base-mark-global", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run1_id, "scope": "global", "justification": "melhor run global"},
     )
 
-    # Mark run2 as objective golden (same objective as run3)
+    # Mark run2 as objective golden (same objective as run3) - editor can do objective
     client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "base-mark-obj"},
+        headers={"Idempotency-Key": "base-mark-obj", "X-User-Id": "editor-test", "X-User-Role": "editor"},
         json={"run_id": run2_id, "scope": "objective", "objective_key": objective_key, "justification": "melhor run objetivo"},
     )
 
@@ -926,10 +926,10 @@ def test_editorial_golden_increments_metrics(tmp_path: Path) -> None:
     golden_total_before = metrics_before.get("counts", {}).get("editorial_golden_marked_total", 0)
     golden_scope_before = metrics_before.get("counts", {}).get("editorial_golden_marked_scope:global", 0)
 
-    # Mark as golden
+    # Mark as golden (need admin for global)
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
-        headers={"Idempotency-Key": "met-mark"},
+        headers={"Idempotency-Key": "met-mark", "X-User-Id": "admin-test", "X-User-Role": "admin"},
         json={"run_id": run_id, "scope": "global", "justification": "metric test"},
     )
     assert resp.status_code == 200
@@ -1000,7 +1000,7 @@ def test_editorial_decisions_list_increments_metrics(tmp_path: Path) -> None:
 # Bloco A: RBAC - Role-based authorization for editorial golden
 
 def test_editorial_golden_requires_editor_or_admin_role(tmp_path: Path) -> None:
-    """Apenas roles editor e admin podem marcar golden; viewer recebe 403"""
+    """Apenas roles editor (objective) e admin (global/objective) podem marcar golden; viewer recebe 403"""
     app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
     client = TestClient(app)
 
@@ -1017,26 +1017,26 @@ def test_editorial_golden_requires_editor_or_admin_role(tmp_path: Path) -> None:
     )
     assert resp_viewer.status_code == 403, "viewer should not be allowed to mark golden"
 
-    # Editor should succeed
+    # Editor should succeed with objective scope
     resp_editor = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
         headers={"Idempotency-Key": "rbac-editor", "X-User-Role": "editor"},
-        json={"run_id": run_id, "scope": "global", "justification": "test"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-rbac", "justification": "test"},
     )
-    assert resp_editor.status_code == 200, "editor should be allowed to mark golden"
+    assert resp_editor.status_code == 200, "editor should be allowed to mark objective golden"
 
-    # Admin should succeed
+    # Admin should succeed with global scope
     run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rbac-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
     resp_admin = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
         headers={"Idempotency-Key": "rbac-admin", "X-User-Role": "admin"},
         json={"run_id": run2_id, "scope": "global", "justification": "test"},
     )
-    assert resp_admin.status_code == 200, "admin should be allowed to mark golden"
+    assert resp_admin.status_code == 200, "admin should be allowed to mark global golden"
 
 
 def test_editorial_golden_fallback_role_to_editor(tmp_path: Path) -> None:
-    """Sem header X-User-Role, deve fallback para editor (permitido)"""
+    """Sem header X-User-Role, deve fallback para editor (permitido para objective)"""
     app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
     client = TestClient(app)
 
@@ -1045,13 +1045,13 @@ def test_editorial_golden_fallback_role_to_editor(tmp_path: Path) -> None:
     thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rbac-fb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
     run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rbac-fb-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
 
-    # No X-User-Role header - should fallback to editor
+    # No X-User-Role header - should fallback to editor (editor can only do objective)
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
         headers={"Idempotency-Key": "rbac-fb-mark"},
-        json={"run_id": run_id, "scope": "global", "justification": "test fallback"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-fallback", "justification": "test fallback"},
     )
-    assert resp.status_code == 200, "fallback to editor role should succeed"
+    assert resp.status_code == 200, "fallback to editor role should succeed for objective scope"
 
 
 # Bloco C: Hardening baseline-none
@@ -1150,11 +1150,11 @@ def test_editorial_golden_uses_fallback_actor_when_header_missing(tmp_path: Path
     thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "actor-fb-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
     run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "actor-fb-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
 
-    # Mark golden without user id header (fallback)
+    # Mark golden without user id header (fallback) - editor can only do objective
     resp = client.post(
         f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
         headers={"Idempotency-Key": "actor-fb-mark"},  # No X-User-Id, No X-User-Role
-        json={"run_id": run_id, "scope": "global", "justification": "test fallback actor"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-fb", "justification": "test fallback actor"},
     )
     assert resp.status_code == 200
 
