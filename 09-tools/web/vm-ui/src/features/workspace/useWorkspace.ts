@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchJson, postJson } from "../../api/client";
+import { computeQualityScore } from "../quality/score";
+import type { QualityScore } from "../quality/types";
 import { mapTimelineResponse } from "./adapters";
 
 export type WorkflowProfile = {
@@ -32,8 +34,73 @@ type ArtifactListingResponse = {
   stages?: Array<{ stage_dir: string; artifacts?: Array<string | { path?: string; filename?: string }> }>;
 };
 
+type DeepEvaluationApiPayload = {
+  score?: Partial<QualityScore>;
+  fallback_applied?: boolean;
+  fallback_reason?: string;
+};
+
+export type DeepEvaluationState = {
+  status: "loading" | "ready" | "error";
+  score: QualityScore;
+  fallbackApplied: boolean;
+  error: string | null;
+};
+
+type PostJsonLike = <T>(url: string, payload: unknown, prefix: string) => Promise<T>;
+
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
   return { mode: input.mode, request_text: input.requestText.trim() };
+}
+
+function normalizeQualityScore(raw: Partial<QualityScore> | undefined, fallback: QualityScore): QualityScore {
+  if (!raw || typeof raw !== "object") return fallback;
+  const criteria = raw.criteria ?? fallback.criteria;
+  return {
+    overall: typeof raw.overall === "number" ? raw.overall : fallback.overall,
+    criteria: {
+      completude: typeof criteria.completude === "number" ? criteria.completude : fallback.criteria.completude,
+      estrutura: typeof criteria.estrutura === "number" ? criteria.estrutura : fallback.criteria.estrutura,
+      clareza: typeof criteria.clareza === "number" ? criteria.clareza : fallback.criteria.clareza,
+      cta: typeof criteria.cta === "number" ? criteria.cta : fallback.criteria.cta,
+      acionabilidade:
+        typeof criteria.acionabilidade === "number" ? criteria.acionabilidade : fallback.criteria.acionabilidade,
+    },
+    recommendations: Array.isArray(raw.recommendations)
+      ? raw.recommendations.map((item) => String(item))
+      : fallback.recommendations,
+    source: raw.source === "deep" || raw.source === "heuristic" ? raw.source : fallback.source,
+  };
+}
+
+export async function requestDeepEvaluationForRun(input: {
+  runId: string;
+  artifactText: string;
+  post?: PostJsonLike;
+}): Promise<DeepEvaluationState> {
+  const fallbackScore = computeQualityScore(input.artifactText);
+  const post = input.post ?? postJson;
+  try {
+    const payload = await post<DeepEvaluationApiPayload>(
+      `/api/v2/workflow-runs/${input.runId}/quality-evaluation`,
+      { depth: "deep", rubric_version: "v1" },
+      "quality"
+    );
+    return {
+      status: "ready",
+      score: normalizeQualityScore(payload.score, fallbackScore),
+      fallbackApplied: Boolean(payload.fallback_applied),
+      error: payload.fallback_applied ? String(payload.fallback_reason ?? "deep evaluation unavailable") : null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "deep evaluation unavailable";
+    return {
+      status: "error",
+      score: fallbackScore,
+      fallbackApplied: true,
+      error: message,
+    };
+  }
 }
 
 export function useWorkspace(activeThreadId: string | null, activeRunId: string | null) {
@@ -43,6 +110,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [primaryArtifact, setPrimaryArtifact] = useState<PrimaryArtifact | null>(null);
   const [artifactsByRun, setArtifactsByRun] = useState<Record<string, PrimaryArtifact | null>>({});
+  const [deepEvaluationByRun, setDeepEvaluationByRun] = useState<Record<string, DeepEvaluationState>>({});
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
@@ -190,6 +258,22 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
+  const requestDeepEvaluation = async (runId: string, artifactText: string) => {
+    if (!runId) return null;
+    setDeepEvaluationByRun((current) => ({
+      ...current,
+      [runId]: {
+        status: "loading",
+        score: computeQualityScore(artifactText),
+        fallbackApplied: false,
+        error: null,
+      },
+    }));
+    const result = await requestDeepEvaluationForRun({ runId, artifactText });
+    setDeepEvaluationByRun((current) => ({ ...current, [runId]: result }));
+    return result;
+  };
+
   useEffect(() => {
     fetchProfiles();
   }, []);
@@ -221,6 +305,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     timeline,
     primaryArtifact,
     artifactsByRun,
+    deepEvaluationByRun,
     loadingProfiles,
     loadingRuns,
     loadingRunDetail,
@@ -228,6 +313,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadingPrimaryArtifact,
     startRun,
     resumeRun,
+    requestDeepEvaluation,
     loadArtifactForRun,
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,

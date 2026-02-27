@@ -40,9 +40,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     timeline,
     primaryArtifact,
     artifactsByRun,
+    deepEvaluationByRun = {},
     loadingPrimaryArtifact,
     startRun,
     resumeRun,
+    requestDeepEvaluation,
     loadArtifactForRun,
     refreshRuns,
     refreshTimeline,
@@ -74,6 +76,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const canRegenerate = Boolean(activeThreadId && activeRun?.requested_mode && activeRequestText.trim());
   const activeArtifactText = primaryArtifact?.content ?? activeRequestText;
   const activeScore = useMemo(() => computeQualityScore(activeArtifactText), [activeArtifactText]);
+  const activeDeepEvaluation = activeRun ? deepEvaluationByRun[activeRun.run_id] : null;
+  const currentScore = activeDeepEvaluation?.score ?? activeScore;
+  const showDeepEvalFallback = Boolean(
+    activeDeepEvaluation && (activeDeepEvaluation.status === "error" || activeDeepEvaluation.fallbackApplied)
+  );
   const baselineRun = useMemo(
     () => pickBaselineRun(runs, activeRun?.run_id ?? null),
     [runs, activeRun?.run_id]
@@ -84,7 +91,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     () => (baselineText.trim() ? computeQualityScore(baselineText) : null),
     [baselineText]
   );
-  const weakPoints = useMemo(() => activeScore.recommendations.slice(0, 3), [activeScore.recommendations]);
+  const weakPoints = useMemo(() => currentScore.recommendations.slice(0, 3), [currentScore.recommendations]);
   const canvasSummary = !hasActiveThread
     ? "Escolha um job para abrir o canvas editorial."
     : hasActiveRun
@@ -280,6 +287,17 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               >
                 Regenerar guiado
               </button>
+              <button
+                type="button"
+                disabled={!activeRun?.run_id || !activeArtifactText.trim() || activeDeepEvaluation?.status === "loading"}
+                onClick={() => {
+                  if (!activeRun?.run_id) return;
+                  requestDeepEvaluation?.(activeRun.run_id, activeArtifactText);
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
+              >
+                {activeDeepEvaluation?.status === "loading" ? "Avaliando..." : "Avaliar profundo"}
+              </button>
               {activeRunId ? (
                 <button
                   type="button"
@@ -306,10 +324,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
 
           {hasActiveRun ? (
             <div className="mt-4 space-y-3">
+              {showDeepEvalFallback ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Avaliacao profunda indisponivel. Exibindo score heuristico local.
+                </p>
+              ) : null}
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                 {toComparisonLabel(Boolean(baselineScore))}
               </p>
-              <QualityScoreCard current={activeScore} baseline={baselineScore} />
+              <QualityScoreCard current={currentScore} baseline={baselineScore} />
               {baselineScore ? (
                 <VersionDiffPanel baselineText={baselineText} currentText={activeArtifactText} />
               ) : (
