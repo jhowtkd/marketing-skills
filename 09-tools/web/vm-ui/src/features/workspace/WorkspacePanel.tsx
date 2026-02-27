@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import GuidedRegenerateModal from "../quality/GuidedRegenerateModal";
+import QualityScoreCard from "../quality/QualityScoreCard";
+import VersionDiffPanel from "../quality/VersionDiffPanel";
+import { computeQualityScore } from "../quality/score";
 import ArtifactPreview from "../inbox/ArtifactPreview";
 import {
   canResumeRunStatus,
+  pickBaselineRun,
   summarizeRequestText,
+  toComparisonLabel,
   toHumanRunName,
   toHumanStatus,
   toHumanTimelineEvent,
@@ -33,9 +39,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     runDetail,
     timeline,
     primaryArtifact,
+    artifactsByRun,
     loadingPrimaryArtifact,
     startRun,
     resumeRun,
+    loadArtifactForRun,
     refreshRuns,
     refreshTimeline,
     refreshPrimaryArtifact,
@@ -44,6 +52,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [requestText, setRequestText] = useState<string>("");
   const [activeView, setActiveView] = useState<WorkspaceView>("studio");
+  const [guidedModalOpen, setGuidedModalOpen] = useState(false);
 
   useEffect(() => {
     setActiveView(readWorkspaceView(activeThreadId));
@@ -63,11 +72,30 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const activeStatus = runDetail?.status ?? activeRun?.status ?? "";
   const activeRequestText = activeRun?.request_text ?? "";
   const canRegenerate = Boolean(activeThreadId && activeRun?.requested_mode && activeRequestText.trim());
+  const activeArtifactText = primaryArtifact?.content ?? activeRequestText;
+  const activeScore = useMemo(() => computeQualityScore(activeArtifactText), [activeArtifactText]);
+  const baselineRun = useMemo(
+    () => pickBaselineRun(runs, activeRun?.run_id ?? null),
+    [runs, activeRun?.run_id]
+  );
+  const baselineArtifact = baselineRun ? artifactsByRun?.[baselineRun.run_id] ?? null : null;
+  const baselineText = baselineArtifact?.content ?? baselineRun?.request_text ?? "";
+  const baselineScore = useMemo(
+    () => (baselineText.trim() ? computeQualityScore(baselineText) : null),
+    [baselineText]
+  );
+  const weakPoints = useMemo(() => activeScore.recommendations.slice(0, 3), [activeScore.recommendations]);
   const canvasSummary = !hasActiveThread
     ? "Escolha um job para abrir o canvas editorial."
     : hasActiveRun
       ? summarizeRequestText(activeRequestText)
       : "Ainda nao existe uma versao ativa para este job.";
+
+  useEffect(() => {
+    if (!baselineRun) return;
+    if (Object.prototype.hasOwnProperty.call(artifactsByRun ?? {}, baselineRun.run_id)) return;
+    loadArtifactForRun?.(baselineRun.run_id);
+  }, [baselineRun, artifactsByRun, loadArtifactForRun]);
 
   const versionsSection = (
     <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
@@ -244,6 +272,14 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               >
                 Regenerar
               </button>
+              <button
+                type="button"
+                disabled={!canRegenerate}
+                onClick={() => setGuidedModalOpen(true)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
+              >
+                Regenerar guiado
+              </button>
               {activeRunId ? (
                 <button
                   type="button"
@@ -267,6 +303,22 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               </button>
             </div>
           </div>
+
+          {hasActiveRun ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                {toComparisonLabel(Boolean(baselineScore))}
+              </p>
+              <QualityScoreCard current={activeScore} baseline={baselineScore} />
+              {baselineScore ? (
+                <VersionDiffPanel baselineText={baselineText} currentText={activeArtifactText} />
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-3 text-sm text-slate-600">
+                  Gere pelo menos duas versoes para habilitar o diff textual.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 transition-all duration-200">
@@ -389,6 +441,18 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {timelineSection}
         </>
       )}
+
+      <GuidedRegenerateModal
+        isOpen={guidedModalOpen}
+        baseRequest={activeRequestText}
+        weakPoints={weakPoints}
+        onClose={() => setGuidedModalOpen(false)}
+        onSubmit={(payload) => {
+          if (!activeRun?.requested_mode) return;
+          startRun({ mode: activeRun.requested_mode, requestText: payload.requestText });
+          setGuidedModalOpen(false);
+        }}
+      />
 
       {activeRunId && runDetail && devMode ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

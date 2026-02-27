@@ -45,3 +45,23 @@ export function summarizeRequestText(requestText?: string): string {
   if (normalized.length <= 120) return normalized;
   return `${normalized.slice(0, 117)}...`;
 }
+
+export type BaselineCandidate = {
+  run_id: string;
+  created_at?: string;
+};
+
+export function pickBaselineRun(
+  runs: BaselineCandidate[],
+  activeRunId: string | null
+): BaselineCandidate | null {
+  if (!activeRunId || runs.length < 2) return null;
+  const activeIndex = runs.findIndex((run) => run.run_id === activeRunId);
+  if (activeIndex < 0) return null;
+  if (activeIndex === 0) return runs[1] ?? null;
+  return runs[activeIndex - 1] ?? null;
+}
+
+export function toComparisonLabel(hasBaseline: boolean): string {
+  return hasBaseline ? "Comparando com a versao anterior" : "Sem versao anterior para comparar";
+}

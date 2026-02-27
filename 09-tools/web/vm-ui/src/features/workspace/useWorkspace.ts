@@ -28,6 +28,10 @@ export type PrimaryArtifact = {
   content: string;
 };
 
+type ArtifactListingResponse = {
+  stages?: Array<{ stage_dir: string; artifacts?: Array<string | { path?: string; filename?: string }> }>;
+};
+
 export function buildStartRunPayload(input: { mode: string; requestText: string }) {
   return { mode: input.mode, request_text: input.requestText.trim() };
 }
@@ -38,6 +42,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [runDetail, setRunDetail] = useState<any>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [primaryArtifact, setPrimaryArtifact] = useState<PrimaryArtifact | null>(null);
+  const [artifactsByRun, setArtifactsByRun] = useState<Record<string, PrimaryArtifact | null>>({});
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
@@ -104,15 +109,10 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
-  const fetchPrimaryArtifact = async () => {
-    if (!activeRunId) {
-      setPrimaryArtifact(null);
-      return;
-    }
-    setLoadingPrimaryArtifact(true);
+  const fetchPrimaryArtifactForRun = async (runId: string): Promise<PrimaryArtifact | null> => {
     try {
-      const listing = await fetchJson<{ stages?: Array<{ stage_dir: string; artifacts?: Array<string | { path?: string; filename?: string }> }> }>(
-        `/api/v2/workflow-runs/${activeRunId}/artifacts`
+      const listing = await fetchJson<ArtifactListingResponse>(
+        `/api/v2/workflow-runs/${runId}/artifacts`
       );
       const stages = Array.isArray(listing.stages) ? listing.stages : [];
       let targetStage: string | null = null;
@@ -129,23 +129,42 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
         }
       }
       if (!targetStage || !targetPath) {
-        setPrimaryArtifact(null);
-        return;
+        return null;
       }
       const contentPayload = await fetchJson<{ content?: string }>(
-        `/api/v2/workflow-runs/${activeRunId}/artifact-content?stage_dir=${encodeURIComponent(targetStage)}&artifact_path=${encodeURIComponent(targetPath)}`
+        `/api/v2/workflow-runs/${runId}/artifact-content?stage_dir=${encodeURIComponent(targetStage)}&artifact_path=${encodeURIComponent(targetPath)}`
       );
-      setPrimaryArtifact({
+      return {
         stageDir: targetStage,
         artifactPath: targetPath,
         content: String(contentPayload.content ?? ""),
-      });
+      };
     } catch (e) {
-      console.error("Failed to fetch primary artifact", e);
-      setPrimaryArtifact(null);
-    } finally {
-      setLoadingPrimaryArtifact(false);
+      console.error("Failed to fetch artifact", e);
+      return null;
     }
+  };
+
+  const loadArtifactForRun = async (runId: string): Promise<PrimaryArtifact | null> => {
+    if (!runId) return null;
+    if (Object.prototype.hasOwnProperty.call(artifactsByRun, runId)) {
+      return artifactsByRun[runId] ?? null;
+    }
+    const loaded = await fetchPrimaryArtifactForRun(runId);
+    setArtifactsByRun((current) => ({ ...current, [runId]: loaded }));
+    return loaded;
+  };
+
+  const fetchPrimaryArtifact = async () => {
+    if (!activeRunId) {
+      setPrimaryArtifact(null);
+      return;
+    }
+    setLoadingPrimaryArtifact(true);
+    const loaded = await fetchPrimaryArtifactForRun(activeRunId);
+    setPrimaryArtifact(loaded);
+    setArtifactsByRun((current) => ({ ...current, [activeRunId]: loaded }));
+    setLoadingPrimaryArtifact(false);
   };
 
   const startRun = async (input: { mode: string; requestText: string }) => {
@@ -201,6 +220,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     runDetail,
     timeline,
     primaryArtifact,
+    artifactsByRun,
     loadingProfiles,
     loadingRuns,
     loadingRunDetail,
@@ -208,6 +228,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadingPrimaryArtifact,
     startRun,
     resumeRun,
+    loadArtifactForRun,
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,
     refreshPrimaryArtifact: fetchPrimaryArtifact,
