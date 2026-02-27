@@ -33,6 +33,7 @@ from vm_webapp.commands_v2 import (
 from vm_webapp.db import session_scope
 from vm_webapp.events import EventEnvelope
 from vm_webapp.projectors_v2 import apply_event_to_read_models
+from vm_webapp.quality_eval import evaluate_run_quality
 from vm_webapp.repo import (
     append_event,
     close_thread,
@@ -232,6 +233,11 @@ class WorkflowRunRequest(BaseModel):
     request_text: str
     mode: str = "plan_90d"
     skill_overrides: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class QualityEvaluationRequest(BaseModel):
+    depth: str = "heuristic"
+    rubric_version: str = "v1"
 
 
 class TaskCommentRequest(BaseModel):
@@ -740,6 +746,28 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
         "created_at": run.created_at,
         "updated_at": run.updated_at,
     }
+
+
+@router.post("/v2/workflow-runs/{run_id}/quality-evaluation")
+def evaluate_workflow_run_quality_v2(
+    run_id: str, payload: QualityEvaluationRequest, request: Request
+) -> dict[str, object]:
+    require_idempotency(request)
+    with session_scope(request.app.state.engine) as session:
+        run = get_run(session, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+        request_text = str(run.user_request or "")
+
+    depth = payload.depth.strip().lower() if payload.depth.strip() else "heuristic"
+    rubric_version = payload.rubric_version.strip() if payload.rubric_version.strip() else "v1"
+    return evaluate_run_quality(
+        run_id=run_id,
+        request_text=request_text,
+        workspace_root=Path(request.app.state.workspace.root),
+        depth=depth,
+        rubric_version=rubric_version,
+    )
 
 
 @router.post("/v2/workflow-runs/{run_id}/resume")
