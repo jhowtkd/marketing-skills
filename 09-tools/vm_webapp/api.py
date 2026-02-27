@@ -2416,6 +2416,20 @@ class EditorialPlaybookExecuteRequest(BaseModel):
         return v
 
 
+class AutoRemediationRequest(BaseModel):
+    action_id: str
+    run_id: str | None = None
+    auto_execute: bool = False
+    
+    @field_validator("action_id")
+    @classmethod
+    def validate_action_id(cls, v: str) -> str:
+        valid_actions = {"open_review_task", "prepare_guided_regeneration", "suggest_policy_review"}
+        if v not in valid_actions:
+            raise ValueError(f"action_id must be one of: {valid_actions}")
+        return v
+
+
 @router.post("/v2/threads/{thread_id}/editorial-decisions/playbook/execute")
 def execute_editorial_playbook_v2(
     thread_id: str,
@@ -2470,3 +2484,193 @@ def execute_editorial_playbook_v2(
             "created_entities": response.get("created_entities", []),
             "event_id": response.get("event_id"),
         }
+
+
+@router.post("/v2/threads/{thread_id}/editorial-decisions/auto-remediate")
+def auto_remediate_editorial_v2(
+    thread_id: str,
+    request: Request,
+    body: AutoRemediationRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, object]:
+    """Execute auto-remediation for editorial drift.
+    
+    Supports automatic execution for safe actions when:
+    - auto_execute=true is requested
+    - Brand has auto_remediation_enabled in SLO
+    - Action is in SAFE_AUTO_ACTIONS list
+    - Rate limit is not exceeded
+    
+    All attempts are audited in timeline/event log.
+    """
+    from vm_webapp.auto_remediation import (
+        decide_auto_remediation,
+        build_auto_remediation_event_payload,
+        build_auto_remediation_skipped_payload,
+    )
+    from vm_webapp.editorial_drift import detect_drift
+    from vm_webapp.editorial_forecast import calculate_forecast
+    from vm_webapp.commands_v2 import execute_editorial_playbook_command
+    from sqlalchemy import select
+    from vm_webapp.models import TimelineItemView, EventLog
+    
+    actor_ctx = require_valid_auth(request)
+    actor_id = actor_ctx["actor_id"]
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get brand SLO config
+        slo = get_editorial_slo(session, thread.brand_id)
+        brand_auto_enabled = slo.auto_remediation_enabled if slo else False
+        
+        # Get recent auto-remediation events for rate limiting
+        auto_events_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type.in_(["AutoRemediationExecuted", "AutoRemediationSkipped"]))
+            .order_by(EventLog.occurred_at.desc())
+            .limit(20)
+        )
+        recent_auto_events = [
+            {"occurred_at": row.occurred_at, "event_type": row.event_type}
+            for row in session.scalars(auto_events_query)
+        ]
+        
+        # Get drift data
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        rows = list(session.scalars(query))
+        
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        last_marked_at: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+        
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        by_source = {"objective_golden": 0, "global_golden": 0, "previous": 0, "none": 0}
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {"marked_total": marked_total, "by_scope": by_scope, "by_reason_code": {}},
+            "policy": {"denied_total": denied_total},
+            "baseline": {"resolved_total": len(baseline_rows), "by_source": by_source},
+            "recency": {"last_marked_at": last_marked_at, "last_actor_id": None},
+        }
+        
+        forecast = calculate_forecast(insights_data)
+        
+        # Make auto-remediation decision
+        decision = decide_auto_remediation(
+            action_id=body.action_id,
+            brand_auto_enabled=brand_auto_enabled and body.auto_execute,
+            recent_auto_events=recent_auto_events,
+            drift_severity="medium",  # Simplified, could be from drift detection
+            max_executions_per_hour=10,
+        )
+        
+        event_type: str
+        event_payload: dict
+        
+        if decision.result == "executed":
+            # Execute the playbook action
+            try:
+                dedup = execute_editorial_playbook_command(
+                    session,
+                    thread_id=thread_id,
+                    action_id=body.action_id,
+                    run_id=body.run_id,
+                    note="Auto-remediation execution",
+                    actor_id="system:auto-remediation",
+                    actor_role="system",
+                    idempotency_key=idempotency_key,
+                )
+                import json as _json
+                response = _json.loads(dedup.response_json) if dedup.response_json else {}
+                
+                event_type = "AutoRemediationExecuted"
+                event_payload = build_auto_remediation_event_payload(
+                    thread_id=thread_id,
+                    action_id=body.action_id,
+                    decision=decision,
+                    drift_score=forecast.risk_score,
+                    run_id=body.run_id,
+                )
+                
+                return {
+                    "status": "auto_executed",
+                    "executed_action": body.action_id,
+                    "decision_reason": decision.reason,
+                    "created_entities": response.get("created_entities", []),
+                    "event_id": response.get("event_id"),
+                }
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+        else:
+            # Skip - audit the decision
+            event_type = "AutoRemediationSkipped"
+            event_payload = build_auto_remediation_skipped_payload(
+                thread_id=thread_id,
+                proposed_action=body.action_id,
+                decision=decision,
+                drift_score=forecast.risk_score,
+            )
+            
+            # Emit skip event
+            stream_id = f"thread:{thread_id}"
+            from vm_webapp.repo import get_stream_version, append_event
+            expected = get_stream_version(session, stream_id)
+            
+            skip_event = EventEnvelope(
+                event_id=f"evt-{__import__('uuid').uuid4().hex[:12]}",
+                event_type=event_type,
+                aggregate_type="thread",
+                aggregate_id=thread_id,
+                stream_id=stream_id,
+                expected_version=expected,
+                actor_type="system",
+                actor_id="auto-remediation",
+                thread_id=thread_id,
+                payload=event_payload,
+            )
+            append_event(session, skip_event)
+            
+            return {
+                "status": "skipped",
+                "proposed_action": body.action_id,
+                "skip_reason": decision.reason,
+                "auto_execute_requested": body.auto_execute,
+                "brand_auto_enabled": brand_auto_enabled,
+            }

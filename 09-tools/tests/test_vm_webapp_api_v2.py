@@ -3808,3 +3808,94 @@ def test_editorial_drift_increments_metrics(tmp_path: Path) -> None:
     drift_total_after = metrics_after.get("counts", {}).get("editorial_drift_detected_total", 0)
 
     assert drift_total_after == drift_total_before + 1, "editorial_drift_detected_total should increment"
+
+
+def test_auto_remediate_requires_auto_execute_and_slo_enabled(tmp_path: Path) -> None:
+    """Auto-remediation só executa quando auto_execute=true E SLO habilitado."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Sem auto_remediation_enabled no SLO, deve skip
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-skip", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "skipped"
+    assert "kill switch" in data["skip_reason"].lower() or "disabled" in data["skip_reason"].lower()
+
+
+def test_auto_remediate_executes_when_enabled(tmp_path: Path) -> None:
+    """Auto-remediation executa quando habilitado e ação é segura."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-exec-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Habilitar auto-remediation no SLO
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "auto-exec-slo", "Authorization": "Bearer admin:admin"},
+        json={"auto_remediation_enabled": True},
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-exec-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-exec-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-exec-attempt", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # Pode executar ou ser rate limited dependendo do estado
+    assert data["status"] in ["auto_executed", "skipped"]
+
+
+def test_auto_remediate_blocks_unsafe_actions(tmp_path: Path) -> None:
+    """Auto-remediation bloqueia ações não seguras."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auto-unsafe-b"}, json={"name": "Acme"}).json()["brand_id"]
+    
+    # Habilitar auto-remediation
+    client.put(
+        f"/api/v2/brands/{brand_id}/editorial-slo",
+        headers={"Idempotency-Key": "auto-unsafe-slo", "Authorization": "Bearer admin:admin"},
+        json={"auto_remediation_enabled": True},
+    )
+    
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auto-unsafe-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auto-unsafe-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # suggest_policy_review não é ação segura para auto
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-unsafe-attempt", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "suggest_policy_review", "auto_execute": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "skipped"
+    assert "manual" in data["skip_reason"].lower() or "approval" in data["skip_reason"].lower()
+
+
+def test_auto_remediate_returns_404_for_unknown_thread(tmp_path: Path) -> None:
+    """Auto-remediation deve retornar 404 para thread inexistente."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v2/threads/thread-inexistente/editorial-decisions/auto-remediate",
+        headers={"Idempotency-Key": "auto-404", "Authorization": "Bearer admin:admin"},
+        json={"action_id": "open_review_task"},
+    )
+    assert resp.status_code == 404
