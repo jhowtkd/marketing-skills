@@ -440,3 +440,191 @@ cd 09-tools/web/vm-ui && npm run build
 ---
 
 **Aprovado para release.** ✅
+
+---
+
+## Governança v4 (Auth Real + Auditoria + Alertas)
+
+**Data:** 2026-02-27 (continuação)
+
+### Overview
+
+Implementação de autenticação real (não confia em headers), endpoint dedicado de auditoria, e sistema de alertas operacionais para monitoramento de anomalias na governança editorial.
+
+### Autenticação Real
+
+#### Token Bearer como Fonte Primária
+
+O sistema agora extrai identidade do token `Authorization: Bearer` como fonte primária:
+
+```
+Authorization: Bearer <actor_id>:<role>
+```
+
+**Prioridade de Extração:**
+1. `Authorization: Bearer user:admin` → actor_id=user, role=admin
+2. `X-User-Id` + `X-User-Role` headers → legacy fallback
+3. `workspace-owner` / `editor` → default fallback
+
+**Exemplo de Uso:**
+
+```bash
+# Bearer token (recomendado)
+POST /api/v2/threads/{thread_id}/editorial-decisions/golden
+Authorization: Bearer user-john:admin
+
+# Legacy headers (fallback)
+POST /api/v2/threads/{thread_id}/editorial-decisions/golden
+X-User-Id: user-john
+X-User-Role: admin
+```
+
+**Token Inválido:**
+- Formato inválido → `401 Unauthorized`
+- Role sem permissão para scope → `403 Forbidden`
+
+### Endpoint de Auditoria
+
+#### GET /api/v2/threads/{thread_id}/editorial-decisions/audit
+
+Retorna trilha cronológica completa de decisões editoriais.
+
+**Query Parameters:**
+- `scope` (opcional): filtrar por `global` ou `objective`
+- `limit` (default: 50): quantidade de eventos
+- `offset` (default: 0): paginação
+
+**Response:**
+```json
+{
+  "thread_id": "t-abc123",
+  "events": [
+    {
+      "event_id": "evt-xyz789",
+      "event_type": "EditorialGoldenMarked",
+      "occurred_at": "2026-02-27T10:00:00Z",
+      "actor_id": "user-john",
+      "actor_role": "admin",
+      "scope": "global",
+      "objective_key": null,
+      "run_id": "run-def456",
+      "justification": "Melhor versão geral"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Uso:**
+```bash
+# Todas as decisões
+curl /api/v2/threads/t-123/editorial-decisions/audit
+
+# Apenas global
+curl /api/v2/threads/t-123/editorial-decisions/audit?scope=global
+
+# Paginação
+curl /api/v2/threads/t-123/editorial-decisions/audit?limit=10&offset=20
+```
+
+### Alertas Operacionais
+
+#### Métricas de Alertabilidade
+
+| Métrica | Descrição | Threshold Padrão |
+|---------|-----------|------------------|
+| `vm_editorial_golden_policy_denied_total` | Total de negações de policy | 10 |
+| `vm_editorial_golden_policy_denied_role_*` | Negações por role | 5 |
+| `vm_editorial_baseline_source_none` | Baseline=none count | 50 |
+
+#### Script de Verificação
+
+```bash
+# Verificar thresholds manualmente
+python scripts/check_editorial_thresholds.py \
+  --endpoint http://localhost:8000 \
+  --threshold-policy-denied 10 \
+  --threshold-baseline-none 50
+```
+
+**Saída:**
+```
+============================================================
+EDITORIAL GOVERNANCE METRICS CHECK
+============================================================
+
+Endpoint: http://localhost:8000/api/v2/metrics/prometheus
+Threshold Policy Denied: 10.0
+Threshold Baseline None: 50.0
+
+Key Metrics:
+  vm_editorial_golden_marked_total: 5
+  vm_editorial_golden_policy_denied_total: 3
+  vm_editorial_baseline_resolved_total: 8
+  vm_editorial_baseline_source_none: 2
+
+✅ All metrics within thresholds
+```
+
+#### Workflow de CI/CD
+
+Arquivo: `.github/workflows/vm-editorial-monitoring.yml`
+
+**Triggers:**
+- Manual (`workflow_dispatch`)
+- Scheduled (a cada 6 horas)
+
+**Ambos suportam parâmetros configuráveis:**
+- `threshold_policy_denied` (default: 10)
+- `threshold_baseline_none` (default: 50)
+
+**Em caso de violação:**
+1. Upload de artefato `editorial-metrics-diagnostic-{run_id}`
+2. Falha do job (exit 1)
+3. Notificação (preparado para integração Slack/PagerDuty)
+
+### Testes
+
+#### Backend (API v2)
+
+```bash
+PYTHONPATH=09-tools .venv/bin/python -m pytest \
+  09-tools/tests/test_vm_webapp_api_v2.py \
+  09-tools/tests/test_vm_webapp_metrics_prometheus.py -v
+```
+
+**Novos testes:**
+- `test_editorial_golden_uses_bearer_auth_token` - Bearer token extração
+- `test_editorial_golden_fallback_to_headers_without_auth` - Fallback legacy
+- `test_editorial_golden_rejects_invalid_auth` - Token inválido = 401
+- `test_editorial_audit_endpoint_returns_chronological_events` - Auditoria
+- `test_editorial_audit_endpoint_supports_scope_filter` - Filtros
+- `test_editorial_audit_endpoint_returns_404_for_unknown_thread` - 404
+- `test_prometheus_metrics_expose_policy_denial_metrics` - Métricas
+- `test_threshold_checker_validates_policy_denial_spike` - Threshold breach
+- `test_threshold_checker_validates_baseline_none_acceptable` - Threshold OK
+
+### Arquivos Alterados
+
+**Backend:**
+- `09-tools/vm_webapp/api.py` (+ _parse_bearer_token, require_valid_auth, audit endpoint)
+- `09-tools/tests/test_vm_webapp_api_v2.py` (+ 6 testes)
+
+**Observability:**
+- `09-tools/tests/test_vm_webapp_metrics_prometheus.py` (+ ThresholdChecker, 4 testes)
+- `scripts/check_editorial_thresholds.py` (novo)
+- `.github/workflows/vm-editorial-monitoring.yml` (novo)
+
+### Commits Governança v4
+
+```
+220100b feat(auth): derive editorial actor identity from bearer auth with legacy fallback
+d7dfe53 feat(audit): add editorial decisions audit endpoint with filters and pagination
+e7187bc ci(observability): add editorial governance alert checks for deny and baseline-none spikes
+```
+
+---
+
+**Aprovado para release.** ✅
