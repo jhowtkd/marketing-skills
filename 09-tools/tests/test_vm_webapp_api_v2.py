@@ -730,3 +730,85 @@ def test_list_workflow_runs_exposes_requested_and_effective_modes(tmp_path: Path
     
     assert "effective_mode" in run, "effective_mode field missing from run list item"
     assert run["effective_mode"] == "foundation_stack", "effective_mode mismatch"
+
+
+# Task 4: Editorial Decisions Endpoints
+
+def test_editorial_decisions_endpoints_mark_and_list(tmp_path: Path) -> None:
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    # seed brand/project/thread/run
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "ed-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "ed-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "ed-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "ed-run"}, json={"request_text": "Campanha Lancamento", "mode": "content_calendar"}).json()["run_id"]
+
+    marked = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "ed-mark-1"},
+        json={"run_id": run_id, "scope": "global", "justification": "melhor equilibrio editorial"},
+    )
+    assert marked.status_code == 200
+
+    listed = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions")
+    assert listed.status_code == 200
+    assert listed.json()["global"]["run_id"] == run_id
+
+
+def test_editorial_golden_validates_justification_empty(tmp_path: Path) -> None:
+    """422 para justification vazia"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "val-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "val-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "val-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "val-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "val-mark-empty"},
+        json={"run_id": run_id, "scope": "global", "justification": ""},
+    )
+    assert resp.status_code == 422
+
+
+def test_editorial_golden_validates_scope_objective_without_key(tmp_path: Path) -> None:
+    """422 para scope=objective sem objective_key"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "val2-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "val2-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "val2-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "val2-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "val-mark-obj"},
+        json={"run_id": run_id, "scope": "objective", "justification": "bom resultado"},
+    )
+    assert resp.status_code == 422
+
+
+def test_editorial_golden_returns_404_for_run_outside_thread(tmp_path: Path) -> None:
+    """404 para run_id que nao pertence ao thread"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "404-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "404-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread1_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "404-t1"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Thread 1"}).json()["thread_id"]
+    thread2_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "404-t2"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Thread 2"}).json()["thread_id"]
+    
+    # Create run in thread2
+    run_id = client.post(f"/api/v2/threads/{thread2_id}/workflow-runs", headers={"Idempotency-Key": "404-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Try to mark golden in thread1 with run from thread2
+    resp = client.post(
+        f"/api/v2/threads/{thread1_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "404-mark"},
+        json={"run_id": run_id, "scope": "global", "justification": "nao deve funcionar"},
+    )
+    assert resp.status_code == 404

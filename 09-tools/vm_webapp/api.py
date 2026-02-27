@@ -22,6 +22,7 @@ from vm_webapp.commands_v2 import (
     create_task_command,
     create_thread_command,
     grant_approval_command,
+    mark_editorial_golden_command,
     remove_thread_mode_command,
     rename_thread_command,
     request_workflow_run_command,
@@ -47,6 +48,7 @@ from vm_webapp.repo import (
     list_approvals_view,
     list_brands,
     list_brands_view,
+    list_editorial_decisions_view,
     list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
@@ -246,6 +248,13 @@ class TaskCommentRequest(BaseModel):
 
 class ForceConflictRequest(BaseModel):
     thread_id: str
+
+
+class EditorialGoldenMarkRequest(BaseModel):
+    run_id: str
+    scope: str
+    objective_key: str | None = None
+    justification: str
 
 
 @router.post("/v2/brands")
@@ -1281,3 +1290,85 @@ def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
     )
 
     return {"assistant_message": assistant_message}
+
+
+@router.post("/v2/threads/{thread_id}/editorial-decisions/golden")
+def mark_editorial_golden_v2(
+    thread_id: str, payload: EditorialGoldenMarkRequest, request: Request
+) -> dict[str, object]:
+    idem = require_idempotency(request)
+    
+    # Validation: justification must not be empty
+    if not payload.justification or not payload.justification.strip():
+        raise HTTPException(status_code=422, detail="justification is required")
+    
+    # Validation: scope must be valid
+    if payload.scope not in {"global", "objective"}:
+        raise HTTPException(status_code=422, detail="scope must be 'global' or 'objective'")
+    
+    # Validation: objective scope requires objective_key
+    if payload.scope == "objective" and not payload.objective_key:
+        raise HTTPException(status_code=422, detail="objective_key is required when scope is 'objective'")
+    
+    with session_scope(request.app.state.engine) as session:
+        # Validation: thread must exist
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Validation: run must belong to thread
+        run = get_run(session, payload.run_id)
+        if run is None or run.thread_id != thread_id:
+            raise HTTPException(status_code=404, detail=f"run not found in thread: {payload.run_id}")
+        
+        result = mark_editorial_golden_command(
+            session,
+            thread_id=thread_id,
+            run_id=payload.run_id,
+            scope=payload.scope,
+            objective_key=payload.objective_key,
+            justification=payload.justification,
+            actor_id="workspace-owner",
+            idempotency_key=idem,
+        )
+        project_command_event(session, event_id=result.event_id)
+        response_payload = json.loads(result.response_json)
+    
+    return {
+        "event_id": result.event_id,
+        "thread_id": thread_id,
+        "run_id": payload.run_id,
+        "scope": payload.scope,
+        "objective_key": payload.objective_key,
+    }
+
+
+@router.get("/v2/threads/{thread_id}/editorial-decisions")
+def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, object]:
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        rows = list_editorial_decisions_view(session, thread_id=thread_id)
+        
+        global_decision = None
+        objective_decisions = []
+        
+        for row in rows:
+            decision = {
+                "run_id": row.run_id,
+                "justification": row.justification,
+                "updated_at": row.updated_at,
+            }
+            if row.scope == "global":
+                global_decision = decision
+            elif row.scope == "objective" and row.objective_key:
+                decision["objective_key"] = row.objective_key
+                objective_decisions.append(decision)
+    
+    return {
+        "global": global_decision,
+        "objective": objective_decisions,
+    }
