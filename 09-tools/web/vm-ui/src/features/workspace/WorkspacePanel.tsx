@@ -24,6 +24,13 @@ import {
   toHumanReasonCode,
   getTopReasonCode,
   formatInsightsDate,
+  formatConfidence,
+  getConfidenceColor,
+  formatVolatility,
+  getVolatilityColor,
+  getTrendLabel,
+  getRiskScoreColor,
+  getRiskScoreBgColor,
   type BaselineSource,
   type TimelineFilter,
   type AuditScopeFilter,
@@ -81,6 +88,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     loadingRecommendations,
     refreshRecommendations,
     executePlaybookAction,
+    editorialForecast,
+    loadingForecast,
+    refreshEditorialForecast,
+    showSuppressedActions,
+    setShowSuppressedActions,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
@@ -792,6 +804,128 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  const editorialForecastSection = (
+    <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--vm-primary)]">
+            Governanca
+          </p>
+          <h3 className="mt-2 font-serif text-xl text-slate-900">Forecast de Risco</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => refreshEditorialForecast()}
+          disabled={loadingForecast || !hasActiveThread}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+        >
+          {loadingForecast ? "Atualizando..." : "Recarregar forecast"}
+        </button>
+      </div>
+
+      {!hasActiveThread ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Escolha um job para visualizar o forecast de risco editorial.
+        </div>
+      ) : loadingForecast ? (
+        <div className="mt-3 flex items-center justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--vm-primary)]" />
+        </div>
+      ) : !editorialForecast ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
+          Erro ao carregar forecast. Tente atualizar.
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {/* Risk Score Card */}
+          <div className={`rounded-xl border p-4 ${getRiskScoreBgColor(editorialForecast.risk_score)}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-600">Risk Score</p>
+                <p className={`text-3xl font-bold ${getRiskScoreColor(editorialForecast.risk_score)}`}>
+                  {editorialForecast.risk_score}
+                  <span className="text-sm font-normal text-slate-500">/100</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-medium text-slate-600">Tendência</p>
+                <p className="text-lg font-medium text-slate-800">{getTrendLabel(editorialForecast.trend)}</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <p className="text-sm font-medium text-slate-800">{editorialForecast.recommended_focus}</p>
+            </div>
+          </div>
+
+          {/* Calibration Metrics */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Confiança
+                </p>
+                <span className="text-xs text-slate-400" title="Quão confiável é este forecast baseado nos dados disponíveis">?</span>
+              </div>
+              <p className={`mt-1 text-2xl font-bold ${getConfidenceColor(editorialForecast.confidence)}`}>
+                {formatConfidence(editorialForecast.confidence)}
+              </p>
+              <p className="text-xs text-slate-500">
+                {(editorialForecast.confidence * 100).toFixed(0)}%
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Volatilidade
+                </p>
+                <span className="text-xs text-slate-400" title="Quão instável é o padrão de eventos recentes">?</span>
+              </div>
+              <p className={`mt-1 text-2xl font-bold ${getVolatilityColor(editorialForecast.volatility)}`}>
+                {formatVolatility(editorialForecast.volatility)}
+              </p>
+              <p className="text-xs text-slate-500">
+                {editorialForecast.volatility}/100
+              </p>
+            </div>
+          </div>
+
+          {/* Calibration Notes */}
+          {editorialForecast.calibration_notes.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              <p className="text-xs font-medium text-slate-600 mb-2">Como este score foi calculado:</p>
+              <ul className="space-y-1">
+                {editorialForecast.calibration_notes.map((note, idx) => (
+                  <li key={idx} className="text-xs text-slate-600 flex items-start gap-2">
+                    <span className="text-slate-400">•</span>
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Drivers */}
+          {editorialForecast.drivers.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              <p className="text-xs font-medium text-slate-600 mb-2">Fatores de risco:</p>
+              <div className="flex flex-wrap gap-1">
+                {editorialForecast.drivers.map((driver, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                  >
+                    {driver}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
   const editorialRecommendationsSection = (
     <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
       <div className="flex items-end justify-between gap-3">
@@ -801,14 +935,26 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </p>
           <h3 className="mt-2 font-serif text-xl text-slate-900">Ações Recomendadas</h3>
         </div>
-        <button
-          type="button"
-          onClick={() => refreshRecommendations()}
-          disabled={loadingRecommendations || !hasActiveThread}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
-        >
-          {loadingRecommendations ? "Atualizando..." : "Recarregar ações"}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Toggle for suppressed actions */}
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showSuppressedActions}
+              onChange={(e) => setShowSuppressedActions(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            Mostrar suprimidas
+          </label>
+          <button
+            type="button"
+            onClick={() => refreshRecommendations()}
+            disabled={loadingRecommendations || !hasActiveThread}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
+          >
+            {loadingRecommendations ? "Atualizando..." : "Recarregar ações"}
+          </button>
+        </div>
       </div>
 
       {!hasActiveThread ? (
@@ -829,11 +975,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         </div>
       ) : (
         <div className="mt-3 space-y-3">
-          {recommendations.recommendations.map((rec, idx) => (
+          {recommendations.recommendations
+            .filter((rec) => showSuppressedActions || !rec.suppressed)
+            .map((rec, idx) => (
             <div
               key={`${rec.action_id}-${idx}`}
               className={`rounded-xl border p-4 ${
-                rec.severity === "critical"
+                rec.suppressed
+                  ? "border-slate-200 bg-slate-100/50 opacity-60"
+                  : rec.severity === "critical"
                   ? "border-red-200 bg-red-50/50"
                   : rec.severity === "warning"
                   ? "border-amber-200 bg-amber-50/50"
@@ -842,27 +992,34 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        rec.severity === "critical"
+                        rec.suppressed
+                          ? "bg-slate-200 text-slate-600"
+                          : rec.severity === "critical"
                           ? "bg-red-100 text-red-700"
                           : rec.severity === "warning"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-slate-100 text-slate-700"
                       }`}
                     >
-                      {rec.severity === "critical" ? "Crítico" : rec.severity === "warning" ? "Atenção" : "Info"}
+                      {rec.suppressed ? "Suprimida" : rec.severity === "critical" ? "Crítico" : rec.severity === "warning" ? "Atenção" : "Info"}
                     </span>
-                    <h4 className="font-semibold text-slate-900">{rec.title}</h4>
+                    <h4 className={`font-semibold ${rec.suppressed ? "text-slate-500" : "text-slate-900"}`}>{rec.title}</h4>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">{rec.description}</p>
+                  <p className={`mt-1 text-sm ${rec.suppressed ? "text-slate-500" : "text-slate-600"}`}>{rec.description}</p>
                   <p className="mt-1 text-xs text-slate-500">Motivo: {rec.reason}</p>
+                  {rec.suppressed && rec.suppression_reason && (
+                    <p className="mt-1 text-xs text-slate-400 italic">
+                      Suprimida: {rec.suppression_reason}
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => executePlaybookAction?.(rec.action_id, currentRunId || undefined)}
-                  disabled={!executePlaybookAction}
+                  disabled={!executePlaybookAction || rec.suppressed}
                   className="rounded-lg bg-[var(--vm-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:opacity-90"
                 >
                   Executar
@@ -870,6 +1027,12 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               </div>
             </div>
           ))}
+          {/* Show count of suppressed actions when not showing them */}
+          {!showSuppressedActions && recommendations.recommendations.some((r) => r.suppressed) && (
+            <p className="text-xs text-slate-400 text-center">
+              {recommendations.recommendations.filter((r) => r.suppressed).length} ação(ões) suprimida(s) oculta(s)
+            </p>
+          )}
         </div>
       )}
     </section>
@@ -934,6 +1097,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {timelineSection}
           {editorialAuditSection}
           {editorialInsightsSection}
+          {editorialForecastSection}
           {editorialRecommendationsSection}
         </>
       ) : (
@@ -958,6 +1122,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           {timelineSection}
           {editorialAuditSection}
           {editorialInsightsSection}
+          {editorialForecastSection}
           {editorialRecommendationsSection}
         </>
       )}

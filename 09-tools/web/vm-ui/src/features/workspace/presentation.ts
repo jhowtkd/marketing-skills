@@ -270,3 +270,51 @@ export function formatInsightsDate(dateString: string | null): string {
     minute: "2-digit",
   });
 }
+
+// Forecast explainability helpers
+export function formatConfidence(confidence: number): string {
+  if (confidence >= 0.8) return "Alta";
+  if (confidence >= 0.6) return "Moderada";
+  if (confidence >= 0.4) return "Baixa";
+  return "Muito baixa";
+}
+
+export function getConfidenceColor(confidence: number): string {
+  if (confidence >= 0.8) return "text-green-600";
+  if (confidence >= 0.6) return "text-yellow-600";
+  if (confidence >= 0.4) return "text-orange-600";
+  return "text-red-600";
+}
+
+export function formatVolatility(volatility: number): string {
+  if (volatility >= 70) return "Alta";
+  if (volatility >= 40) return "Moderada";
+  return "Baixa";
+}
+
+export function getVolatilityColor(volatility: number): string {
+  if (volatility >= 70) return "text-red-600";
+  if (volatility >= 40) return "text-yellow-600";
+  return "text-green-600";
+}
+
+export function getTrendLabel(trend: "improving" | "stable" | "degrading"): string {
+  const labels: Record<string, string> = {
+    improving: "📈 Melhorando",
+    stable: "➡️ Estável",
+    degrading: "📉 Degradando",
+  };
+  return labels[trend] ?? trend;
+}
+
+export function getRiskScoreColor(score: number): string {
+  if (score >= 70) return "text-red-600";
+  if (score >= 40) return "text-yellow-600";
+  return "text-green-600";
+}
+
+export function getRiskScoreBgColor(score: number): string {
+  if (score >= 70) return "bg-red-50 border-red-200";
+  if (score >= 40) return "bg-yellow-50 border-yellow-200";
+  return "bg-green-50 border-green-200";
+}

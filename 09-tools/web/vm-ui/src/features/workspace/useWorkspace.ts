@@ -122,6 +122,8 @@ export type EditorialRecommendation = {
   effort_score: number;
   priority_score: number;
   why_priority: string;
+  suppressed: boolean;
+  suppression_reason: string;
 };
 
 export type EditorialRecommendations = {
@@ -136,6 +138,9 @@ export type EditorialForecast = {
   trend: "improving" | "stable" | "degrading";
   drivers: string[];
   recommended_focus: string;
+  confidence: number;  // 0-1
+  volatility: number;  // 0-100
+  calibration_notes: string[];
   generated_at: string;
 };
 
@@ -212,6 +217,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [editorialForecast, setEditorialForecast] = useState<EditorialForecast | null>(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
+  const [showSuppressedActions, setShowSuppressedActions] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -637,5 +643,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     editorialForecast,
     loadingForecast,
     refreshEditorialForecast: fetchEditorialForecast,
+    showSuppressedActions,
+    setShowSuppressedActions,
   };
 }
