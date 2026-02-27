@@ -39,6 +39,7 @@ from vm_webapp.repo import (
     append_event,
     close_thread,
     create_thread as create_thread_row,
+    get_editorial_policy,
     get_event_by_id,
     get_run,
     get_brand_view,
@@ -59,6 +60,7 @@ from vm_webapp.repo import (
     list_threads_view,
     list_timeline_items_view,
     touch_thread_activity,
+    upsert_editorial_policy,
 )
 from vm_webapp.editorial_decisions import resolve_baseline
 from vm_webapp.observability import render_prometheus
@@ -279,27 +281,89 @@ def require_valid_auth(request: Request) -> dict[str, str]:
     return get_actor_context(request)
 
 
-# Policy matrix for editorial golden marking by scope
-# admin: can global and objective
-# editor: can only objective  
-# viewer: cannot mark golden (already blocked by _require_editorial_role)
-_EDITORIAL_SCOPE_POLICY: dict[str, set[str]] = {
-    "admin": {"global", "objective"},
-    "editor": {"objective"},
-}
-
-
-def _enforce_scope_policy(actor_role: str, scope: str) -> None:
-    """Enforce scope-based policy for editorial golden marking.
+def _require_admin_role(request: Request) -> str:
+    """Extract and validate user role is admin.
     
-    Raises 403 if actor_role is not allowed for the given scope.
+    Header chain: Authorization Bearer -> X-User-Role -> workspace-owner (default)
+    Only admin role is allowed.
+    Raises 403 if role is not admin.
     """
-    allowed_scopes = _EDITORIAL_SCOPE_POLICY.get(actor_role, set())
-    if scope not in allowed_scopes:
+    auth_header = request.headers.get("Authorization")
+    bearer_ctx = _parse_bearer_token(auth_header)
+    
+    if bearer_ctx:
+        role = bearer_ctx["actor_role"]
+        actor_id = bearer_ctx["actor_id"]
+    else:
+        raw_role = request.headers.get("X-User-Role", "workspace-owner")
+        role = "editor" if raw_role == "workspace-owner" else raw_role
+        actor_id = request.headers.get("X-User-Id", "workspace-owner")
+    
+    if role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{role}' is not authorized to manage editorial policy"
+        )
+    return actor_id
+
+
+def _get_policy_for_brand(session, brand_id: str) -> dict[str, bool]:
+    """Get editorial policy for a brand, returning defaults if not set."""
+    policy = get_editorial_policy(session, brand_id)
+    if policy is None:
+        return {
+            "editor_can_mark_objective": True,
+            "editor_can_mark_global": False,
+        }
+    return {
+        "editor_can_mark_objective": policy.editor_can_mark_objective,
+        "editor_can_mark_global": policy.editor_can_mark_global,
+    }
+
+
+def _enforce_scope_policy_with_brand(
+    session, 
+    brand_id: str, 
+    actor_role: str, 
+    scope: str
+) -> None:
+    """Enforce scope-based policy for editorial golden marking using brand policy.
+    
+    Raises 403 if actor_role is not allowed for the given scope based on brand policy.
+    """
+    # Admin always can do everything
+    if actor_role == "admin":
+        return
+    
+    # Viewer cannot mark golden at all
+    if actor_role == "viewer":
         raise HTTPException(
             status_code=403,
             detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
         )
+    
+    # Editor: check brand policy
+    if actor_role == "editor":
+        policy = _get_policy_for_brand(session, brand_id)
+        
+        if scope == "objective" and not policy["editor_can_mark_objective"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
+            )
+        
+        if scope == "global" and not policy["editor_can_mark_global"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
+            )
+        
+        # Editor cannot do other scopes
+        if scope not in {"objective", "global"}:
+            raise HTTPException(
+                status_code=403,
+                detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
+            )
 
 
 def project_command_event(session, *, event_id: str) -> None:
@@ -395,6 +459,11 @@ class EditorialGoldenMarkRequest(BaseModel):
     scope: str
     objective_key: str | None = None
     justification: str
+
+
+class EditorialPolicyUpdateRequest(BaseModel):
+    editor_can_mark_objective: bool = True
+    editor_can_mark_global: bool = False
 
 
 @router.post("/v2/brands")
@@ -1517,17 +1586,6 @@ def mark_editorial_golden_v2(
     # Get actor context (identity + role) - require valid auth
     actor_ctx = require_valid_auth(request)
     
-    # Policy: enforce scope-based authorization
-    try:
-        _enforce_scope_policy(actor_ctx["actor_role"], payload.scope)
-    except HTTPException as e:
-        if e.status_code == 403:
-            # Record policy denial metric
-            request.app.state.workflow_runtime.metrics.record_count("editorial_golden_policy_denied_total")
-            request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_role:{actor_ctx['actor_role']}")
-            request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_scope:{payload.scope}")
-        raise
-    
     # Validation: justification must not be empty
     if not payload.justification or not payload.justification.strip():
         raise HTTPException(status_code=422, detail="justification is required")
@@ -1550,6 +1608,22 @@ def mark_editorial_golden_v2(
         run = get_run(session, payload.run_id)
         if run is None or run.thread_id != thread_id:
             raise HTTPException(status_code=404, detail=f"run not found in thread: {payload.run_id}")
+        
+        # Policy: enforce scope-based authorization using brand policy
+        try:
+            _enforce_scope_policy_with_brand(
+                session, 
+                brand_id=thread.brand_id,
+                actor_role=actor_ctx["actor_role"], 
+                scope=payload.scope
+            )
+        except HTTPException as e:
+            if e.status_code == 403:
+                # Record policy denial metric
+                request.app.state.workflow_runtime.metrics.record_count("editorial_golden_policy_denied_total")
+                request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_role:{actor_ctx['actor_role']}")
+                request.app.state.workflow_runtime.metrics.record_count(f"editorial_golden_policy_denied_scope:{payload.scope}")
+            raise
         
         result = mark_editorial_golden_command(
             session,
@@ -1676,4 +1750,88 @@ def get_editorial_audit_v2(
             "total": total,
             "limit": limit,
             "offset": offset,
+        }
+
+
+@router.get("/v2/brands/{brand_id}/editorial-policy")
+def get_editorial_policy_v2(brand_id: str, request: Request) -> dict[str, object]:
+    """Get editorial policy for a brand.
+    
+    Returns default policy if no custom policy is set.
+    """
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        policy = _get_policy_for_brand(session, brand_id)
+        
+    return {
+        "brand_id": brand_id,
+        "editor_can_mark_objective": policy["editor_can_mark_objective"],
+        "editor_can_mark_global": policy["editor_can_mark_global"],
+        "updated_at": brand.updated_at,
+    }
+
+
+@router.put("/v2/brands/{brand_id}/editorial-policy")
+def update_editorial_policy_v2(
+    brand_id: str, 
+    payload: EditorialPolicyUpdateRequest, 
+    request: Request
+) -> dict[str, object]:
+    """Update editorial policy for a brand.
+    
+    Only admin role can update policy.
+    Requires Idempotency-Key header.
+    """
+    idem = require_idempotency(request)
+    actor_id = _require_admin_role(request)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify brand exists
+        brand = get_brand_view(session, brand_id)
+        if brand is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        
+        # Check idempotency
+        from vm_webapp.repo import get_command_dedup, save_command_dedup
+        dedup = get_command_dedup(session, idempotency_key=idem)
+        if dedup is not None:
+            # Return existing policy
+            policy = _get_policy_for_brand(session, brand_id)
+            return {
+                "brand_id": brand_id,
+                "editor_can_mark_objective": policy["editor_can_mark_objective"],
+                "editor_can_mark_global": policy["editor_can_mark_global"],
+                "updated_at": brand.updated_at,
+            }
+        
+        # Update policy
+        policy = upsert_editorial_policy(
+            session,
+            brand_id=brand_id,
+            editor_can_mark_objective=payload.editor_can_mark_objective,
+            editor_can_mark_global=payload.editor_can_mark_global,
+        )
+        
+        # Save dedup record
+        save_command_dedup(
+            session,
+            idempotency_key=idem,
+            command_name="update_editorial_policy",
+            event_id=f"policy-update-{brand_id}",
+            response={
+                "brand_id": brand_id,
+                "editor_can_mark_objective": policy.editor_can_mark_objective,
+                "editor_can_mark_global": policy.editor_can_mark_global,
+            },
+        )
+        
+        return {
+            "brand_id": brand_id,
+            "editor_can_mark_objective": policy.editor_can_mark_objective,
+            "editor_can_mark_global": policy.editor_can_mark_global,
+            "updated_at": policy.updated_at,
         }

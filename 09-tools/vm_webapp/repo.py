@@ -15,6 +15,7 @@ from vm_webapp.models import (
     CampaignView,
     CommandDedup,
     EditorialDecisionView,
+    EditorialPolicy,
     EventLog,
     Project,
     ProjectView,
@@ -491,3 +492,34 @@ def list_editorial_decisions_view(session: Session, *, thread_id: str) -> list[E
             .order_by(EditorialDecisionView.updated_at.desc())
         )
     )
+
+
+def get_editorial_policy(session: Session, brand_id: str) -> EditorialPolicy | None:
+    """Get editorial policy for a brand. Returns None if not found."""
+    return session.get(EditorialPolicy, brand_id)
+
+
+def upsert_editorial_policy(
+    session: Session,
+    *,
+    brand_id: str,
+    editor_can_mark_objective: bool,
+    editor_can_mark_global: bool,
+) -> EditorialPolicy:
+    """Create or update editorial policy for a brand."""
+    existing = session.get(EditorialPolicy, brand_id)
+    if existing is not None:
+        existing.editor_can_mark_objective = editor_can_mark_objective
+        existing.editor_can_mark_global = editor_can_mark_global
+        existing.updated_at = _now_iso()
+        session.flush()
+        return existing
+    
+    policy = EditorialPolicy(
+        brand_id=brand_id,
+        editor_can_mark_objective=editor_can_mark_objective,
+        editor_can_mark_global=editor_can_mark_global,
+    )
+    session.add(policy)
+    session.flush()
+    return policy

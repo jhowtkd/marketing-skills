@@ -229,3 +229,12 @@ class EditorialDecisionView(Base):
     justification: Mapped[str] = mapped_column(Text, nullable=False, default="")
     event_id: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class EditorialPolicy(Base):
+    __tablename__ = "editorial_policies"
+
+    brand_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    editor_can_mark_objective: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    editor_can_mark_global: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
