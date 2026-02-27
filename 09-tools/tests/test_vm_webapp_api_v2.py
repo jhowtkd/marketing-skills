@@ -3546,12 +3546,16 @@ def test_editorial_recommendations_include_priority_scores(tmp_path: Path) -> No
         assert "effort_score" in rec, "Missing effort_score"
         assert "priority_score" in rec, "Missing priority_score"
         assert "why_priority" in rec, "Missing why_priority"
+        assert "suppressed" in rec, "Missing suppressed"
+        assert "suppression_reason" in rec, "Missing suppression_reason"
         
         # Verificar tipos
         assert isinstance(rec["impact_score"], int) and 1 <= rec["impact_score"] <= 10
         assert isinstance(rec["effort_score"], int) and 1 <= rec["effort_score"] <= 10
         assert isinstance(rec["priority_score"], int)
         assert isinstance(rec["why_priority"], str)
+        assert isinstance(rec["suppressed"], bool)
+        assert isinstance(rec["suppression_reason"], str)
 
 
 def test_editorial_recommendations_ordered_by_priority_desc(tmp_path: Path) -> None:

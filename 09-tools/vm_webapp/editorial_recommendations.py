@@ -2,6 +2,11 @@
 
 Analisa KPIs de insights e gera recomendações acionáveis com severidade,
 motivo, ação sugerida e scores de priorização (impacto, esforço, prioridade).
+
+Guardrails anti-ruído:
+- Histerese mínima para evitar flapping de ações
+- Cooldown por action_id baseado em eventos recentes
+- Suppressão transparente com motivo
 """
 
 from dataclasses import dataclass, field
@@ -9,6 +14,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 Severity = Literal["info", "warning", "critical"]
+
+# Cooldown configuration: minimum time between same action recommendations
+ACTION_COOLDOWN_EVENTS = 3  # Events that must pass before same action can reappear
 
 
 @dataclass
@@ -22,6 +30,8 @@ class EditorialRecommendation:
     description: str
     impact_score: int = field(default=5)  # 1-10 (higher = more impact)
     effort_score: int = field(default=5)  # 1-10 (higher = more effort)
+    suppressed: bool = field(default=False)  # Whether action is suppressed
+    suppression_reason: str = field(default="")  # Why action is suppressed
 
     @property
     def priority_score(self) -> int:
@@ -60,13 +70,111 @@ def _get_action_metadata(action_id: str) -> dict[str, int]:
     return ACTION_METADATA.get(action_id, {"impact": 5, "effort": 5})
 
 
+def _check_action_cooldown(
+    action_id: str,
+    recent_events: list[dict],
+    cooldown_events: int = ACTION_COOLDOWN_EVENTS
+) -> tuple[bool, str]:
+    """Check if an action is in cooldown period.
+    
+    Args:
+        action_id: The action ID to check
+        recent_events: List of recent events (recommendations/actions taken)
+        cooldown_events: Number of events that must pass before reappearance
+    
+    Returns:
+        Tuple of (is_in_cooldown, reason)
+    """
+    if not recent_events:
+        return False, ""
+    
+    # Count events since last occurrence of this action
+    events_since_last = 0
+    for event in recent_events:
+        # Check if this event is the same action
+        event_action = event.get("action_id") if isinstance(event, dict) else None
+        if event_action == action_id:
+            break
+        events_since_last += 1
+    
+    # If action was found in recent events
+    if events_since_last < len(recent_events):
+        if events_since_last < cooldown_events:
+            remaining = cooldown_events - events_since_last
+            return True, f"Cooldown ativo: aguarde {remaining} eventos"
+    
+    return False, ""
+
+
+def _apply_hysteresis(
+    current_recommendations: list[EditorialRecommendation],
+    previous_recommendations: list[EditorialRecommendation],
+    threshold: int = 15
+) -> list[EditorialRecommendation]:
+    """Apply hysteresis to prevent flapping of recommendations.
+    
+    A recommendation will be kept if it was previously recommended and
+    priority score hasn't changed significantly.
+    
+    Args:
+        current_recommendations: Newly generated recommendations
+        previous_recommendations: Previously shown recommendations
+        threshold: Minimum priority score change to trigger update
+    
+    Returns:
+        Stabilized list of recommendations
+    """
+    if not previous_recommendations:
+        return current_recommendations
+    
+    # Build lookup for previous recommendations
+    prev_by_action: dict[str, EditorialRecommendation] = {
+        r.action_id: r for r in previous_recommendations
+    }
+    
+    stabilized: list[EditorialRecommendation] = []
+    
+    for curr in current_recommendations:
+        prev = prev_by_action.get(curr.action_id)
+        
+        if prev is None:
+            # New recommendation, add as-is
+            stabilized.append(curr)
+        else:
+            # Check if priority changed significantly
+            priority_diff = abs(curr.priority_score - prev.priority_score)
+            
+            if priority_diff < threshold:
+                # Keep previous state to prevent flapping
+                # But update scores if they changed slightly
+                stabilized.append(EditorialRecommendation(
+                    severity=prev.severity,
+                    reason=prev.reason,
+                    action_id=prev.action_id,
+                    title=prev.title,
+                    description=prev.description,
+                    impact_score=curr.impact_score,
+                    effort_score=curr.effort_score,
+                    suppressed=prev.suppressed,
+                    suppression_reason=prev.suppression_reason,
+                ))
+            else:
+                # Significant change, use current
+                stabilized.append(curr)
+    
+    return stabilized
+
+
 def analyze_baseline_none_rate(
-    baseline_stats: dict, threshold: float = 0.5
+    baseline_stats: dict,
+    recent_events: list[dict] | None = None,
+    threshold: float = 0.5
 ) -> EditorialRecommendation | None:
     """Analisa taxa de baseline none e recomenda criação de golden.
 
     Args:
         baseline_stats: dict com resolved_total e by_source
+        recent_events: Lista de eventos recentes para cooldown check
         threshold: limite para considerar alta (default 50%)
 
     Returns:
@@ -82,7 +190,13 @@ def analyze_baseline_none_rate(
     if rate < threshold:
         return None
 
-    metadata = _get_action_metadata("create_objective_golden")
+    action_id = "create_objective_golden"
+    
+    # Check cooldown
+    recent = recent_events or []
+    in_cooldown, cooldown_reason = _check_action_cooldown(action_id, recent)
+
+    metadata = _get_action_metadata(action_id)
     
     # Adjust impact based on severity
     impact = metadata["impact"]
@@ -92,21 +206,26 @@ def analyze_baseline_none_rate(
     return EditorialRecommendation(
         severity="warning" if rate < 0.8 else "critical",
         reason="baseline_none_rate_high",
-        action_id="create_objective_golden",
+        action_id=action_id,
         title="Criar Golden de Objetivo",
         description=f"{rate:.0%} das resoluções de baseline estão sem referência ({none_count}/{resolved}). Marque versões golden para melhorar a qualidade das comparações.",
         impact_score=impact,
         effort_score=metadata["effort"],
+        suppressed=in_cooldown,
+        suppression_reason=cooldown_reason if in_cooldown else "",
     )
 
 
 def analyze_policy_denials(
-    denied_total: int, threshold: int = 3
+    denied_total: int,
+    recent_events: list[dict] | None = None,
+    threshold: int = 3
 ) -> EditorialRecommendation | None:
     """Analisa denúncias de policy e recomenda revisão.
 
     Args:
         denied_total: total de tentativas negadas por policy
+        recent_events: Lista de eventos recentes para cooldown check
         threshold: limite para considerar problemático (default 3)
 
     Returns:
@@ -115,7 +234,13 @@ def analyze_policy_denials(
     if denied_total < threshold:
         return None
 
-    metadata = _get_action_metadata("review_brand_policy")
+    action_id = "review_brand_policy"
+    
+    # Check cooldown
+    recent = recent_events or []
+    in_cooldown, cooldown_reason = _check_action_cooldown(action_id, recent)
+
+    metadata = _get_action_metadata(action_id)
     
     # Adjust impact based on severity
     impact = metadata["impact"]
@@ -125,21 +250,26 @@ def analyze_policy_denials(
     return EditorialRecommendation(
         severity="warning" if denied_total < 10 else "critical",
         reason="policy_denials_increasing",
-        action_id="review_brand_policy",
+        action_id=action_id,
         title="Revisar Policy da Brand",
         description=f"{denied_total} tentativas de marcação foram bloqueadas por policy. Considere ajustar as regras ou revisar os critérios de autorização.",
         impact_score=impact,
         effort_score=metadata["effort"],
+        suppressed=in_cooldown,
+        suppression_reason=cooldown_reason if in_cooldown else "",
     )
 
 
 def analyze_recency_gap(
-    last_marked_at: str | None, gap_days: int = 7
+    last_marked_at: str | None,
+    recent_events: list[dict] | None = None,
+    gap_days: int = 7
 ) -> EditorialRecommendation | None:
     """Analisa ausência de marcações recentes.
 
     Args:
         last_marked_at: timestamp da última marcação ou None
+        recent_events: Lista de eventos recentes para cooldown check
         gap_days: dias para considerar inatividade (default 7)
 
     Returns:
@@ -147,15 +277,23 @@ def analyze_recency_gap(
     """
     metadata = _get_action_metadata("run_editorial_review")
     
+    action_id = "run_editorial_review"
+    
+    # Check cooldown
+    recent = recent_events or []
+    in_cooldown, cooldown_reason = _check_action_cooldown(action_id, recent)
+
     if last_marked_at is None:
         return EditorialRecommendation(
             severity="info",
             reason="no_golden_marks_yet",
-            action_id="run_editorial_review",
+            action_id=action_id,
             title="Rodar Revisão Editorial",
             description="Nenhuma marcação golden foi feita neste thread. Inicie uma revisão editorial para identificar versões de referência.",
             impact_score=metadata["impact"],
             effort_score=metadata["effort"],
+            suppressed=in_cooldown,
+            suppression_reason=cooldown_reason if in_cooldown else "",
         )
 
     try:
@@ -174,24 +312,30 @@ def analyze_recency_gap(
         return EditorialRecommendation(
             severity="info" if days_since < 14 else "warning",
             reason="recent_marks_absent",
-            action_id="run_editorial_review",
+            action_id=action_id,
             title="Rodar Revisão Editorial",
             description=f"Última marcação há {days_since} dias. Considere revisar novas versões para manter a qualidade do baseline.",
             impact_score=impact,
             effort_score=metadata["effort"],
+            suppressed=in_cooldown,
+            suppression_reason=cooldown_reason if in_cooldown else "",
         )
     except (ValueError, TypeError):
         return None
 
 
 def analyze_low_global_coverage(
-    by_scope: dict, marked_total: int, threshold: float = 0.3
+    by_scope: dict,
+    marked_total: int,
+    recent_events: list[dict] | None = None,
+    threshold: float = 0.3
 ) -> EditorialRecommendation | None:
     """Analisa cobertura de golden global vs objetivo.
 
     Args:
         by_scope: dict com counts por scope
         marked_total: total de marcações
+        recent_events: Lista de eventos recentes para cooldown check
         threshold: proporção mínima de global (default 30%)
 
     Returns:
@@ -206,7 +350,13 @@ def analyze_low_global_coverage(
     if rate >= threshold:
         return None
 
-    metadata = _get_action_metadata("create_global_golden")
+    action_id = "create_global_golden"
+    
+    # Check cooldown
+    recent = recent_events or []
+    in_cooldown, cooldown_reason = _check_action_cooldown(action_id, recent)
+
+    metadata = _get_action_metadata(action_id)
     
     # Adjust impact based on coverage rate
     impact = metadata["impact"]
@@ -216,19 +366,27 @@ def analyze_low_global_coverage(
     return EditorialRecommendation(
         severity="info",
         reason="low_global_coverage",
-        action_id="create_global_golden",
+        action_id=action_id,
         title="Criar Golden Global",
         description=f"Apenas {rate:.0%} das marcações são globais. Considere marcar mais versões como referência global para o thread.",
         impact_score=impact,
         effort_score=metadata["effort"],
+        suppressed=in_cooldown,
+        suppression_reason=cooldown_reason if in_cooldown else "",
     )
 
 
-def generate_recommendations(insights_data: dict) -> list[EditorialRecommendation]:
+def generate_recommendations(
+    insights_data: dict,
+    recent_events: list[dict] | None = None,
+    previous_recommendations: list[EditorialRecommendation] | None = None
+) -> list[EditorialRecommendation]:
     """Gera lista de recomendações baseada em dados de insights.
 
     Args:
         insights_data: dict retornado pelo endpoint /insights
+        recent_events: Lista de eventos recentes para cooldown check
+        previous_recommendations: Recomendações anteriores para histerese
 
     Returns:
         Lista de recomendações acionáveis ordenadas por priority_score desc
@@ -237,28 +395,32 @@ def generate_recommendations(insights_data: dict) -> list[EditorialRecommendatio
 
     # Análise de baseline none
     baseline = insights_data.get("baseline", {})
-    if rec := analyze_baseline_none_rate(baseline):
+    if rec := analyze_baseline_none_rate(baseline, recent_events):
         recommendations.append(rec)
 
     # Análise de policy denials
     policy = insights_data.get("policy", {})
-    if rec := analyze_policy_denials(policy.get("denied_total", 0)):
+    if rec := analyze_policy_denials(policy.get("denied_total", 0), recent_events):
         recommendations.append(rec)
 
     # Análise de recency
     recency = insights_data.get("recency", {})
-    if rec := analyze_recency_gap(recency.get("last_marked_at")):
+    if rec := analyze_recency_gap(recency.get("last_marked_at"), recent_events):
         recommendations.append(rec)
 
     # Análise de cobertura global
     totals = insights_data.get("totals", {})
     if rec := analyze_low_global_coverage(
-        totals.get("by_scope", {}), totals.get("marked_total", 0)
+        totals.get("by_scope", {}), totals.get("marked_total", 0), recent_events
     ):
         recommendations.append(rec)
 
     # Ordenar por priority_score descendente (maior prioridade primeiro)
     recommendations.sort(key=lambda r: r.priority_score, reverse=True)
+    
+    # Aplicar histerese para evitar flapping
+    if previous_recommendations:
+        recommendations = _apply_hysteresis(recommendations, previous_recommendations)
 
     return recommendations
 
@@ -276,6 +438,8 @@ def recommendations_to_dict(recommendations: list[EditorialRecommendation]) -> l
             "effort_score": r.effort_score,
             "priority_score": r.priority_score,
             "why_priority": r.why_priority,
+            "suppressed": r.suppressed,
+            "suppression_reason": r.suppression_reason,
         }
         for r in recommendations
     ]

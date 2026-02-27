@@ -2034,8 +2034,11 @@ def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[s
             },
         }
         
-        # Generate recommendations
-        recommendations = generate_recommendations(insights_data)
+        # Build recent events list for cooldown tracking
+        recent_events = [{"action_id": "baseline_resolved", "occurred_at": row.occurred_at} for row in baseline_rows[-10:]]
+        
+        # Generate recommendations with anti-noise guardrails
+        recommendations = generate_recommendations(insights_data, recent_events=recent_events)
         
         return {
             "thread_id": thread_id,
