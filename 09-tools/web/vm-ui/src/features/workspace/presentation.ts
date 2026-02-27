@@ -31,6 +31,7 @@ export function toHumanTimelineEvent(eventType: string): string {
     ApprovalCreated: "Aprovacao criada",
     ApprovalGranted: "Aprovacao concedida",
     ToolInvoked: "Ferramenta executada",
+    EditorialGoldenMarked: "Golden marcado",
   };
   return map[eventType] ?? eventType;
 }
@@ -62,6 +63,41 @@ export function pickBaselineRun(
   return runs[activeIndex - 1] ?? null;
 }
 
-export function toComparisonLabel(hasBaseline: boolean): string {
+export type BaselineSource = "objective_golden" | "global_golden" | "previous" | "none";
+
+export function toBaselineSourceLabel(source: BaselineSource): string {
+  const map: Record<BaselineSource, string> = {
+    objective_golden: "Golden deste objetivo",
+    global_golden: "Golden global",
+    previous: "Versao anterior",
+    none: "Sem baseline",
+  };
+  return map[source] ?? source;
+}
+
+export function toComparisonLabel(source: BaselineSource): string {
+  if (source === "none") return "Sem versao anterior para comparar";
+  return `Comparando com: ${toBaselineSourceLabel(source)}`;
+}
+
+// Legacy function for backwards compatibility
+export function toComparisonLabelLegacy(hasBaseline: boolean): string {
   return hasBaseline ? "Comparando com a versao anterior" : "Sem versao anterior para comparar";
+}
+
+export function isGoldenForRun(
+  runId: string,
+  decisions: { global: { run_id: string } | null; objective: Array<{ run_id: string; objective_key?: string }> } | null
+): { isGlobalGolden: boolean; isObjectiveGolden: boolean; objectiveKey?: string } {
+  if (!decisions) {
+    return { isGlobalGolden: false, isObjectiveGolden: false };
+  }
+  const isGlobalGolden = decisions.global?.run_id === runId;
+  const objectiveDecision = decisions.objective?.find((d) => d.run_id === runId);
+  const isObjectiveGolden = Boolean(objectiveDecision);
+  return {
+    isGlobalGolden,
+    isObjectiveGolden,
+    objectiveKey: objectiveDecision?.objective_key,
+  };
 }

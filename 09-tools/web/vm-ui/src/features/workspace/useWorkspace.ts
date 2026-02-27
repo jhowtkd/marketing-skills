@@ -15,6 +15,7 @@ export type WorkflowRun = {
   requested_mode: string;
   request_text?: string;
   created_at?: string;
+  objective_key?: string;
 };
 
 export type TimelineEvent = {
@@ -45,6 +46,24 @@ export type DeepEvaluationState = {
   score: QualityScore;
   fallbackApplied: boolean;
   error: string | null;
+};
+
+export type EditorialDecision = {
+  run_id: string;
+  justification: string;
+  updated_at: string;
+  objective_key?: string;
+};
+
+export type EditorialDecisions = {
+  global: EditorialDecision | null;
+  objective: EditorialDecision[];
+};
+
+export type ResolvedBaseline = {
+  baseline_run_id: string | null;
+  source: "objective_golden" | "global_golden" | "previous" | "none";
+  objective_key: string;
 };
 
 type PostJsonLike = <T>(url: string, payload: unknown, prefix: string) => Promise<T>;
@@ -111,6 +130,8 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [primaryArtifact, setPrimaryArtifact] = useState<PrimaryArtifact | null>(null);
   const [artifactsByRun, setArtifactsByRun] = useState<Record<string, PrimaryArtifact | null>>({});
   const [deepEvaluationByRun, setDeepEvaluationByRun] = useState<Record<string, DeepEvaluationState>>({});
+  const [editorialDecisions, setEditorialDecisions] = useState<EditorialDecisions | null>(null);
+  const [resolvedBaseline, setResolvedBaseline] = useState<ResolvedBaseline | null>(null);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
@@ -119,6 +140,15 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
 
   // Derive effective active run id: use provided, or first run if available
   const effectiveActiveRunId = activeRunId || runs[0]?.run_id || null;
+
+  // Local baseline calculation (fallback when API fails)
+  const localBaseline = (() => {
+    if (!effectiveActiveRunId || runs.length < 2) return null;
+    const activeIndex = runs.findIndex((run) => run.run_id === effectiveActiveRunId);
+    if (activeIndex < 0) return null;
+    // Return previous run in the list (chronologically older)
+    return runs[activeIndex + 1] ?? null;
+  })();
 
   const fetchProfiles = async () => {
     setLoadingProfiles(true);
@@ -180,6 +210,70 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
       console.error("Failed to fetch timeline", e);
     } finally {
       setLoadingTimeline(false);
+    }
+  };
+
+  const fetchEditorialDecisions = async () => {
+    if (!activeThreadId) {
+      setEditorialDecisions(null);
+      return;
+    }
+    try {
+      const data = await fetchJson<EditorialDecisions>(`/api/v2/threads/${activeThreadId}/editorial-decisions`);
+      setEditorialDecisions(data);
+    } catch (e) {
+      console.error("Failed to fetch editorial decisions", e);
+      // Fallback: keep current state (null or previous)
+    }
+  };
+
+  const fetchResolvedBaseline = async (runId?: string) => {
+    const targetRunId = runId || effectiveActiveRunId;
+    if (!targetRunId) {
+      setResolvedBaseline(null);
+      return;
+    }
+    try {
+      const data = await fetchJson<ResolvedBaseline>(`/api/v2/workflow-runs/${targetRunId}/baseline`);
+      setResolvedBaseline(data);
+    } catch (e) {
+      console.error("Failed to fetch resolved baseline", e);
+      // Fallback: use local baseline calculation
+      if (localBaseline) {
+        setResolvedBaseline({
+          baseline_run_id: localBaseline.run_id,
+          source: "previous",
+          objective_key: localBaseline.objective_key || "",
+        });
+      } else {
+        setResolvedBaseline({ baseline_run_id: null, source: "none", objective_key: "" });
+      }
+    }
+  };
+
+  const markGoldenDecision = async (input: {
+    runId: string;
+    scope: "global" | "objective";
+    objectiveKey?: string;
+    justification: string;
+  }) => {
+    if (!activeThreadId) return;
+    try {
+      await postJson(
+        `/api/v2/threads/${activeThreadId}/editorial-decisions/golden`,
+        {
+          run_id: input.runId,
+          scope: input.scope,
+          objective_key: input.objectiveKey || null,
+          justification: input.justification,
+        },
+        "editorial"
+      );
+      // Refresh decisions after marking
+      await fetchEditorialDecisions();
+    } catch (e) {
+      console.error("Failed to mark golden decision", e);
+      throw e;
     }
   };
 
@@ -288,6 +382,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   useEffect(() => {
     fetchRuns();
     fetchTimeline();
+    fetchEditorialDecisions();
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -295,6 +390,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     if (targetRunId) {
       fetchRunDetail(targetRunId);
       fetchPrimaryArtifact(targetRunId);
+      fetchResolvedBaseline(targetRunId);
     }
   }, [effectiveActiveRunId, runs]);
 
@@ -303,7 +399,10 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     const timer = window.setInterval(() => {
       fetchRuns();
       fetchTimeline();
-      if (activeRunId) fetchRunDetail();
+      if (activeRunId) {
+        fetchRunDetail();
+        fetchResolvedBaseline();
+      }
     }, 4000);
     return () => window.clearInterval(timer);
   }, [activeThreadId, activeRunId]);
@@ -317,6 +416,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     primaryArtifact,
     artifactsByRun,
     deepEvaluationByRun,
+    editorialDecisions,
+    resolvedBaseline,
+    localBaseline,
     loadingProfiles,
     loadingRuns,
     loadingRunDetail,
@@ -326,6 +428,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     resumeRun,
     requestDeepEvaluation,
     loadArtifactForRun,
+    markGoldenDecision,
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,
     refreshPrimaryArtifact: () => fetchPrimaryArtifact(),
