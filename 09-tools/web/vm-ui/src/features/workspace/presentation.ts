@@ -18,11 +18,24 @@ export function toHumanRunName(input: { index: number; requestText?: string; cre
 export type TimelineEvent = {
   event_type: string;
   payload?: Record<string, unknown>;
+  actor_id?: string;
+};
+
+export type TimelineEventDisplay = {
+  label: string;
+  actor?: string;
+  justification?: string;
 };
 
 export function toHumanTimelineEvent(event: string | TimelineEvent): string {
+  const result = toHumanTimelineEventDetails(event);
+  return result.label;
+}
+
+export function toHumanTimelineEventDetails(event: string | TimelineEvent): TimelineEventDisplay {
   const eventType = typeof event === "string" ? event : event.event_type;
   const payload = typeof event === "string" ? undefined : event.payload;
+  const actorId = typeof event === "string" ? undefined : event.actor_id;
 
   const map: Record<string, string> = {
     ThreadModeAdded: "Modo adicionado ao job",
@@ -45,14 +58,23 @@ export function toHumanTimelineEvent(event: string | TimelineEvent): string {
   // Special handling for EditorialGoldenMarked with scope awareness
   if (eventType === "EditorialGoldenMarked" && payload) {
     const scope = payload.scope as string | undefined;
+    const justification = payload.justification as string | undefined;
+    
+    let label = map[eventType] ?? eventType;
     if (scope === "global") {
-      return "Golden global definido";
+      label = "Golden global definido";
     } else if (scope === "objective") {
-      return "Golden de objetivo definido";
+      label = "Golden de objetivo definido";
     }
+    
+    return {
+      label,
+      actor: actorId,
+      justification: justification,
+    };
   }
 
-  return map[eventType] ?? eventType;
+  return { label: map[eventType] ?? eventType };
 }
 
 export function canResumeRunStatus(status: string): boolean {
@@ -119,4 +141,25 @@ export function isGoldenForRun(
     isObjectiveGolden,
     objectiveKey: objectiveDecision?.objective_key,
   };
+}
+
+// Timeline filter types and helpers
+export type TimelineFilter = "all" | "editorial";
+
+export const TIMELINE_FILTER_LABELS: Record<TimelineFilter, string> = {
+  all: "Todos",
+  editorial: "Editorial",
+};
+
+export function isEditorialEvent(eventType: string): boolean {
+  return eventType === "EditorialGoldenMarked";
+}
+
+export function filterTimelineEvents<T extends { event_type: string }>(
+  events: T[],
+  filter: TimelineFilter
+): T[] {
+  if (filter === "all") return events;
+  if (filter === "editorial") return events.filter((e) => isEditorialEvent(e.event_type));
+  return events;
 }

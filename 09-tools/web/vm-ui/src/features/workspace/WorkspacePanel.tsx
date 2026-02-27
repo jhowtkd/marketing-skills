@@ -13,8 +13,13 @@ import {
   toHumanRunName,
   toHumanStatus,
   toHumanTimelineEvent,
+  toHumanTimelineEventDetails,
   isGoldenForRun,
+  isEditorialEvent,
+  filterTimelineEvents,
+  TIMELINE_FILTER_LABELS,
   type BaselineSource,
+  type TimelineFilter,
 } from "./presentation";
 import { useWorkspace } from "./useWorkspace";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
@@ -67,6 +72,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const [guidedModalOpen, setGuidedModalOpen] = useState(false);
   const [goldenModalOpen, setGoldenModalOpen] = useState(false);
   const [goldenModalScope, setGoldenModalScope] = useState<"global" | "objective">("global");
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
 
   useEffect(() => {
     setActiveView(readWorkspaceView(activeThreadId));
@@ -76,10 +82,10 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     writeWorkspaceView(activeThreadId, activeView);
   }, [activeThreadId, activeView]);
 
-  const sortedTimeline = useMemo(
-    () => [...timeline].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
-    [timeline]
-  );
+  const sortedTimeline = useMemo(() => {
+    const filtered = filterTimelineEvents(timeline, timelineFilter);
+    return [...filtered].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  }, [timeline, timelineFilter]);
   const hasActiveThread = Boolean(activeThreadId);
   const activeRun = runs.find((run) => run.run_id === currentRunId) ?? null;
   const hasActiveRun = Boolean(activeRun);
@@ -211,26 +217,66 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </p>
           <h3 className="mt-2 font-serif text-xl text-slate-900">Timeline</h3>
         </div>
+        {/* Timeline Filter */}
+        <div className="flex gap-1">
+          {( ["all", "editorial"] as TimelineFilter[] ).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setTimelineFilter(filter)}
+              className={`px-2 py-1 text-xs rounded-full transition-colors ${
+                timelineFilter === filter
+                  ? "bg-[var(--vm-primary)] text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {TIMELINE_FILTER_LABELS[filter]}
+            </button>
+          ))}
+        </div>
       </div>
       {sortedTimeline.length === 0 ? (
         <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-4 text-sm text-slate-600">
           {hasActiveThread
-            ? "Nenhum evento na timeline ainda. As etapas desta versao aparecerao aqui."
+            ? timelineFilter === "editorial"
+              ? "Nenhum evento editorial na timeline."
+              : "Nenhum evento na timeline ainda. As etapas desta versao aparecerao aqui."
             : "A timeline sera preenchida quando um job ativo entrar em execucao."}
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2 max-h-64 overflow-auto">
-          {sortedTimeline.map((event) => (
-            <div key={event.event_id} className="rounded-lg border border-slate-200 p-2 text-xs">
-              <div className="font-semibold text-slate-700">{toHumanTimelineEvent({ event_type: event.event_type, payload: event.payload })}</div>
-              <div className="text-slate-500">{formatDateTime(event.created_at)}</div>
-              {devMode ? (
-                <div className="text-[11px] text-slate-400 mt-1">
-                  {event.event_type} · {event.event_id}
-                </div>
-              ) : null}
-            </div>
-          ))}
+          {sortedTimeline.map((event) => {
+            const eventDetails = toHumanTimelineEventDetails({
+              event_type: event.event_type,
+              payload: event.payload,
+              actor_id: event.actor_id,
+            });
+            const isEditorial = isEditorialEvent(event.event_type);
+            return (
+              <div key={event.event_id} className={`rounded-lg border p-2 text-xs ${isEditorial ? "border-amber-200 bg-amber-50/50" : "border-slate-200"}`}>
+                <div className="font-semibold text-slate-700">{eventDetails.label}</div>
+                <div className="text-slate-500">{formatDateTime(event.created_at)}</div>
+                {/* Actor and Justification for editorial events */}
+                {isEditorial && (eventDetails.actor || eventDetails.justification) ? (
+                  <div className="mt-1 text-[11px] text-slate-600">
+                    {eventDetails.actor ? (
+                      <span className="font-medium">por {eventDetails.actor}</span>
+                    ) : null}
+                    {eventDetails.actor && eventDetails.justification ? (
+                      <span className="mx-1">·</span>
+                    ) : null}
+                    {eventDetails.justification ? (
+                      <span className="italic">&quot;{eventDetails.justification.slice(0, 60)}{eventDetails.justification.length > 60 ? "..." : ""}&quot;</span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {devMode ? (
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    {event.event_type} · {event.event_id}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
