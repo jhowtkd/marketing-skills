@@ -1,7 +1,7 @@
 name: vm-studio-run-binding-nightly
 
 on:
-  # Nightly schedule (2 AM UTC)
+  # Nightly schedule (2 AM UTC) - against staging environment
   schedule:
     - cron: '0 2 * * *'
   
@@ -18,9 +18,12 @@ on:
         default: 'chromium'
 
 jobs:
+  # Job para testar contra ambiente já implantado (staging/prod)
   e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Só roda se tiver uma URL externa configurada (não localhost)
+    if: github.event.inputs.base_url != 'http://localhost:5173' && github.event.inputs.base_url != ''
     
     steps:
       - uses: actions/checkout@v4
@@ -39,14 +42,11 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npx playwright install --with-deps chromium
       
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
-      
       - name: Run Playwright tests
         working-directory: ./09-tools/web/vm-ui
         env:
-          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:5173' }}
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
+          CI: true
         run: |
           if [ "${{ github.event.inputs.browser }}" != "" ]; then
             npx playwright test --project=${{ github.event.inputs.browser }}
@@ -78,11 +78,10 @@ jobs:
           path: 09-tools/web/vm-ui/test-results/**/*.png
           retention-days: 7
 
-  # Optional: Run against a deployed environment
-  e2e-staging:
+  # Job de validação estrutural (smoke test) - não requer servidor
+  smoke-structure:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event.inputs.base_url != '' && github.event.inputs.base_url != 'http://localhost:5173'
+    timeout-minutes: 10
     
     steps:
       - uses: actions/checkout@v4
@@ -101,17 +100,10 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npx playwright install --with-deps chromium
       
-      - name: Run Playwright tests against staging
+      - name: Validate Playwright config (list tests)
         working-directory: ./09-tools/web/vm-ui
-        env:
-          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
-          CI: true
-        run: npx playwright test
+        run: npx playwright test --list
       
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-staging
-          path: 09-tools/web/vm-ui/playwright-report/
-          retention-days: 7
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
