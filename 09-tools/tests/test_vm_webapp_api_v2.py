@@ -1170,3 +1170,89 @@ def test_editorial_golden_uses_fallback_actor_when_header_missing(tmp_path: Path
         # Verify payload contains fallback actor_role (editor)
         payload = json.loads(event.payload_json)
         assert payload.get("actor_role") == "editor", f"Expected actor_role='editor', got '{payload.get('actor_role')}'"
+
+
+# TASK B: Policy por escopo (global vs objective)
+
+def test_editorial_golden_policy_editor_cannot_global_scope(tmp_path: Path) -> None:
+    """Editor nao pode marcar golden global (apenas objective)"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "policy-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "policy-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "policy-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "policy-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Editor + global => 403
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "policy-editor-global", "X-User-Id": "editor-1", "X-User-Role": "editor"},
+        json={"run_id": run_id, "scope": "global", "justification": "tentativa global"},
+    )
+    assert resp.status_code == 403, "editor should not be allowed to mark global golden"
+
+
+def test_editorial_golden_policy_editor_can_objective_scope(tmp_path: Path) -> None:
+    """Editor pode marcar golden objective"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "policy2-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "policy2-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "policy2-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "policy2-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Editor + objective => 200
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "policy-editor-obj", "X-User-Id": "editor-2", "X-User-Role": "editor"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-123", "justification": "objective ok"},
+    )
+    assert resp.status_code == 200, "editor should be allowed to mark objective golden"
+
+
+def test_editorial_golden_policy_admin_can_global_scope(tmp_path: Path) -> None:
+    """Admin pode marcar golden global"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "policy3-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "policy3-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "policy3-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "policy3-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Admin + global => 200
+    resp = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "policy-admin-global", "X-User-Id": "admin-1", "X-User-Role": "admin"},
+        json={"run_id": run_id, "scope": "global", "justification": "admin global ok"},
+    )
+    assert resp.status_code == 200, "admin should be allowed to mark global golden"
+
+
+def test_editorial_golden_policy_viewer_cannot_any_scope(tmp_path: Path) -> None:
+    """Viewer nao pode marcar golden em nenhum escopo"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "policy4-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "policy4-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "policy4-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    run_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "policy4-run"}, json={"request_text": "Campanha", "mode": "content_calendar"}).json()["run_id"]
+
+    # Viewer + global => 403
+    resp_global = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "policy-viewer-global", "X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+        json={"run_id": run_id, "scope": "global", "justification": "tentativa viewer"},
+    )
+    assert resp_global.status_code == 403, "viewer should not be allowed to mark global golden"
+
+    # Viewer + objective => 403
+    resp_obj = client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "policy-viewer-obj", "X-User-Id": "viewer-1", "X-User-Role": "viewer"},
+        json={"run_id": run_id, "scope": "objective", "objective_key": "obj-123", "justification": "tentativa viewer obj"},
+    )
+    assert resp_obj.status_code == 403, "viewer should not be allowed to mark objective golden"

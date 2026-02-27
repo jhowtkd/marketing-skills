@@ -217,6 +217,29 @@ def get_actor_context(request: Request) -> dict[str, str]:
     }
 
 
+# Policy matrix for editorial golden marking by scope
+# admin: can global and objective
+# editor: can only objective  
+# viewer: cannot mark golden (already blocked by _require_editorial_role)
+_EDITORIAL_SCOPE_POLICY: dict[str, set[str]] = {
+    "admin": {"global", "objective"},
+    "editor": {"objective"},
+}
+
+
+def _enforce_scope_policy(actor_role: str, scope: str) -> None:
+    """Enforce scope-based policy for editorial golden marking.
+    
+    Raises 403 if actor_role is not allowed for the given scope.
+    """
+    allowed_scopes = _EDITORIAL_SCOPE_POLICY.get(actor_role, set())
+    if scope not in allowed_scopes:
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{actor_role}' is not authorized to mark golden with scope '{scope}'"
+        )
+
+
 def project_command_event(session, *, event_id: str) -> None:
     row = get_event_by_id(session, event_id)
     if row is None:
@@ -1431,6 +1454,9 @@ def mark_editorial_golden_v2(
     
     # Get actor context (identity + role)
     actor_ctx = get_actor_context(request)
+    
+    # Policy: enforce scope-based authorization
+    _enforce_scope_policy(actor_ctx["actor_role"], payload.scope)
     
     # Validation: justification must not be empty
     if not payload.justification or not payload.justification.strip():
