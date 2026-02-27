@@ -169,3 +169,166 @@ POST /api/v2/threads/{thread_id}/editorial-decisions/golden
 2. `feat(insights): add editorial insights endpoint with KPI aggregation`
 3. `feat(studio): add editorial insights panel to workspace`
 4. `ci(vm-webapp): gate editorial insights endpoint and ui coverage`
+
+
+---
+
+## Governança v7 (Automação Operacional)
+
+### Overview
+Release focada em automatizar ações operacionais baseadas em degradação de KPIs, permitindo recuperação com 1 clique e relatórios consolidados noturnos.
+
+---
+
+## A) Motor de Recomendações Automáticas
+
+### Implementação
+- **Módulo**: `vm_webapp/editorial_recommendations.py`
+- **Endpoint**: `GET /api/v2/threads/{thread_id}/editorial-decisions/recommendations`
+- **Análises implementadas**:
+  - `baseline_none_rate` alto → recomenda "criar golden de objetivo"
+  - `policy_denied_total` crescente → recomenda "revisar policy da brand"
+  - Ausência de marcações recentes → recomenda "rodar revisão editorial"
+  - Baixa cobertura global → recomenda "criar golden global"
+
+### Contrato Response
+```json
+{
+  "thread_id": "string",
+  "recommendations": [
+    {
+      "severity": "info | warning | critical",
+      "reason": "baseline_none_rate_high",
+      "action_id": "create_objective_golden",
+      "title": "Criar Golden de Objetivo",
+      "description": "50% das resoluções estão sem referência..."
+    }
+  ],
+  "generated_at": "2026-02-27T15:00:00Z"
+}
+```
+
+### Severidades
+| Severidade | Condição | Cor UI |
+|------------|----------|--------|
+| `critical` | baseline_none > 80% OU policy_denied > 10 | Vermelho |
+| `warning` | baseline_none > 50% OU policy_denied > 3 | Âmbar |
+| `info` | Outras recomendações | Cinza |
+
+---
+
+## B) Playbook de Recuperação (1 Clique)
+
+### Implementação
+- **Endpoint**: `POST /api/v2/threads/{thread_id}/editorial-decisions/playbook/execute`
+- **Idempotency**: Obrigatório via header `Idempotency-Key`
+- **Ações disponíveis**:
+  - `open_review_task`: Cria tarefa de revisão editorial
+  - `prepare_guided_regeneration`: Prepara contexto para regeneração guiada
+  - `suggest_policy_review`: Sugere revisão de policy da brand
+
+### Request/Response
+```json
+// Request
+{
+  "action_id": "open_review_task",
+  "run_id": "run-xxx",
+  "note": "Revisar estrutura do conteúdo"
+}
+
+// Response
+{
+  "status": "success",
+  "executed_action": "open_review_task",
+  "created_entities": [
+    {"entity_type": "review_task", "entity_id": "r-123"}
+  ],
+  "event_id": "evt-xxx"
+}
+```
+
+### Auditoria
+- Evento `EditorialPlaybookExecuted` emitido na timeline
+- Payload inclui `action_id`, `run_id`, `note`, `actor_role`
+
+---
+
+## C) Painel de Ações Recomendadas no Studio
+
+### Implementação
+- **Localização**: WorkspacePanel (após insights editoriais)
+- **Hook**: `useWorkspace` expõe `recommendations`, `refreshRecommendations`, `executePlaybookAction`
+
+### UI Features
+| Feature | Descrição |
+|---------|-----------|
+| Loading state | Spinner durante carregamento |
+| Empty state | Mensagem quando não há recomendações |
+| Error state | Retry button em caso de falha |
+| Severidade badges | Chips coloridos (critical=vermelho, warning=âmbar, info=cinza) |
+| Botão Executar | 1 clique para executar ação do playbook |
+| Refresh manual | Botão "Recarregar ações" |
+
+### Estados
+- `!hasActiveThread`: Mensagem "Escolha um job..."
+- `loadingRecommendations`: Spinner
+- `!recommendations`: Mensagem de erro com retry
+- `recommendations.length === 0`: Mensagem informativa
+- Lista de cards com severidade, título, descrição, motivo e botão executar
+
+---
+
+## D) Workflow Noturno de Relatório Consolidado
+
+### Implementação
+- **Arquivo**: `.github/workflows/vm-editorial-ops-nightly.yml`
+- **Trigger**: Schedule (6 AM UTC) + workflow_dispatch
+- **Script**: `scripts/editorial_ops_report.py`
+
+### Funcionalidades
+- Coleta insights por thread (via API interna)
+- Agrega métricas: total marked, denied, baseline sources
+- Calcula baseline_none_rate
+- Gera relatório markdown com alertas automáticos
+- Publica resumo no `GITHUB_STEP_SUMMARY`
+- Upload de artifacts (markdown + JSON raw)
+
+### Alertas Automáticos
+| Condição | Alerta |
+|----------|--------|
+| baseline_none_rate > 30% | "⚠️ High baseline-none rate" |
+| total_denied > 5 | "⚠️ Policy denials detected" |
+| total_marked == 0 | "⚠️ No golden marks" |
+
+### Formats de Saída
+- `--format markdown`: Relatório human-readable (padrão)
+- `--format json`: Estrutura para consumo programático
+
+---
+
+## Test Summary (v7)
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Backend API v2 | 48 | PASS |
+| Frontend Workspace | 52 | PASS |
+
+### Novos Testes
+- Backend: +4 (recommendations endpoint, playbook execute, validation)
+- Frontend: +3 (recommendations hook, panel, execute action)
+
+---
+
+## Migration Notes
+- Nenhuma migração necessária
+- Playbook actions são idempotentes via Idempotency-Key
+- Relatório noturno inicia com dados vazios até threads serem configurados
+
+---
+
+## Commits v7
+1. `feat(editorial): add automated governance recommendations endpoint`
+2. `feat(editorial): add one-click recovery playbook execution endpoint`
+3. `feat(vm-ui): add recommended actions panel with one-click recovery playbook`
+4. `ci(observability): add nightly editorial ops consolidated report workflow`
+5. `docs(release): append governance v7 automated actions and nightly ops reporting`
