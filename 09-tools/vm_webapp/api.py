@@ -1610,3 +1610,70 @@ def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, o
         "global": global_decision,
         "objective": objective_decisions,
     }
+
+
+@router.get("/v2/threads/{thread_id}/editorial-decisions/audit")
+def get_editorial_audit_v2(
+    thread_id: str, 
+    request: Request,
+    scope: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, object]:
+    """Get audit trail of editorial golden decisions for a thread.
+    
+    Returns chronological list of EditorialGoldenMarked events with full context.
+    Supports filtering by scope and pagination.
+    """
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Query timeline items for EditorialGoldenMarked events
+        from sqlalchemy import select
+        from vm_webapp.models import TimelineItemView
+        
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        events = []
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            
+            # Apply scope filter if provided
+            if scope and payload.get("scope") != scope:
+                continue
+            
+            events.append({
+                "event_id": row.event_id,
+                "event_type": row.event_type,
+                "occurred_at": row.occurred_at,
+                "actor_id": row.actor_id,
+                "actor_role": payload.get("actor_role", "editor"),
+                "scope": payload.get("scope"),
+                "objective_key": payload.get("objective_key"),
+                "run_id": payload.get("run_id"),
+                "justification": payload.get("justification"),
+            })
+        
+        # Apply pagination
+        total = len(events)
+        paginated_events = events[offset:offset + limit]
+        
+        return {
+            "thread_id": thread_id,
+            "events": paginated_events,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }

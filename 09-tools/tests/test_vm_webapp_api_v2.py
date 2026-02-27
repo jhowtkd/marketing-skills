@@ -1378,3 +1378,107 @@ def test_editorial_golden_rejects_invalid_auth(tmp_path: Path) -> None:
         json={"run_id": run_id, "scope": "global", "justification": "test invalid"},
     )
     assert resp.status_code == 401, f"Invalid token should return 401, got {resp.status_code}"
+
+
+# TASK B: Auditoria dedicada de decisões editoriais
+
+def test_editorial_audit_endpoint_returns_chronological_events(tmp_path: Path) -> None:
+    """Endpoint de auditoria deve retornar eventos EditorialGoldenMarked em ordem cronológica"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "audit-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "audit-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "audit-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "audit-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "audit-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark first golden (objective)
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "audit-mark1", "Authorization": "Bearer editor1:editor"},
+        json={"run_id": run1_id, "scope": "objective", "objective_key": "obj-123", "justification": "first mark"},
+    )
+    
+    # Mark second golden (global - needs admin)
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "audit-mark2", "Authorization": "Bearer admin1:admin"},
+        json={"run_id": run2_id, "scope": "global", "justification": "second mark"},
+    )
+
+    # Query audit endpoint
+    resp = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/audit")
+    assert resp.status_code == 200, f"Audit endpoint should return 200, got {resp.status_code}"
+    
+    data = resp.json()
+    assert "events" in data
+    assert len(data["events"]) == 2
+    
+    # Verify first event (objective)
+    event1 = data["events"][0]
+    assert event1["event_type"] == "EditorialGoldenMarked"
+    assert event1["actor_id"] == "editor1"
+    assert event1["actor_role"] == "editor"
+    assert event1["scope"] == "objective"
+    assert event1["objective_key"] == "obj-123"
+    assert event1["run_id"] == run1_id
+    assert event1["justification"] == "first mark"
+    assert "event_id" in event1
+    assert "occurred_at" in event1
+    
+    # Verify second event (global)
+    event2 = data["events"][1]
+    assert event2["scope"] == "global"
+    assert event2["actor_id"] == "admin1"
+    assert event2["actor_role"] == "admin"
+
+
+def test_editorial_audit_endpoint_supports_scope_filter(tmp_path: Path) -> None:
+    """Endpoint de auditoria deve suportar filtro por scope"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "auditf-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "auditf-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "auditf-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "auditf-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+    run2_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "auditf-run2"}, json={"request_text": "Campanha 2", "mode": "content_calendar"}).json()["run_id"]
+
+    # Mark objective golden
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "auditf-mark1", "Authorization": "Bearer editor1:editor"},
+        json={"run_id": run1_id, "scope": "objective", "objective_key": "obj-123", "justification": "objective mark"},
+    )
+    
+    # Mark global golden
+    client.post(
+        f"/api/v2/threads/{thread_id}/editorial-decisions/golden",
+        headers={"Idempotency-Key": "auditf-mark2", "Authorization": "Bearer admin1:admin"},
+        json={"run_id": run2_id, "scope": "global", "justification": "global mark"},
+    )
+
+    # Query audit endpoint with scope filter
+    resp_global = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/audit?scope=global")
+    assert resp_global.status_code == 200
+    data_global = resp_global.json()
+    assert len(data_global["events"]) == 1
+    assert data_global["events"][0]["scope"] == "global"
+    
+    resp_obj = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/audit?scope=objective")
+    assert resp_obj.status_code == 200
+    data_obj = resp_obj.json()
+    assert len(data_obj["events"]) == 1
+    assert data_obj["events"][0]["scope"] == "objective"
+
+
+def test_editorial_audit_endpoint_returns_404_for_unknown_thread(tmp_path: Path) -> None:
+    """Endpoint de auditoria deve retornar 404 para thread inexistente"""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    resp = client.get("/api/v2/threads/thread-inexistente/editorial-decisions/audit")
+    assert resp.status_code == 404
