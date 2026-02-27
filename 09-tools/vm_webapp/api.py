@@ -1931,3 +1931,114 @@ def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, obj
                 "last_actor_id": last_actor_id,
             },
         }
+
+
+@router.get("/v2/threads/{thread_id}/editorial-decisions/recommendations")
+def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[str, object]:
+    """Get automated operational recommendations for editorial governance.
+    
+    Analyzes KPIs from insights and generates actionable recommendations
+    with severity levels (info, warning, critical).
+    """
+    from datetime import datetime, timezone
+    from vm_webapp.editorial_recommendations import generate_recommendations, recommendations_to_dict
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Reuse insights logic - call the insights endpoint logic directly
+        from sqlalchemy import select
+        from vm_webapp.models import TimelineItemView, EventLog
+        
+        # Query all EditorialGoldenMarked events for this thread
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        # Calculate totals
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        by_reason_code: dict[str, int] = {}
+        last_marked_at: str | None = None
+        last_actor_id: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            
+            reason_code = payload.get("reason_code") or "other"
+            by_reason_code[reason_code] = by_reason_code.get(reason_code, 0) + 1
+            
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+                last_actor_id = row.actor_id
+        
+        # Query policy denials
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        # Calculate baseline resolution stats
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        resolved_total = len(baseline_rows)
+        by_source: dict[str, int] = {
+            "objective_golden": 0,
+            "global_golden": 0,
+            "previous": 0,
+            "none": 0,
+        }
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        # Build insights data structure
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {
+                "marked_total": marked_total,
+                "by_scope": by_scope,
+                "by_reason_code": by_reason_code,
+            },
+            "policy": {
+                "denied_total": denied_total,
+            },
+            "baseline": {
+                "resolved_total": resolved_total,
+                "by_source": by_source,
+            },
+            "recency": {
+                "last_marked_at": last_marked_at,
+                "last_actor_id": last_actor_id,
+            },
+        }
+        
+        # Generate recommendations
+        recommendations = generate_recommendations(insights_data)
+        
+        return {
+            "thread_id": thread_id,
+            "recommendations": recommendations_to_dict(recommendations),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }

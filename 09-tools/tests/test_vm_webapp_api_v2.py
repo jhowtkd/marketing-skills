@@ -1612,3 +1612,36 @@ def test_editorial_insights_endpoint_returns_governance_kpis(tmp_path: Path) -> 
     assert data["totals"]["by_scope"]["objective"] == 1
     assert data["totals"]["by_reason_code"]["clarity"] == 1
     assert data["totals"]["by_reason_code"]["cta"] == 1
+
+
+def test_editorial_recommendations_endpoint_returns_actionable_items(tmp_path: Path) -> None:
+    """Recommendations endpoint deve retornar recomendacoes acionaveis baseadas em KPIs."""
+    app = create_app(settings=Settings(vm_workspace_root=tmp_path / "runtime" / "vm", vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3"))
+    client = TestClient(app)
+
+    brand_id = client.post("/api/v2/brands", headers={"Idempotency-Key": "rec-b"}, json={"name": "Acme"}).json()["brand_id"]
+    project_id = client.post("/api/v2/projects", headers={"Idempotency-Key": "rec-p"}, json={"brand_id": brand_id, "name": "Launch"}).json()["project_id"]
+    thread_id = client.post("/api/v2/threads", headers={"Idempotency-Key": "rec-t"}, json={"brand_id": brand_id, "project_id": project_id, "title": "Planning"}).json()["thread_id"]
+    
+    # Criar run sem marcar golden (simula baseline_none alto)
+    run1_id = client.post(f"/api/v2/threads/{thread_id}/workflow-runs", headers={"Idempotency-Key": "rec-run1"}, json={"request_text": "Campanha 1", "mode": "content_calendar"}).json()["run_id"]
+    
+    # Resolver baseline (vai gerar source=none)
+    client.get(f"/api/v2/workflow-runs/{run1_id}/baseline")
+
+    recommendations = client.get(f"/api/v2/threads/{thread_id}/editorial-decisions/recommendations")
+    assert recommendations.status_code == 200
+    data = recommendations.json()
+
+    # Verificar estrutura da resposta
+    assert "recommendations" in data
+    assert "thread_id" in data
+    assert "generated_at" in data
+    
+    # Verificar estrutura de cada recomendacao
+    for rec in data["recommendations"]:
+        assert "severity" in rec  # warning | critical | info
+        assert "reason" in rec
+        assert "action_id" in rec
+        assert "title" in rec
+        assert "description" in rec
