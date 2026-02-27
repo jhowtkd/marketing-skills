@@ -1,630 +1,260 @@
-# Release: VM Studio Editorial Golden (Event-Sourcing)
+# Governança Editorial v5
 
-**Data:** 2026-02-27  
-**Versão:** Editorial Golden Decision (Event-Sourcing)  
-**Status:** ✅ Released
-
----
-
-## Resumo
-
-Implementação completa do sistema de decisão editorial auditável (golden global + golden por objetivo) com baseline oficial `objective > global > previous` no backend e frontend do VM Studio.
+## Overview
+Release focada em governança editorial multi-tenant com policy configurável por brand e painel de auditoria no Studio.
 
 ---
 
-## Problema Resolvido
+## Governança v5: Multitenant Policy + Studio Audit UI
 
-Antes desta release, o baseline de comparação no Studio era sempre implícito ("versão anterior"). Faltava:
+### A) Policy Multi-tenant por Brand
 
-1. Decisão editorial explícita, auditável e reproduzível
-2. Separação entre "melhor versão geral" vs "melhor versão para um objetivo específico"
-3. Rastreabilidade de quem marcou o quê, quando e por quê
+#### Modelo de Dados
+Tabela `editorial_policies`:
+```sql
+brand_id (PK)                    -- Identificador da brand
+editor_can_mark_objective (bool) -- Default: true
+editor_can_mark_global (bool)    -- Default: false
+updated_at (timestamp)           -- Última atualização
+```
 
-Agora, editores podem marcar versões como "golden" com justificativa obrigatória, e o sistema automaticamente resolve o baseline correto seguindo a prioridade oficial.
+#### Endpoints
 
----
-
-## Endpoints Novos
-
-### POST /api/v2/threads/{thread_id}/editorial-decisions/golden
-
-Marca uma versão como golden (global ou por objetivo).
-
-**Request:**
+**GET /api/v2/brands/{brand_id}/editorial-policy**
+- Retorna a policy da brand (ou defaults se não configurada)
+- Response:
 ```json
 {
-  "run_id": "run-abc123",
-  "scope": "objective",
-  "objective_key": "campanha-lancamento-q1-9f3a2b1c",
-  "justification": "Melhor clareza de CTA e estrutura final."
+  "brand_id": "brand-xxx",
+  "editor_can_mark_objective": true,
+  "editor_can_mark_global": false,
+  "updated_at": "2026-02-27T10:30:00Z"
 }
 ```
 
-**Response:**
+**PUT /api/v2/brands/{brand_id}/editorial-policy**
+- Requer: header `Authorization: Bearer <actor>:admin` (apenas admin)
+- Requer: header `Idempotency-Key` (idempotência obrigatória)
+- Request:
 ```json
 {
-  "event_id": "evt-xyz789",
-  "thread_id": "t-123",
-  "run_id": "run-abc123",
-  "scope": "objective",
-  "objective_key": "campanha-lancamento-q1-9f3a2b1c"
+  "editor_can_mark_objective": true,
+  "editor_can_mark_global": false
 }
 ```
 
-**Validações:**
-- `justification` obrigatória (422 se vazia)
-- `scope=objective` exige `objective_key` (422 se ausente)
-- `run_id` deve pertencer ao `thread_id` (404 se inválido)
-- Idempotente via header `Idempotency-Key`
+#### Lógica de Autorização
+- **Admin**: sempre pode marcar golden (global e objective)
+- **Editor**: depende das flags da policy da brand
+  - `editor_can_mark_objective: true` -> pode marcar objective
+  - `editor_can_mark_global: true` -> pode marcar global
+- **Viewer**: nunca pode marcar golden
 
-### GET /api/v2/threads/{thread_id}/editorial-decisions
-
-Lista as decisões editoriais atuais do thread.
-
-**Response:**
-```json
-{
-  "global": {
-    "run_id": "run-abc123",
-    "justification": "best overall",
-    "updated_at": "2026-02-27T10:00:00Z"
-  },
-  "objective": [
-    {
-      "objective_key": "campanha-lancamento-q1-9f3a2b1c",
-      "run_id": "run-def456",
-      "justification": "best for this objective",
-      "updated_at": "2026-02-27T11:00:00Z"
-    }
-  ]
-}
-```
-
-### GET /api/v2/workflow-runs/{run_id}/baseline
-
-Retorna o baseline resolvido para uma run específica.
-
-**Response:**
-```json
-{
-  "run_id": "run-atual",
-  "baseline_run_id": "run-referencia",
-  "source": "objective_golden",
-  "objective_key": "campanha-lancamento-q1-9f3a2b1c"
-}
-```
-
-**Sources possíveis:**
-- `objective_golden` - Versão golden do mesmo objetivo
-- `global_golden` - Versão golden global
-- `previous` - Versão anterior na lista
-- `none` - Sem baseline disponível
+#### Test Coverage
+- `test_get_editorial_policy_endpoint_returns_defaults`: defaults seguros
+- `test_put_editorial_policy_requires_admin_role`: RBAC no gerenciamento
+- `test_put_editorial_policy_requires_idempotency_key`: idempotência
+- `test_put_editorial_policy_persists_changes`: persistência
+- `test_editorial_policy_is_idempotent`: comportamento idempotente
+- `test_mark_golden_uses_brand_policy`: integração com mark golden
 
 ---
 
-## Mudanças de UX
+### B) Evaluador de Policy Isolado
 
-### Badges de Golden
-
-Cada card de versão agora exibe badges quando marcado como golden:
-- **Golden global** (badge âmbar) - Melhor versão geral do job
-- **Golden objetivo** (badge azul) - Melhor versão para este objetivo específico
-
-### Botões de Ação
-
-Na versão ativa, novos botões permitem:
-- "Definir como golden global"
-- "Definir como golden deste objetivo"
-
-Ambos abrem modal com textarea obrigatória para justificativa.
-
-### Label de Baseline
-
-O painel de comparação agora exibe a fonte real do baseline:
-- "Comparando com: Golden deste objetivo"
-- "Comparando com: Golden global"
-- "Comparando com: Versao anterior"
-- "Sem versao anterior para comparar"
-
-### Fallback Local
-
-Se os endpoints de baseline falharem (ex: offline), o sistema automaticamente cai para cálculo local (versão anterior por posição), garantindo que a UX continue funcional.
-
----
-
-## Arquitetura
-
-### Event-Sourcing
-
-```
-Comando (mark_editorial_golden)
-    ↓
-Evento EditorialGoldenMarked → event_log
-    ↓
-Projector → editorial_decisions_view (read model)
-    ↓
-Resolver: objective > global > previous
-```
-
-### Models
-
-- `EditorialDecisionView` - Read model materializado
-- `derive_objective_key()` - Derivação determinística da chave de objetivo
-- `resolve_baseline()` - Algoritmo de prioridade único
-
-### Frontend
-
-- `useWorkspace()` - Carrega editorial decisions e baseline
-- `GoldenDecisionModal` - Modal de justificativa
-- `isGoldenForRun()` - Helper para badges
-- `toBaselineSourceLabel()` - Labels traduzidos
-
----
-
-## Evidências de Testes
-
-### Backend
-
-```bash
-PYTHONPATH=09-tools .venv/bin/python -m pytest \
-  09-tools/tests/test_vm_webapp_editorial_decisions.py \
-  09-tools/tests/test_vm_webapp_projectors_v2.py \
-  09-tools/tests/test_vm_webapp_commands_v2.py \
-  09-tools/tests/test_vm_webapp_api_v2.py -v
-```
-
-**Resultado: 26 passed**
-
-Cobertura:
-- Derivação de objective_key estável
-- Resolução de baseline com prioridade
-- Projeção de eventos para read model
-- Idempotência do comando
-- Validações de API (422, 404)
-- Contrato aditivo (objective_key em runs)
-
-### Frontend
-
-```bash
-cd 09-tools/web/vm-ui && npm run test -- --run src/features/workspace/
-```
-
-**Resultado: 31 passed (10 test files)**
-
-Cobertura:
-- Carregamento de editorial decisions
-- Fallback local quando API falha
-- Modal bloqueia submit sem justificativa
-- Badges renderizam corretamente
-- Label de baseline reflete source real
-
-### Build
-
-```bash
-cd 09-tools/web/vm-ui && npm run build
-```
-
-**Resultado: ✓ built in 617ms**
-
----
-
-## Arquivos Alterados
-
-### Backend
-
-```
-09-tools/vm_webapp/editorial_decisions.py                    (novo)
-09-tools/tests/test_vm_webapp_editorial_decisions.py         (novo)
-09-tools/vm_webapp/models.py                                 (+ EditorialDecisionView)
-09-tools/vm_webapp/projectors_v2.py                          (+ handler EditorialGoldenMarked)
-09-tools/vm_webapp/repo.py                                   (+ list_editorial_decisions_view)
-09-tools/tests/test_vm_webapp_projectors_v2.py               (+ teste de projeção)
-09-tools/vm_webapp/commands_v2.py                            (+ mark_editorial_golden_command)
-09-tools/tests/test_vm_webapp_commands_v2.py                 (+ teste de idempotência)
-09-tools/vm_webapp/api.py                                    (+ endpoints editorial decisions, baseline)
-09-tools/vm_webapp/workflow_runtime_v2.py                    (+ objective_key no plan.json)
-09-tools/tests/test_vm_webapp_api_v2.py                      (+ testes Task 4 e Task 5)
-```
-
-### Frontend
-
-```
-09-tools/web/vm-ui/src/features/workspace/useWorkspace.ts                    (+ editorial decisions, baseline, markGoldenDecision)
-09-tools/web/vm-ui/src/features/workspace/presentation.ts                    (+ helpers baseline, isGoldenForRun)
-09-tools/web/vm-ui/src/features/workspace/GoldenDecisionModal.tsx            (novo)
-09-tools/web/vm-ui/src/features/workspace/WorkspacePanel.tsx                 (+ badges, botões golden, baseline label)
-09-tools/web/vm-ui/src/features/workspace/useWorkspace.editorialDecision.test.tsx (novo)
-09-tools/web/vm-ui/src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx    (novo)
-```
-
----
-
-## Riscos Residuais
-
-| Risco | Probabilidade | Impacto | Mitigação |
-|-------|---------------|---------|-----------|
-| Objective key collision | Baixa | Médio | Hash SHA-1 na derivação |
-| Performance em threads com muitas runs | Baixa | Baixo | Indexação no banco |
-| Concorrência no mesmo stream | Baixa | Médio | Versionamento do event log |
-
----
-
-## Rollback
-
-Esta release é **backwards compatible**:
-- Clientes antigos ignoram campos novos
-- Endpoints novos são aditivos
-- Não há migração de dados necessária
-
-Para rollback: remover código dos 3 arquivos principais do backend (api.py, commands_v2.py, projectors_v2.py) e do frontend (useWorkspace.ts, WorkspacePanel.tsx).
-
----
-
-## Próximos Passos Sugeridos
-
-1. **Política de permissões** - Restringir marcação golden a roles específicos
-2. **Timeline de golden** - Mostrar histórico de mudanças de golden no frontend
-3. **Métricas** - Track usage de golden decisions para analytics
-
----
-
-## Commits
-
-```
-2cc1e7c feat(vm-runtime): add editorial baseline resolver and objective-key derivation
-6388d8d feat(api-v2): project editorial golden decisions into read model
-13e8911 feat(api-v2): add idempotent command for editorial golden marking
-d9d8116 feat(api-v2): add editorial decisions endpoints for golden marks
-7fc0afd feat(vm-runtime): expose objective_key and resolved baseline for workflow runs
-972627e feat(vm-ui): load editorial decisions and resolved baseline in workspace hook
-81a2d8d feat(vm-ui): add golden decision modal, badges, and baseline source labels
-```
-
----
-
-**Aprovado para release.** ✅
-
----
-
-## Governança v3 (Audit + Policy Real)
-
-**Data:** 2026-02-27 (continuação)
-
-### Overview
-
-Implementação completa de auditoria forte (identidade real) e policy baseada em escopo para o sistema de decisões editoriais, complementando o sistema de event-sourcing já existente.
-
-### Auditoria Forte
-
-#### Identidade Real no Backend
-
-O sistema agora extrai identidade do usuário do header `X-User-Id` com fallback para `workspace-owner`:
+#### Módulo `editorial_policy.py`
+Extrai a lógica de autorização para módulo dedicado e testável:
 
 ```python
-# Headers suportados
-X-User-Id: user-john-doe      # Identidade real
-X-User-Role: editor|admin|viewer  # Role para policy
+from vm_webapp.editorial_policy import PolicyEvaluator, Role, Scope, BrandPolicy
+
+evaluator = PolicyEvaluator()
+result = evaluator.evaluate(role=Role.EDITOR, scope=Scope.OBJECTIVE)
+# result.allowed: bool
+# result.reason: str
 ```
 
-**Persistência no Evento:**
+#### Características
+- **Determinístico**: mesma entrada sempre produz mesma saída
+- **Type-safe**: enums para Role e Scope
+- **Extensível**: Protocol `PolicyStore` permite diferentes backends
+- **Safe fallback**: retorna defaults quando policy não existe
 
-```json
-{
-  "event_type": "EditorialGoldenMarked",
-  "actor_id": "user-john-doe",
-  "payload": {
-    "run_id": "run-abc123",
-    "scope": "global",
-    "justification": "Melhor versão",
-    "actor_role": "admin"
-  }
-}
+#### Factory Function
+```python
+from vm_webapp.editorial_policy import create_evaluator_from_session
+
+evaluator = create_evaluator_from_session(session, brand_id="brand-xxx")
+result = evaluator.evaluate(role="editor", scope="global", brand_id="brand-xxx")
 ```
 
-**Fallback Chain:**
-1. `X-User-Id` header presente → usar valor
-2. Header ausente → `workspace-owner`
-3. `X-User-Role` header presente → normalizar (viewer|editor|admin)
-4. Role ausente → `editor` (para workspace-owner)
+#### Test Coverage (Matrix Completa)
+| Role   | Scope     | Policy Flags              | Expected |
+|--------|-----------|---------------------------|----------|
+| admin  | global    | any                       | allow    |
+| admin  | objective | any                       | allow    |
+| viewer | global    | any                       | deny     |
+| viewer | objective | any                       | deny     |
+| editor | objective | editor_can_mark_objective=true  | allow    |
+| editor | objective | editor_can_mark_objective=false | deny     |
+| editor | global    | editor_can_mark_global=true     | allow    |
+| editor | global    | editor_can_mark_global=false    | deny     |
 
-### Policy por Escopo
-
-#### Matriz de Autorização
-
-| Role | global | objective |
-|------|--------|-----------|
-| admin | ✅ | ✅ |
-| editor | ❌ 403 | ✅ |
-| viewer | ❌ 403 | ❌ 403 |
-
-**Validações Mantidas:**
-- `justification` obrigatória (422 se vazia)
-- `scope=objective` exige `objective_key` (422 se ausente)
-- `run_id` deve pertencer ao `thread_id` (404 se inválido)
-- Role não autorizado (403)
-
-#### Métricas de Policy Denies
-
-Novas métricas para observabilidade de negações:
-
-```
-editorial_golden_policy_denied_total       # Total de negações
-editorial_golden_policy_denied_role:editor # Por role
-editorial_golden_policy_denied_scope:global # Por scope
-```
-
-### Timeline Editorial Aprimorada
-
-#### UX Improvements
-
-**Humanização por Scope:**
-- `scope: "global"` → "Golden global definido"
-- `scope: "objective"` → "Golden de objetivo definido"
-
-**Contexto do Ator:**
-- Mostra `actor_id` na timeline (ex: "por user-john-doe")
-- Mostra justificativa curta (truncada em 60 chars)
-
-**Filtro de Eventos:**
-- **Todos**: Mostra todos os eventos da timeline
-- **Editorial**: Filtra apenas `EditorialGoldenMarked`
-
-**Destaque Visual:**
-- Eventos editoriais têm borda e background âmbar
-- Botões de filtro com estado ativo/inativo
-
-### Contratos de API Atualizados
-
-#### POST /api/v2/threads/{thread_id}/editorial-decisions/golden
-
-**Headers Obrigatórios:**
-```
-Idempotency-Key: <string>
-X-User-Id: <string> (opcional, default: workspace-owner)
-X-User-Role: admin|editor|viewer (opcional, default: editor)
-```
-
-**Responses:**
-- `200` - Golden marcado com sucesso
-- `403` - Role não autorizado para o scope
-- `422` - Validação falhou (justificativa vazia, scope inválido)
-- `404` - Thread ou run não encontrado
-
-### Testes
-
-#### Backend (API v2)
-
-```bash
-PYTHONPATH=09-tools .venv/bin/python -m pytest \
-  09-tools/tests/test_vm_webapp_api_v2.py -v
-```
-
-**Novos testes:**
-- `test_editorial_golden_uses_actor_id_from_header` - Verifica actor_id do header
-- `test_editorial_golden_uses_fallback_actor_when_header_missing` - Fallback
-- `test_editorial_golden_policy_editor_cannot_global_scope` - Policy deny
-- `test_editorial_golden_policy_editor_can_objective_scope` - Policy allow
-- `test_editorial_golden_policy_admin_can_global_scope` - Admin global
-- `test_editorial_golden_policy_viewer_cannot_any_scope` - Viewer deny
-- `test_editorial_golden_policy_denial_increments_metrics` - Métricas
-
-#### Frontend (Workspace)
-
-```bash
-cd 09-tools/web/vm-ui && npm run test -- --run src/features/workspace/
-```
-
-**Novos testes:**
-- `returns details with actor and justification for editorial events`
-- `returns only label for non-editorial events`
-- `identifies editorial events`
-- `filters timeline events by editorial filter`
-- `provides timeline filter labels`
-
-### Build
-
-```bash
-cd 09-tools/web/vm-ui && npm run build
-```
-
-**Resultado:** ✓ built in 620ms
-
-### Commits Governança v3
-
-```
-18222c4 feat(audit): use real actor identity and role in editorial golden events
-3d4b99b feat(rbac): enforce scope-based policy for editorial golden decisions
-6537d38 feat(timeline): show editorial actor details and add editorial event filter
-```
+- `test_policy_evaluator_admin_can_global`: admin permissões
+- `test_policy_evaluator_viewer_cannot_any_scope`: viewer restrições
+- `test_policy_evaluator_editor_can_objective_with_default_policy`: defaults
+- `test_policy_evaluator_editor_cannot_global_with_default_policy`: defaults
+- `test_policy_evaluator_editor_can_global_when_policy_allows`: policy override
+- `test_policy_evaluator_editor_cannot_objective_when_policy_denies`: policy deny
+- `test_policy_evaluator_fallback_to_default_when_store_none`: fallback seguro
+- `test_policy_evaluator_fallback_to_default_when_brand_id_none`: fallback seguro
+- `test_policy_evaluator_fallback_to_default_when_policy_not_found`: fallback seguro
+- `test_policy_matrix_all_combinations`: matrix completa documentada
 
 ---
 
-**Aprovado para release.** ✅
+### C) UI de Auditoria no Studio
 
----
+#### Endpoint Consumido
+`GET /api/v2/threads/{thread_id}/editorial-decisions/audit`
 
-## Governança v4 (Auth Real + Auditoria + Alertas)
+Query params:
+- `scope`: filtro por escopo (`all` | `global` | `objective`)
+- `limit`: paginação (default: 50)
+- `offset`: paginação (default: 0)
 
-**Data:** 2026-02-27 (continuação)
-
-### Overview
-
-Implementação de autenticação real (não confia em headers), endpoint dedicado de auditoria, e sistema de alertas operacionais para monitoramento de anomalias na governança editorial.
-
-### Autenticação Real
-
-#### Token Bearer como Fonte Primária
-
-O sistema agora extrai identidade do token `Authorization: Bearer` como fonte primária:
-
-```
-Authorization: Bearer <actor_id>:<role>
-```
-
-**Prioridade de Extração:**
-1. `Authorization: Bearer user:admin` → actor_id=user, role=admin
-2. `X-User-Id` + `X-User-Role` headers → legacy fallback
-3. `workspace-owner` / `editor` → default fallback
-
-**Exemplo de Uso:**
-
-```bash
-# Bearer token (recomendado)
-POST /api/v2/threads/{thread_id}/editorial-decisions/golden
-Authorization: Bearer user-john:admin
-
-# Legacy headers (fallback)
-POST /api/v2/threads/{thread_id}/editorial-decisions/golden
-X-User-Id: user-john
-X-User-Role: admin
-```
-
-**Token Inválido:**
-- Formato inválido → `401 Unauthorized`
-- Role sem permissão para scope → `403 Forbidden`
-
-### Endpoint de Auditoria
-
-#### GET /api/v2/threads/{thread_id}/editorial-decisions/audit
-
-Retorna trilha cronológica completa de decisões editoriais.
-
-**Query Parameters:**
-- `scope` (opcional): filtrar por `global` ou `objective`
-- `limit` (default: 50): quantidade de eventos
-- `offset` (default: 0): paginação
-
-**Response:**
+Response:
 ```json
 {
-  "thread_id": "t-abc123",
+  "thread_id": "thread-xxx",
   "events": [
     {
-      "event_id": "evt-xyz789",
+      "event_id": "evt-xxx",
       "event_type": "EditorialGoldenMarked",
-      "occurred_at": "2026-02-27T10:00:00Z",
-      "actor_id": "user-john",
+      "actor_id": "user-xxx",
       "actor_role": "admin",
       "scope": "global",
       "objective_key": null,
-      "run_id": "run-def456",
-      "justification": "Melhor versão geral"
+      "run_id": "run-xxx",
+      "justification": "Melhor versao ate agora",
+      "occurred_at": "2026-02-27T10:30:00Z"
     }
   ],
-  "total": 1,
+  "total": 42,
   "limit": 50,
   "offset": 0
 }
 ```
 
-**Uso:**
-```bash
-# Todas as decisões
-curl /api/v2/threads/t-123/editorial-decisions/audit
+#### Componente EditorialAuditSection
+Localizado em `WorkspacePanel.tsx`, exibe:
 
-# Apenas global
-curl /api/v2/threads/t-123/editorial-decisions/audit?scope=global
+**Filtros por Scope**
+- Botões: "Todos" | "Global" | "Objetivo"
+- Atualiza query params e reseta offset
 
-# Paginação
-curl /api/v2/threads/t-123/editorial-decisions/audit?limit=10&offset=20
+**Lista de Eventos**
+Para cada evento exibe:
+- Tipo (Golden Global / Golden Objetivo) com cor diferenciada
+- Run ID (truncado)
+- Actor ID + Role localizada
+- Objective Key (se scope=objective)
+- Justificativa em itálico
+- Timestamp formatado (pt-BR)
+
+**Paginação**
+- Botões "Anterior" / "Próximo"
+- Info: "1-20 de 42"
+- Controles disabled nos limites
+
+#### State Management
+Hook `useWorkspace` exporta:
+```typescript
+{
+  editorialAudit: EditorialAuditResponse | null;
+  auditScopeFilter: "all" | "global" | "objective";
+  setAuditScopeFilter: (scope) => void;
+  auditPagination: { limit: number; offset: number };
+  setAuditPagination: (pagination) => void;
+  refreshEditorialAudit: (params?) => Promise<void>;
+}
 ```
 
-### Alertas Operacionais
+#### Helpers de Presentation
+- `formatAuditEvent`: formata evento API para display
+- `toHumanActorRole`: localiza roles (admin→Administrador)
+- `AUDIT_SCOPE_FILTER_LABELS`: labels dos filtros
 
-#### Métricas de Alertabilidade
+#### Test Coverage
+- `formatAuditEvent formats global scope event correctly`: formatação
+- `formatAuditEvent formats objective scope event with objective_key`: formatação
+- `toHumanActorRole translates known roles`: localização
+- `renders events with correct formatting`: renderização
+- `calls onScopeChange when filter button clicked`: interação
+- `handles pagination correctly`: paginação
 
-| Métrica | Descrição | Threshold Padrão |
-|---------|-----------|------------------|
-| `vm_editorial_golden_policy_denied_total` | Total de negações de policy | 10 |
-| `vm_editorial_golden_policy_denied_role_*` | Negações por role | 5 |
-| `vm_editorial_baseline_source_none` | Baseline=none count | 50 |
+---
 
-#### Script de Verificação
+## Métricas de Editorial (atualizadas)
 
-```bash
-# Verificar thresholds manualmente
-python scripts/check_editorial_thresholds.py \
-  --endpoint http://localhost:8000 \
-  --threshold-policy-denied 10 \
-  --threshold-baseline-none 50
+| Métrica | Tipo | Descrição |
+|---------|------|-----------|
+| `editorial_golden_marked_total` | Counter | Total de marcações golden |
+| `editorial_golden_marked_scope:global` | Counter | Golden global |
+| `editorial_golden_marked_scope:objective` | Counter | Golden por objetivo |
+| `editorial_golden_policy_denied_total` | Counter | Tentativas negadas por policy |
+| `editorial_golden_policy_denied_role:{role}` | Counter | Denial por role |
+| `editorial_golden_policy_denied_scope:{scope}` | Counter | Denial por scope |
+| `editorial_baseline_resolved_total` | Counter | Total de resoluções de baseline |
+| `editorial_baseline_source:objective_golden` | Counter | Baseline de golden objetivo |
+| `editorial_baseline_source:global_golden` | Counter | Baseline de golden global |
+| `editorial_baseline_source:previous` | Counter | Baseline de versão anterior |
+| `editorial_baseline_source:none` | Counter | Sem baseline disponível |
+| `editorial_decisions_list_total` | Counter | Listagens de decisões |
+
+---
+
+## Test Summary
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Backend API v2 | 40 | PASS |
+| Backend Editorial Policy | 22 | PASS |
+| Frontend Workspace | 49 | PASS |
+
+### Novos Testes v5
+- Backend Policy: +15 (matrix completa + integração)
+- Backend API: +0 (reutiliza testes existentes)
+- Frontend Audit UI: +9 (novo componente)
+
+---
+
+## CI Gates
+
+### editorial-policy-gate-v5
+```yaml
+- uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q
+- uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q
 ```
 
-**Saída:**
-```
-============================================================
-EDITORIAL GOVERNANCE METRICS CHECK
-============================================================
-
-Endpoint: http://localhost:8000/api/v2/metrics/prometheus
-Threshold Policy Denied: 10.0
-Threshold Baseline None: 50.0
-
-Key Metrics:
-  vm_editorial_golden_marked_total: 5
-  vm_editorial_golden_policy_denied_total: 3
-  vm_editorial_baseline_resolved_total: 8
-  vm_editorial_baseline_source_none: 2
-
-✅ All metrics within thresholds
-```
-
-#### Workflow de CI/CD
-
-Arquivo: `.github/workflows/vm-editorial-monitoring.yml`
-
-**Triggers:**
-- Manual (`workflow_dispatch`)
-- Scheduled (a cada 6 horas)
-
-**Ambos suportam parâmetros configuráveis:**
-- `threshold_policy_denied` (default: 10)
-- `threshold_baseline_none` (default: 50)
-
-**Em caso de violação:**
-1. Upload de artefato `editorial-metrics-diagnostic-{run_id}`
-2. Falha do job (exit 1)
-3. Notificação (preparado para integração Slack/PagerDuty)
-
-### Testes
-
-#### Backend (API v2)
-
-```bash
-PYTHONPATH=09-tools .venv/bin/python -m pytest \
-  09-tools/tests/test_vm_webapp_api_v2.py \
-  09-tools/tests/test_vm_webapp_metrics_prometheus.py -v
-```
-
-**Novos testes:**
-- `test_editorial_golden_uses_bearer_auth_token` - Bearer token extração
-- `test_editorial_golden_fallback_to_headers_without_auth` - Fallback legacy
-- `test_editorial_golden_rejects_invalid_auth` - Token inválido = 401
-- `test_editorial_audit_endpoint_returns_chronological_events` - Auditoria
-- `test_editorial_audit_endpoint_supports_scope_filter` - Filtros
-- `test_editorial_audit_endpoint_returns_404_for_unknown_thread` - 404
-- `test_prometheus_metrics_expose_policy_denial_metrics` - Métricas
-- `test_threshold_checker_validates_policy_denial_spike` - Threshold breach
-- `test_threshold_checker_validates_baseline_none_acceptable` - Threshold OK
-
-### Arquivos Alterados
-
-**Backend:**
-- `09-tools/vm_webapp/api.py` (+ _parse_bearer_token, require_valid_auth, audit endpoint)
-- `09-tools/tests/test_vm_webapp_api_v2.py` (+ 6 testes)
-
-**Observability:**
-- `09-tools/tests/test_vm_webapp_metrics_prometheus.py` (+ ThresholdChecker, 4 testes)
-- `scripts/check_editorial_thresholds.py` (novo)
-- `.github/workflows/vm-editorial-monitoring.yml` (novo)
-
-### Commits Governança v4
-
-```
-220100b feat(auth): derive editorial actor identity from bearer auth with legacy fallback
-d7dfe53 feat(audit): add editorial decisions audit endpoint with filters and pagination
-e7187bc ci(observability): add editorial governance alert checks for deny and baseline-none spikes
+### frontend-gate (atualizado)
+```yaml
+- npm run test -- --run ... EditorialAuditPanel.test.tsx
 ```
 
 ---
 
-**Aprovado para release.** ✅
+## Migration Notes
+- **Nova tabela**: `editorial_policies` criada automaticamente via SQLAlchemy
+- **Defaults seguros**: sem migration, brands sem policy usam defaults
+- **Backward compatible**: endpoints de mark golden continuam funcionando
+- **Frontend**: novo painel aparece automaticamente no Studio
+
+---
+
+## Commits
+1. `feat(policy): add brand-scoped editorial policy with admin-managed endpoints`
+2. `test(policy): add deterministic policy matrix coverage for editorial decisions`
+3. `feat(vm-ui): add editorial audit panel with scope filter and pagination`
+4. `ci(vm-webapp): gate multi-tenant editorial policy and audit coverage`
+5. `docs(release): append governance v5 multitenant policy and studio audit ui`
