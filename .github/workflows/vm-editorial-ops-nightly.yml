@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Collect editorial insights
+      - name: Collect editorial insights and forecasts
         id: collect
         run: |
           # Start the webapp in background for API access
@@ -52,15 +52,25 @@ jobs:
               thread_ids = '${{ github.event.inputs.threads }}'.split(',') if '${{ github.event.inputs.threads }}' else []
               
               insights = []
+              forecasts = []
               for thread_id in thread_ids:
                   if not thread_id.strip():
                       continue
+                  thread_id = thread_id.strip()
                   try:
-                      url = f'http://localhost:8000/api/v2/threads/{thread_id.strip()}/editorial-decisions/insights'
+                      # Fetch insights
+                      url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/insights'
                       req = urllib.request.Request(url)
                       with urllib.request.urlopen(req, timeout=10) as resp:
                           data = json.loads(resp.read().decode())
                           insights.append(data)
+                      
+                      # Fetch forecast
+                      forecast_url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/forecast'
+                      forecast_req = urllib.request.Request(forecast_url)
+                      with urllib.request.urlopen(forecast_req, timeout=10) as resp:
+                          forecast_data = json.loads(resp.read().decode())
+                          forecasts.append(forecast_data)
                   except Exception as e:
                       print(f'Warning: Failed to fetch {thread_id}: {e}', file=sys.stderr)
               
@@ -73,23 +83,48 @@ jobs:
                       'baseline': {'resolved_total': 0, 'by_source': {'objective_golden': 0, 'global_golden': 0, 'previous': 0, 'none': 0}},
                       'recency': {'last_marked_at': None, 'last_actor_id': None}
                   }]
+                  forecasts = [{
+                      'thread_id': 'sample',
+                      'risk_score': 45,
+                      'trend': 'stable',
+                      'drivers': ['no_golden_marks'],
+                      'recommended_focus': 'Iniciar marcações golden'
+                  }]
               
               with open('/tmp/insights.json', 'w') as f:
                   json.dump(insights, f)
               
-              print(f'Collected {len(insights)} thread insights')
+              with open('/tmp/forecasts.json', 'w') as f:
+                  json.dump(forecasts, f)
+              
+              print(f'Collected {len(insights)} thread insights and {len(forecasts)} forecasts')
           finally:
               proc.terminate()
               proc.wait()
           "
           
-          # Copy the insights file for the next step
+          # Copy the files for the next step
           cp /tmp/insights.json ./insights.json
+          cp /tmp/forecasts.json ./forecasts.json
 
-      - name: Generate report
+      - name: Download previous report for delta
+        uses: actions/download-artifact@v4
+        with:
+          name: editorial-ops-report
+          path: ./previous-report
+        continue-on-error: true  # May not exist on first run
+
+      - name: Generate report with forecast delta
         run: |
+          PREVIOUS_REPORT=""
+          if [ -f "./previous-report/editorial-ops-report.md" ]; then
+            PREVIOUS_REPORT="--previous-report ./previous-report/editorial-ops-report.md"
+          fi
+          
           python3 09-tools/scripts/editorial_ops_report.py \
             --insights-file ./insights.json \
+            --forecasts-file ./forecasts.json \
+            $PREVIOUS_REPORT \
             --output ./editorial-ops-report.md
 
       - name: Upload report artifact
@@ -99,7 +134,9 @@ jobs:
           path: |
             ./editorial-ops-report.md
             ./insights.json
+            ./forecasts.json
           retention-days: 30
+          overwrite: true
 
       - name: Publish summary
         run: |
@@ -114,7 +151,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📄 Full report available as artifact: \\"editorial-ops-report\\"" >> $GITHUB_STEP_SUMMARY
+          echo "📄 Full report available as artifact: \"editorial-ops-report\"" >> $GITHUB_STEP_SUMMARY
 
   test-report-generator:
     runs-on: ubuntu-latest
@@ -145,9 +182,28 @@ jobs:
             }
           ]' > /tmp/sample-insights.json
 
+          # Create sample forecasts
+          echo '[
+            {
+              "thread_id": "t-1",
+              "risk_score": 65,
+              "trend": "degrading",
+              "drivers": ["baseline_none_rate_high"],
+              "recommended_focus": "Aumentar cobertura de golden"
+            },
+            {
+              "thread_id": "t-2",
+              "risk_score": 35,
+              "trend": "improving",
+              "drivers": [],
+              "recommended_focus": "Manter práticas atuais"
+            }
+          ]' > /tmp/sample-forecasts.json
+
           # Generate report
           python3 09-tools/scripts/editorial_ops_report.py \
             --insights-file /tmp/sample-insights.json \
+            --forecasts-file /tmp/sample-forecasts.json \
             --output /tmp/test-report.md
 
           # Verify output
@@ -156,15 +212,19 @@ jobs:
           # Check for expected content
           grep -q "Total Threads" /tmp/test-report.md || (echo "Missing Total Threads" && exit 1)
           grep -q "Total Golden Marked" /tmp/test-report.md || (echo "Missing Total Golden Marked" && exit 1)
+          grep -q "Forecast Summary" /tmp/test-report.md || (echo "Missing Forecast Summary" && exit 1)
+          grep -q "Top 3 Threads by Risk" /tmp/test-report.md || (echo "Missing Top 3 Threads" && exit 1)
           
           echo "✅ Report generator test passed"
 
       - name: Test report generator JSON output
         run: |
           echo '[{"thread_id": "t-1", "totals": {"marked_total": 1}, "policy": {"denied_total": 0}, "baseline": {"by_source": {"none": 1}}}]}' > /tmp/minimal.json
+          echo '[{"thread_id": "t-1", "risk_score": 50, "trend": "stable", "drivers": [], "recommended_focus": "Test"}]' > /tmp/minimal-forecasts.json
           
           python3 09-tools/scripts/editorial_ops_report.py \
             --insights-file /tmp/minimal.json \
+            --forecasts-file /tmp/minimal-forecasts.json \
             --format json \
             --output /tmp/test-report.json
           
@@ -175,7 +235,44 @@ jobs:
               data = json.load(f)
               assert 'generated_at' in data
               assert 'metrics' in data
+              assert 'forecasts' in data
+              assert 'top_risks' in data
               print('JSON structure valid')
           "
           
           echo "✅ JSON output test passed"
+
+      - name: Test forecast delta calculation
+        run: |
+          # Create current forecasts
+          echo '[
+            {"thread_id": "t-1", "risk_score": 75, "trend": "degrading", "drivers": [], "recommended_focus": "Test"},
+            {"thread_id": "t-2", "risk_score": 30, "trend": "improving", "drivers": [], "recommended_focus": "Test"}
+          ]' > /tmp/current-forecasts.json
+          
+          # Create a previous report with risk scores
+          cat > /tmp/previous-report.md << 'EOF'
+          # Editorial Operations Report
+          
+          ## Forecast Summary
+          
+          | Thread | Risk Score | Delta | Trend | Focus |
+          |--------|-----------|-------|-------|-------|
+          | t-1 | 65 | — | stable | Test |
+          | t-2 | 35 | — | stable | Test |
+          EOF
+          
+          # Generate report with delta
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file /tmp/sample-insights.json \
+            --forecasts-file /tmp/current-forecasts.json \
+            --previous-report /tmp/previous-report.md \
+            --output /tmp/delta-report.md
+          
+          # Verify delta calculation
+          cat /tmp/delta-report.md
+          
+          grep -q "📈" /tmp/delta-report.md || (echo "Missing increase indicator" && exit 1)
+          grep -q "📉" /tmp/delta-report.md || (echo "Missing decrease indicator" && exit 1)
+          
+          echo "✅ Delta calculation test passed"
