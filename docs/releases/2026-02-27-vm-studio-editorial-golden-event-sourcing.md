@@ -487,3 +487,224 @@ Passos adicionados:
 3. `feat(vm-ui): add editorial forecast panel and prioritized recommended actions`
 4. `ci(observability): include forecast deltas in nightly editorial ops report`
 5. `docs(release): append governance v8 forecast and action prioritization notes`
+
+---
+
+## Governança v9: Calibração + Anti-Noise + Explainability
+
+### Overview
+Evolução da qualidade de decisão com calibração temporal de forecast, guardrails anti-ruído e explainability operacional completa.
+
+---
+
+### A) Calibração de Forecast (Backend)
+
+#### Janela Curta vs Longa
+Análise temporal em duas janelas:
+- **Curta**: ~7 dias (ou equivalente em eventos disponíveis)
+- **Longa**: ~30 dias (ou equivalente em eventos disponíveis)
+
+```python
+window_metrics = _calculate_window_metrics(events, short_window=7, long_window=30)
+# recency_ratio: concentração de atividade na janela curta
+```
+
+#### Confidence Score (0-1)
+Baseado em:
+- **Data Volume** (0-0.3): resolved_total
+- **Recency Factor** (0-0.3): recency_ratio
+- **Driver Clarity** (0-0.2): número de drivers identificados
+- **Golden Marks** (0-0.2): marked_total
+
+```python
+confidence = _calculate_confidence(insights_data, window_metrics, driver_count)
+# Alta confiança (≥0.8): dados históricos robustos
+# Confiança moderada (0.6-0.8): tendência consistente
+# Confiança baixa (<0.6): dados limitados ou inconsistentes
+```
+
+#### Volatility Score (0-100)
+Indica instabilidade nos padrões de eventos:
+- **Recency Volatility** (0-40): burst de atividade recente
+- **Policy Denial Volatility** (0-20): taxa de negações
+- **Baseline Source Volatility** (0-10): taxa de baseline=none
+
+```python
+volatility = _calculate_volatility(insights_data, window_metrics)
+# Alta volatilidade (≥70): padrões instáveis
+# Volatilidade moderada (40-70): alguma variabilidade
+# Baixa volatilidade (<40): padrão estável
+```
+
+#### Calibration Notes
+Lista de explicações operacionais (máx 4):
+- Análise de janelas de atividade
+- Justificativa de confiança
+- Explicação de volatilidade
+- Avisos de amostra pequena
+
+#### Novos Campos na API
+```json
+{
+  "thread_id": "thread-xxx",
+  "risk_score": 65,
+  "trend": "degrading",
+  "drivers": ["baseline_none_rate_high"],
+  "recommended_focus": "Aumentar cobertura de golden",
+  "confidence": 0.72,
+  "volatility": 45,
+  "calibration_notes": [
+    "Atividade concentrada: 5 eventos recentes vs 8 total",
+    "Confiança moderada: tendência consistente nos dados",
+    "Volatilidade moderada: alguma variabilidade nos eventos"
+  ]
+}
+```
+
+---
+
+### B) Guardrails Anti-ruído
+
+#### Histerese Mínima
+Evita flapping de recomendações quando priority_score muda menos que o threshold (15 pontos).
+
+```python
+recommendations = _apply_hysteresis(
+    current_recommendations, 
+    previous_recommendations,
+    threshold=15
+)
+```
+
+#### Cooldown por Action ID
+Tempo mínimo entre reaparições da mesma ação (baseado em número de eventos).
+
+```python
+ACTION_COOLDOWN_EVENTS = 3  # Eventos que devem passar antes de reaparecer
+
+in_cooldown, reason = _check_action_cooldown(action_id, recent_events)
+# "Cooldown ativo: aguarde N eventos"
+```
+
+#### Campos de Supressão
+Cada recomendação agora inclui:
+
+```json
+{
+  "severity": "warning",
+  "action_id": "create_objective_golden",
+  "title": "Criar Golden de Objetivo",
+  "suppressed": true,
+  "suppression_reason": "Cooldown ativo: aguarde 2 eventos"
+}
+```
+
+---
+
+### C) Explainability no Studio
+
+#### Painel de Forecast
+Novos elementos:
+- **Risk Score Card**: cor dinâmica baseada no score
+- **Trend Indicator**: emoji + label localizado
+- **Confidence Badge**: cor baseada no valor
+- **Volatility Badge**: cor inversa (alta volatilidade = vermelho)
+- **Calibration Notes**: lista "Como este score foi calculado"
+- **Drivers**: tags dos fatores de risco
+
+```typescript
+getConfidenceColor(confidence) // "text-green-600" | "text-yellow-600" | ...
+getVolatilityColor(volatility) // "text-red-600" para alta
+getTrendLabel(trend)           // "📈 Melhorando" | "➡️ Estável" | "📉 Degradando"
+```
+
+#### Painel de Ações
+- **Toggle "Mostrar suprimidas"**: controla visibilidade
+- **Ações suprimidas**: estilo diferenciado (opaco, cinza)
+- **Motivo de supressão**: exibido em itálico
+- **Botão Executar**: desabilitado para ações suprimidas
+
+---
+
+### D) Ops Report v2: Signal Quality
+
+#### Métricas de Qualidade do Sinal
+```markdown
+## Signal Quality
+
+| Metric | Value |
+|--------|-------|
+| Avg Confidence | 75% |
+| Avg Volatility | 35/100 |
+| Suppressed Actions Rate | 12.5% |
+| Threads with Forecast | 8 |
+```
+
+#### Detecção de Sinais Ruídos
+Threads com baixa confiança (<0.5) + alta volatilidade (>60):
+
+```markdown
+### 🚨 Noisy Signals (Low Confidence + High Volatility)
+
+| Thread | Confidence | Volatility | Risk Score |
+|--------|-----------|------------|-----------|
+| thread-x | 42% | 75/100 | 65/100 |
+```
+
+#### Alertas de Qualidade
+- **Low average confidence**: < 50%
+- **High average volatility**: > 60
+- **High suppression rate**: > 30%
+
+#### GITHUB_STEP_SUMMARY
+Resumo automático no GitHub Actions:
+```yaml
+--github-step-summary  # Flag para ativar
+```
+
+---
+
+## Métricas de Editorial (v9 - Adicionadas)
+
+| Métrica | Tipo | Descrição |
+|---------|------|-----------|
+| `forecast_confidence_avg` | Gauge | Confiança média dos forecasts |
+| `forecast_volatility_avg` | Gauge | Volatilidade média dos forecasts |
+| `recommendations_suppressed_rate` | Gauge | Taxa de ações suprimidas |
+
+---
+
+## Test Summary
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Backend API v2 | 45 (+3) | PASS |
+| Backend Editorial Forecast | 3 (+1) | PASS |
+| Backend Editorial Recommendations | 3 (+1) | PASS |
+| Frontend Workspace | 70 (+4) | PASS |
+
+### Novos Testes v9
+- Backend Calibration: +1 (forecast com dados ricos)
+- Backend Guardrails: +1 (suppression fields)
+- Frontend Explainability: +2 (forecast panel + suppressed toggle)
+
+---
+
+## CI Gates (atualizados)
+
+### editorial-ops-nightly
+```yaml
+- Collect insights, forecasts AND recommendations
+- Generate report with signal quality section
+- Highlight noisy signal threads
+- Write summary to GITHUB_STEP_SUMMARY
+```
+
+---
+
+## Commits v9
+1. `feat(forecast): add confidence and volatility calibration to editorial risk forecast`
+2. `feat(editorial): add anti-noise guardrails and cooldown suppression to recommendations`
+3. `feat(vm-ui): add forecast explainability and suppressed-actions visibility controls`
+4. `ci(observability): add signal quality section to nightly editorial ops report`
+5. `docs(release): append governance v9 signal quality and explainability notes`
