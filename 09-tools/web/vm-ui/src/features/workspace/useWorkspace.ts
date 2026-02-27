@@ -117,6 +117,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingPrimaryArtifact, setLoadingPrimaryArtifact] = useState(false);
 
+  // Derive effective active run id: use provided, or first run if available
+  const effectiveActiveRunId = activeRunId || runs[0]?.run_id || null;
+
   const fetchProfiles = async () => {
     setLoadingProfiles(true);
     try {
@@ -136,8 +139,10 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
     setLoadingRuns(true);
     try {
-      const data = await fetchJson<{ runs: WorkflowRun[] }>(`/api/v2/threads/${activeThreadId}/workflow-runs`);
-      setRuns(data.runs || []);
+      const data = await fetchJson<{ runs?: WorkflowRun[]; items?: WorkflowRun[] }>(`/api/v2/threads/${activeThreadId}/workflow-runs`);
+      // Accept both 'runs' and 'items' keys for compatibility
+      const runsArray = data.runs || data.items || [];
+      setRuns(runsArray);
     } catch (e) {
       console.error("Failed to fetch runs", e);
     } finally {
@@ -145,14 +150,15 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
-  const fetchRunDetail = async () => {
-    if (!activeRunId) {
+  const fetchRunDetail = async (targetRunId?: string) => {
+    const runId = targetRunId || effectiveActiveRunId || runs[0]?.run_id;
+    if (!runId) {
       setRunDetail(null);
       return;
     }
     setLoadingRunDetail(true);
     try {
-      const data = await fetchJson<any>(`/api/v2/workflow-runs/${activeRunId}`);
+      const data = await fetchJson<any>(`/api/v2/workflow-runs/${runId}`);
       setRunDetail(data);
     } catch (e) {
       console.error("Failed to fetch run detail", e);
@@ -223,15 +229,16 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     return loaded;
   };
 
-  const fetchPrimaryArtifact = async () => {
-    if (!activeRunId) {
+  const fetchPrimaryArtifact = async (targetRunId?: string) => {
+    const runId = targetRunId || effectiveActiveRunId || runs[0]?.run_id;
+    if (!runId) {
       setPrimaryArtifact(null);
       return;
     }
     setLoadingPrimaryArtifact(true);
-    const loaded = await fetchPrimaryArtifactForRun(activeRunId);
+    const loaded = await fetchPrimaryArtifactForRun(runId);
     setPrimaryArtifact(loaded);
-    setArtifactsByRun((current) => ({ ...current, [activeRunId]: loaded }));
+    setArtifactsByRun((current) => ({ ...current, [runId]: loaded }));
     setLoadingPrimaryArtifact(false);
   };
 
@@ -284,9 +291,12 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   }, [activeThreadId]);
 
   useEffect(() => {
-    fetchRunDetail();
-    fetchPrimaryArtifact();
-  }, [activeRunId]);
+    const targetRunId = effectiveActiveRunId || runs[0]?.run_id || null;
+    if (targetRunId) {
+      fetchRunDetail(targetRunId);
+      fetchPrimaryArtifact(targetRunId);
+    }
+  }, [effectiveActiveRunId, runs]);
 
   useEffect(() => {
     if (!activeThreadId) return;
@@ -301,6 +311,7 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   return {
     profiles,
     runs,
+    effectiveActiveRunId: effectiveActiveRunId || runs[0]?.run_id || null,
     runDetail,
     timeline,
     primaryArtifact,
@@ -317,6 +328,6 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadArtifactForRun,
     refreshRuns: fetchRuns,
     refreshTimeline: fetchTimeline,
-    refreshPrimaryArtifact: fetchPrimaryArtifact,
+    refreshPrimaryArtifact: () => fetchPrimaryArtifact(),
   };
 }

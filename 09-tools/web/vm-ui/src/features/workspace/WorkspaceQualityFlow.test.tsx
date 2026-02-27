@@ -33,6 +33,7 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
         created_at: "2026-02-26T12:00:00Z",
       },
     ],
+    effectiveActiveRunId: "run-2",
     runDetail: { status: "completed" },
     timeline: [],
     primaryArtifact: {
@@ -52,6 +53,7 @@ function buildWorkspaceState(overrides: Record<string, unknown> = {}) {
         content: "# Plano\n## CTA\nComprar agora\n- passo novo",
       },
     },
+    deepEvaluationByRun: {},
     loadingPrimaryArtifact: false,
     startRun: vi.fn(),
     resumeRun: vi.fn(),

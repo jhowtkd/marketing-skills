@@ -609,6 +609,18 @@ def list_workflow_runs_v2(
         for row in rows:
             stages = list_stages(session, row.run_id)
             completed = sum(1 for stage in stages if stage.status == "completed")
+            # Read plan.json for mode information
+            run_root = Path(request.app.state.workspace.root) / "runs" / row.run_id
+            plan_path = run_root / "plan.json"
+            requested_mode = row.stack_path
+            effective_mode = row.stack_path
+            if plan_path.exists():
+                try:
+                    plan_payload = json.loads(plan_path.read_text(encoding="utf-8"))
+                    requested_mode = str(plan_payload.get("requested_mode", row.stack_path))
+                    effective_mode = str(plan_payload.get("effective_mode", row.stack_path))
+                except Exception:
+                    pass
             payload_rows.append(
                 {
                     "run_id": row.run_id,
@@ -617,6 +629,9 @@ def list_workflow_runs_v2(
                     "updated_at": row.updated_at,
                     "completed_stages": completed,
                     "total_stages": len(stages),
+                    "request_text": row.user_request,
+                    "requested_mode": requested_mode,
+                    "effective_mode": effective_mode,
                 }
             )
     return {

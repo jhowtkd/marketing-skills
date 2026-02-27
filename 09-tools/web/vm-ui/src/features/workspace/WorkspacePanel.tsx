@@ -36,6 +36,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const {
     profiles,
     runs,
+    effectiveActiveRunId,
     runDetail,
     timeline,
     primaryArtifact,
@@ -50,6 +51,9 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     refreshTimeline,
     refreshPrimaryArtifact,
   } = useWorkspace(activeThreadId, activeRunId);
+
+  // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
+  const currentRunId = effectiveActiveRunId;
 
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [requestText, setRequestText] = useState<string>("");
@@ -69,7 +73,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     [timeline]
   );
   const hasActiveThread = Boolean(activeThreadId);
-  const activeRun = runs.find((run) => run.run_id === activeRunId) ?? runs[0] ?? null;
+  const activeRun = runs.find((run) => run.run_id === currentRunId) ?? null;
   const hasActiveRun = Boolean(activeRun);
   const activeStatus = runDetail?.status ?? activeRun?.status ?? "";
   const activeRequestText = activeRun?.request_text ?? "";
@@ -128,7 +132,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               key={r.run_id}
               onClick={() => onSelectRun(r.run_id)}
               className={`cursor-pointer rounded-2xl border p-3 text-sm transition-all duration-200 ${
-                activeRunId === r.run_id
+                currentRunId === r.run_id
                   ? "border-[var(--vm-primary)] bg-[var(--vm-warm)] shadow-sm ring-1 ring-[color:var(--vm-primary)]/20"
                   : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
               }`}
@@ -298,7 +302,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
               >
                 {activeDeepEvaluation?.status === "loading" ? "Avaliando..." : "Avaliar profundo"}
               </button>
-              {activeRunId ? (
+              {currentRunId ? (
                 <button
                   type="button"
                   onClick={() => onSelectRun(null)}
@@ -425,7 +429,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </section>
           {deliverableCanvas}
           {versionsSection}
-          {activeRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
+          {currentRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-amber-900">Acao necessaria</h2>
               <p className="mt-2 text-sm text-amber-800">
@@ -446,7 +450,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         <>
           {deliverableCanvas}
           {versionsSection}
-          {activeRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
+          {currentRunId && runDetail && canResumeRunStatus(runDetail.status) ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-amber-900">Acao necessaria</h2>
               <p className="mt-2 text-sm text-amber-800">
@@ -477,7 +481,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         }}
       />
 
-      {activeRunId && runDetail && devMode ? (
+      {currentRunId && runDetail && devMode ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900 flex justify-between">
             Debug da versao {activeRunId}
