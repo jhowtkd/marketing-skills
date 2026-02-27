@@ -53,6 +53,7 @@ jobs:
               
               insights = []
               forecasts = []
+              recommendations = []
               for thread_id in thread_ids:
                   if not thread_id.strip():
                       continue
@@ -71,6 +72,13 @@ jobs:
                       with urllib.request.urlopen(forecast_req, timeout=10) as resp:
                           forecast_data = json.loads(resp.read().decode())
                           forecasts.append(forecast_data)
+                      
+                      # Fetch recommendations
+                      recs_url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/recommendations'
+                      recs_req = urllib.request.Request(recs_url)
+                      with urllib.request.urlopen(recs_req, timeout=10) as resp:
+                          recs_data = json.loads(resp.read().decode())
+                          recommendations.append(recs_data)
                   except Exception as e:
                       print(f'Warning: Failed to fetch {thread_id}: {e}', file=sys.stderr)
               
@@ -97,7 +105,10 @@ jobs:
               with open('/tmp/forecasts.json', 'w') as f:
                   json.dump(forecasts, f)
               
-              print(f'Collected {len(insights)} thread insights and {len(forecasts)} forecasts')
+              with open('/tmp/recommendations.json', 'w') as f:
+                  json.dump(recommendations, f)
+              
+              print(f'Collected {len(insights)} thread insights, {len(forecasts)} forecasts, {len(recommendations)} recommendation sets')
           finally:
               proc.terminate()
               proc.wait()
@@ -106,6 +117,7 @@ jobs:
           # Copy the files for the next step
           cp /tmp/insights.json ./insights.json
           cp /tmp/forecasts.json ./forecasts.json
+          cp /tmp/recommendations.json ./recommendations.json
 
       - name: Download previous report for delta
         uses: actions/download-artifact@v4
@@ -124,8 +136,10 @@ jobs:
           python3 09-tools/scripts/editorial_ops_report.py \
             --insights-file ./insights.json \
             --forecasts-file ./forecasts.json \
+            --recommendations-file ./recommendations.json \
             $PREVIOUS_REPORT \
-            --output ./editorial-ops-report.md
+            --output ./editorial-ops-report.md \
+            --github-step-summary
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
@@ -135,6 +149,7 @@ jobs:
             ./editorial-ops-report.md
             ./insights.json
             ./forecasts.json
+            ./recommendations.json
           retention-days: 30
           overwrite: true
 
@@ -182,28 +197,51 @@ jobs:
             }
           ]' > /tmp/sample-insights.json
 
-          # Create sample forecasts
+          # Create sample forecasts with signal quality metrics
           echo '[
             {
               "thread_id": "t-1",
               "risk_score": 65,
               "trend": "degrading",
               "drivers": ["baseline_none_rate_high"],
-              "recommended_focus": "Aumentar cobertura de golden"
+              "recommended_focus": "Aumentar cobertura de golden",
+              "confidence": 0.7,
+              "volatility": 45,
+              "calibration_notes": ["Dados históricos moderados"]
             },
             {
               "thread_id": "t-2",
               "risk_score": 35,
               "trend": "improving",
               "drivers": [],
-              "recommended_focus": "Manter práticas atuais"
+              "recommended_focus": "Manter práticas atuais",
+              "confidence": 0.8,
+              "volatility": 25,
+              "calibration_notes": ["Alta confiança"]
             }
           ]' > /tmp/sample-forecasts.json
+          
+          # Create sample recommendations
+          echo '[
+            {
+              "thread_id": "t-1",
+              "recommendations": [
+                {"action_id": "create_golden", "severity": "warning", "suppressed": false, "suppression_reason": ""}
+              ]
+            },
+            {
+              "thread_id": "t-2",
+              "recommendations": [
+                {"action_id": "review", "severity": "info", "suppressed": true, "suppression_reason": "Cooldown ativo"}
+              ]
+            }
+          ]' > /tmp/sample-recommendations.json
 
-          # Generate report
+          # Generate report with recommendations
           python3 09-tools/scripts/editorial_ops_report.py \
             --insights-file /tmp/sample-insights.json \
             --forecasts-file /tmp/sample-forecasts.json \
+            --recommendations-file /tmp/sample-recommendations.json \
             --output /tmp/test-report.md
 
           # Verify output
@@ -214,6 +252,8 @@ jobs:
           grep -q "Total Golden Marked" /tmp/test-report.md || (echo "Missing Total Golden Marked" && exit 1)
           grep -q "Forecast Summary" /tmp/test-report.md || (echo "Missing Forecast Summary" && exit 1)
           grep -q "Top 3 Threads by Risk" /tmp/test-report.md || (echo "Missing Top 3 Threads" && exit 1)
+          grep -q "Signal Quality" /tmp/test-report.md || (echo "Missing Signal Quality" && exit 1)
+          grep -q "Avg Confidence" /tmp/test-report.md || (echo "Missing Avg Confidence" && exit 1)
           
           echo "✅ Report generator test passed"
 
