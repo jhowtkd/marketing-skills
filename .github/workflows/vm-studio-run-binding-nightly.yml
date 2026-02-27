@@ -46,7 +46,7 @@ jobs:
       - name: Run Playwright tests
         working-directory: ./09-tools/web/vm-ui
         env:
-          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:5173' }
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:5173' }}
         run: |
           if [ "${{ github.event.inputs.browser }}" != "" ]; then
             npx playwright test --project=${{ github.event.inputs.browser }}
