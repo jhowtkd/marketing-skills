@@ -2044,6 +2044,126 @@ def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[s
         }
 
 
+@router.get("/v2/threads/{thread_id}/editorial-decisions/forecast")
+def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, object]:
+    """Get predictive editorial risk forecast for a thread.
+    
+    Returns deterministic and explainable risk assessment including:
+    - risk_score: 0-100 (higher = more risk)
+    - trend: improving|stable|degrading
+    - drivers: list of contributing factors
+    - recommended_focus: actionable guidance
+    """
+    from datetime import datetime, timezone
+    from vm_webapp.editorial_forecast import calculate_forecast, forecast_to_dict
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Reuse insights logic
+        from sqlalchemy import select
+        from vm_webapp.models import TimelineItemView, EventLog
+        
+        # Query all EditorialGoldenMarked events for this thread
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        # Calculate totals
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        by_reason_code: dict[str, int] = {}
+        last_marked_at: str | None = None
+        last_actor_id: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            
+            reason_code = payload.get("reason_code") or "other"
+            by_reason_code[reason_code] = by_reason_code.get(reason_code, 0) + 1
+            
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+                last_actor_id = row.actor_id
+        
+        # Query policy denials
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        # Calculate baseline resolution stats
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        resolved_total = len(baseline_rows)
+        by_source: dict[str, int] = {
+            "objective_golden": 0,
+            "global_golden": 0,
+            "previous": 0,
+            "none": 0,
+        }
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        # Build insights data structure
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {
+                "marked_total": marked_total,
+                "by_scope": by_scope,
+                "by_reason_code": by_reason_code,
+            },
+            "policy": {
+                "denied_total": denied_total,
+            },
+            "baseline": {
+                "resolved_total": resolved_total,
+                "by_source": by_source,
+            },
+            "recency": {
+                "last_marked_at": last_marked_at,
+                "last_actor_id": last_actor_id,
+            },
+        }
+        
+        # Calculate forecast
+        forecast = calculate_forecast(insights_data)
+        
+        # Record metric for forecast requests
+        request.app.state.workflow_runtime.metrics.record_count("editorial_forecast_requested_total")
+        
+        return {
+            "thread_id": thread_id,
+            "risk_score": forecast.risk_score,
+            "trend": forecast.trend,
+            "drivers": forecast.drivers,
+            "recommended_focus": forecast.recommended_focus,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
 class EditorialPlaybookExecuteRequest(BaseModel):
     action_id: str
     run_id: str | None = None
