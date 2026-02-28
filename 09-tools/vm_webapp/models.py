@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Enum as SQLEnum, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -336,3 +337,37 @@ class CopilotFeedbackView(Base):
     edited_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class PolicyLevel(str, Enum):
+    """Policy hierarchy levels: segment > brand > global."""
+
+    GLOBAL = "global"
+    BRAND = "brand"
+    SEGMENT = "segment"
+
+
+class Policy(Base):
+    """Hierarchical policy configuration for multi-brand governance (v18).
+    
+    Resolution precedence: segment > brand > global
+    """
+
+    __tablename__ = "policies"
+
+    policy_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    level: Mapped[PolicyLevel] = mapped_column(
+        SQLEnum(PolicyLevel), nullable=False, index=True
+    )
+    brand_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    segment: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    objective_key: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    params_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
