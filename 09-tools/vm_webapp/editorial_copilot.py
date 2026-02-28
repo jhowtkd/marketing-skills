@@ -5,6 +5,11 @@ Provides suggestions across three phases:
 - refine: Text refinements based on scorecard gaps
 - strategy: Strategic recommendations based on risk signals
 
+v14 adds segmented personalization by brand + objective_key with:
+- Eligibility threshold (>=20 runs)
+- Adjustment cap (±15%)
+- Automatic freeze on regression
+
 Each suggestion includes confidence, explainability (reason_codes, why),
 and expected impact for informed editor decisions.
 """
@@ -13,7 +18,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Literal, Self
+from typing import Literal, Self, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vm_webapp.copilot_segments import CopilotSegmentView
+
+# v14: Segment status values for explainability
+SegmentStatus = Literal["eligible", "insufficient_volume", "frozen", "fallback"]
 
 SuggestionPhase = Literal["initial", "refine", "strategy"]
 FeedbackAction = Literal["accepted", "edited", "ignored"]
@@ -324,3 +335,128 @@ def record_feedback(
         edited_content=edited_content,
         metadata=metadata or {},
     )
+
+
+# v14: Segmented Copilot integration
+
+@dataclass
+class SegmentedCopilotSuggestion(CopilotSuggestion):
+    """v14: Copilot suggestion with segment personalization metadata."""
+    
+    segment_key: str | None = None
+    segment_status: SegmentStatus | None = None
+    adjustment_factor: float = 0.0
+
+
+def generate_segmented_suggestion(
+    phase: SuggestionPhase,
+    context: dict,
+    segment: CopilotSegmentView | None = None,
+    **kwargs,
+) -> SegmentedCopilotSuggestion:
+    """Generate a suggestion with segment personalization (v14).
+    
+    Falls back to v13 global behavior when segment is ineligible or frozen.
+    
+    Args:
+        phase: One of 'initial', 'refine', 'strategy'
+        context: Dictionary with thread_id, brand_id, project_id, user_request
+        segment: Optional segment view for personalization
+        **kwargs: Phase-specific data
+    
+    Returns:
+        SegmentedCopilotSuggestion with personalization metadata
+    """
+    from vm_webapp.copilot_segments import (
+        check_segment_eligibility,
+        calculate_adjustment_factor,
+        build_segment_key,
+    )
+    
+    # Generate base suggestion using v13 engine
+    base = generate_suggestions(phase, context, **kwargs)
+    
+    # Determine segment status and adjustment
+    segment_key = None
+    segment_status: SegmentStatus | None = None
+    adjustment_factor = 0.0
+    
+    if segment:
+        segment_key = segment.segment_key
+        is_eligible, status = check_segment_eligibility(segment)
+        segment_status = status  # type: ignore
+        
+        if is_eligible:
+            # Calculate adjustment based on global averages
+            # These would come from metrics in production
+            global_success = kwargs.get("global_success_rate", 0.5)
+            global_v1 = kwargs.get("global_v1_score_avg", 70.0)
+            adjustment_factor = calculate_adjustment_factor(
+                segment, global_success, global_v1
+            )
+    
+    # Apply adjustment to confidence (capped at ±15%)
+    adjusted_confidence = base.confidence + adjustment_factor
+    adjusted_confidence = max(0.0, min(1.0, adjusted_confidence))
+    
+    # Build reason codes with segment info
+    reason_codes = list(base.reason_codes)
+    if segment_status == "eligible":
+        reason_codes.append("segment_eligible")
+    elif segment_status == "insufficient_volume":
+        reason_codes.append("segment_insufficient_volume")
+    elif segment_status == "frozen":
+        reason_codes.append("segment_fallback_v13")
+    
+    return SegmentedCopilotSuggestion(
+        suggestion_id=base.suggestion_id,
+        thread_id=base.thread_id,
+        phase=base.phase,
+        content=base.content,
+        confidence=adjusted_confidence,
+        reason_codes=reason_codes,
+        why=base.why,
+        expected_impact=base.expected_impact,
+        created_at=base.created_at,
+        segment_key=segment_key,
+        segment_status=segment_status,
+        adjustment_factor=adjustment_factor,
+    )
+
+
+def get_segment_explanation(
+    segment_status: SegmentStatus,
+    segment_runs: int,
+    adjustment_factor: float,
+) -> str:
+    """Get human-readable explanation of segment status.
+    
+    Args:
+        segment_status: Current segment status
+        segment_runs: Number of runs in segment
+        adjustment_factor: Applied adjustment factor
+    
+    Returns:
+        Human-readable explanation
+    """
+    if segment_status == "eligible":
+        direction = "aumentada" if adjustment_factor > 0 else "reduzida"
+        return (
+            f"Personalização ativa ({segment_runs} runs). "
+            f"Confiança {direction} em {abs(adjustment_factor):.0%} "
+            f"baseado na performance recente do segmento."
+        )
+    elif segment_status == "insufficient_volume":
+        return (
+            f"Volume insuficiente ({segment_runs}/20 runs). "
+            f"Usando ranking global v13."
+        )
+    elif segment_status == "frozen":
+        return (
+            "Segmento congelado devido à regressão recente. "
+            "Fallback para ranking global v13 ativado."
+        )
+    elif segment_status == "fallback":
+        return "Fallback para ranking global v13."
+    else:
+        return "Status do segmento desconhecido."
