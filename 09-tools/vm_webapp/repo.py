@@ -14,6 +14,8 @@ from vm_webapp.models import (
     BrandView,
     CampaignView,
     CommandDedup,
+    CopilotFeedbackView,
+    CopilotSuggestionView,
     EditorialDecisionView,
     EditorialPolicy,
     EditorialSLO,
@@ -707,3 +709,81 @@ def upsert_first_run_outcome_aggregate(
     session.add(agg)
     session.flush()
     return agg
+
+
+# Editorial Copilot repository functions (v13)
+
+def list_copilot_suggestions(session: Session, *, thread_id: str) -> list[CopilotSuggestionView]:
+    """List all copilot suggestions for a thread."""
+    return list(
+        session.scalars(
+            select(CopilotSuggestionView)
+            .where(CopilotSuggestionView.thread_id == thread_id)
+            .order_by(CopilotSuggestionView.created_at.desc())
+        )
+    )
+
+
+def insert_copilot_suggestion(
+    session: Session,
+    *,
+    suggestion_id: str,
+    thread_id: str,
+    phase: str,
+    content: str,
+    confidence: float,
+    reason_codes: list[str],
+    why: str,
+    expected_impact: dict,
+) -> CopilotSuggestionView:
+    """Insert a new copilot suggestion."""
+    suggestion = CopilotSuggestionView(
+        suggestion_id=suggestion_id,
+        thread_id=thread_id,
+        phase=phase,
+        content=content,
+        confidence=confidence,
+        reason_codes_json=json.dumps(reason_codes),
+        why=why,
+        expected_impact_json=json.dumps(expected_impact),
+    )
+    session.add(suggestion)
+    session.flush()
+    return suggestion
+
+
+def list_copilot_feedback(session: Session, *, thread_id: str) -> list[CopilotFeedbackView]:
+    """List all copilot feedback for a thread."""
+    return list(
+        session.scalars(
+            select(CopilotFeedbackView)
+            .where(CopilotFeedbackView.thread_id == thread_id)
+            .order_by(CopilotFeedbackView.created_at.desc())
+        )
+    )
+
+
+def insert_copilot_feedback(
+    session: Session,
+    *,
+    feedback_id: str,
+    suggestion_id: str,
+    thread_id: str,
+    phase: str,
+    action: str,
+    edited_content: str | None = None,
+    metadata: dict | None = None,
+) -> CopilotFeedbackView:
+    """Insert a new copilot feedback record."""
+    feedback = CopilotFeedbackView(
+        feedback_id=feedback_id,
+        suggestion_id=suggestion_id,
+        thread_id=thread_id,
+        phase=phase,
+        action=action,
+        edited_content=edited_content,
+        metadata_json=json.dumps(metadata or {}),
+    )
+    session.add(feedback)
+    session.flush()
+    return feedback

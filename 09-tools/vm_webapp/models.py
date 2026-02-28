@@ -300,3 +300,40 @@ class FirstRunOutcomeAggregate(Base):
     quality_score_sum: Mapped[float] = mapped_column(nullable=False, default=0.0)
     duration_ms_sum: Mapped[float] = mapped_column(nullable=False, default=0.0)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class CopilotSuggestionView(Base):
+    """Read-model for editorial copilot suggestions (v13).
+    
+    Stores generated suggestions with metadata for retrieval and analytics.
+    """
+
+    __tablename__ = "copilot_suggestions_view"
+
+    suggestion_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False)  # initial, refine, strategy
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    confidence: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    reason_codes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    why: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    expected_impact_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class CopilotFeedbackView(Base):
+    """Read-model for editorial copilot feedback (v13).
+    
+    Stores editor feedback on suggestions for continuous improvement.
+    """
+
+    __tablename__ = "copilot_feedback_view"
+
+    feedback_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    suggestion_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)  # accepted, edited, ignored
+    edited_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
