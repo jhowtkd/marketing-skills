@@ -3610,3 +3610,9 @@ def get_copilot_segment_status(
                 segment.adjustment_factor,
             ),
         }
+
+# Import safety tuning routes
+from vm_webapp.api_safety_tuning import router as safety_tuning_router
+
+# Include safety tuning routes
+router.include_router(safety_tuning_router)
