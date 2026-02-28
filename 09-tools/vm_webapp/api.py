@@ -2430,6 +2430,255 @@ class AutoRemediationRequest(BaseModel):
         return v
 
 
+class PlaybookChainStep(BaseModel):
+    action: str
+    suppress_when: dict[str, object] | None = None
+    
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        valid_actions = {"open_review_task", "prepare_guided_regeneration", "suggest_policy_review"}
+        if v not in valid_actions:
+            raise ValueError(f"action must be one of: {valid_actions}")
+        return v
+
+
+class PlaybookChainOptions(BaseModel):
+    steps: list[PlaybookChainStep]
+    stop_on_error: bool = True
+    kill_switch: bool = False
+    rate_limit_delay_ms: int = 0
+    cooldown_seconds: int = 0
+
+
+class PlaybookChainExecuteRequest(BaseModel):
+    playbook_id: str
+    chain_options: PlaybookChainOptions
+
+
+@router.post("/v2/threads/{thread_id}/playbooks/execute")
+def execute_playbook_chain_v2(
+    thread_id: str,
+    request: Request,
+    body: PlaybookChainExecuteRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, object]:
+    """Execute a playbook chain with ordered actions and safety controls.
+    
+    Features:
+    - Ordered step execution
+    - Idempotency (same key = same result)
+    - Kill-switch capability
+    - Rate-limiting between steps
+    - Detailed per-step results
+    
+    Body:
+        playbook_id: Identifier for the playbook
+        chain_options:
+            steps: List of actions to execute in order
+            stop_on_error: Stop execution on first error (default: true)
+            kill_switch: Block execution if true
+            rate_limit_delay_ms: Delay between steps in milliseconds
+            cooldown_seconds: Minimum time between executions of same playbook
+    
+    Returns:
+        execution_id: Unique identifier for this execution
+        steps: Array of step results with executed, skipped, error, motivo
+        status: completed, partial, or failed
+    """
+    from vm_webapp.playbook_chain import (
+        execute_playbook_chain,
+        chain_result_to_dict,
+    )
+    from vm_webapp.editorial_drift import detect_drift
+    from vm_webapp.editorial_forecast import calculate_forecast
+    from sqlalchemy import select
+    from vm_webapp.models import TimelineItemView, EventLog
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Build context for suppression checks
+        # Get editorial events for context
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        rows = list(session.scalars(query))
+        
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+        
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        by_source = {"objective_golden": 0, "global_golden": 0, "previous": 0, "none": 0}
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {"marked_total": len(rows), "by_scope": by_scope, "by_reason_code": {}},
+            "baseline": {"resolved_total": len(baseline_rows), "by_source": by_source},
+        }
+        
+        # Calculate forecast and detect drift for context
+        forecast = calculate_forecast(insights_data)
+        forecast_data = {
+            "risk_score": forecast.risk_score,
+            "trend": forecast.trend,
+            "confidence": forecast.confidence,
+        }
+        
+        slo_config = None
+        slo = get_editorial_slo(session, thread.brand_id)
+        if slo:
+            slo_config = {
+                "max_baseline_none_rate": slo.max_baseline_none_rate,
+                "max_policy_denied_rate": slo.max_policy_denied_rate,
+                "min_confidence": slo.min_confidence,
+            }
+        
+        drift = detect_drift(insights_data, forecast_data, slo_config)
+        
+        context = {
+            "drift_severity": drift.drift_severity,
+            "drift_score": drift.drift_score,
+            "risk_score": forecast.risk_score,
+            "trend": forecast.trend,
+            "thread_id": thread_id,
+        }
+        
+        # Get execution history for cooldown checks
+        execution_history_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "PlaybookChainExecuted")
+            .order_by(EventLog.occurred_at.desc())
+            .limit(20)
+        )
+        execution_history = [
+            {
+                "playbook_id": json.loads(row.payload_json).get("playbook_id", ""),
+                "thread_id": thread_id,
+                "executed_at": row.occurred_at,
+            }
+            for row in session.scalars(execution_history_query)
+        ]
+        
+        # Convert chain_options to dict for execution
+        chain_options_dict = {
+            "steps": [
+                {
+                    "action": step.action,
+                    "suppress_when": step.suppress_when,
+                }
+                for step in body.chain_options.steps
+            ],
+            "stop_on_error": body.chain_options.stop_on_error,
+            "kill_switch": body.chain_options.kill_switch,
+            "rate_limit_delay_ms": body.chain_options.rate_limit_delay_ms,
+            "cooldown_seconds": body.chain_options.cooldown_seconds,
+        }
+        
+        # Check kill-switch
+        if body.chain_options.kill_switch:
+            raise HTTPException(
+                status_code=503,
+                detail="Kill-switch ativo - execução bloqueada"
+            )
+        
+        # Check cooldown
+        from vm_webapp.playbook_chain import check_cooldown
+        allowed, reason = check_cooldown(
+            body.playbook_id,
+            thread_id,
+            body.chain_options.cooldown_seconds,
+            execution_history,
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Cooldown em efeito: {reason}"
+            )
+        
+        # Execute chain
+        try:
+            result = execute_playbook_chain(
+                playbook_id=body.playbook_id,
+                thread_id=thread_id,
+                idempotency_key=idempotency_key,
+                chain_options=chain_options_dict,
+                context=context,
+                execution_history=execution_history,
+            )
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "kill-switch" in error_msg:
+                raise HTTPException(status_code=503, detail=str(e))
+            elif "cooldown" in error_msg:
+                raise HTTPException(status_code=429, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
+        
+        # Emit event for tracking
+        event_payload = {
+            "thread_id": thread_id,
+            "playbook_id": body.playbook_id,
+            "execution_id": result.execution_id,
+            "step_count": len(result.steps),
+            "status": result.status,
+            "actor_role": "system:playbook-chain",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        # Store event in event log for cooldown tracking
+        from vm_webapp.events import EventEnvelope
+        from uuid import uuid4
+        from sqlalchemy import func
+        from vm_webapp.models import EventLog
+        
+        stream_id = f"thread:{thread_id}"
+        current = session.scalar(
+            select(func.max(EventLog.stream_version)).where(
+                EventLog.stream_id == stream_id
+            )
+        )
+        expected_version = int(current or 0)
+        
+        event_envelope = EventEnvelope(
+            event_id=str(uuid4()),
+            event_type="PlaybookChainExecuted",
+            aggregate_type="thread",
+            aggregate_id=thread_id,
+            stream_id=stream_id,
+            expected_version=expected_version,
+            actor_type="system",
+            actor_id="playbook-chain",
+            payload=event_payload,
+            thread_id=thread_id,
+        )
+        append_event(session, event_envelope)
+        
+        return chain_result_to_dict(result)
+
+
 @router.post("/v2/threads/{thread_id}/editorial-decisions/playbook/execute")
 def execute_editorial_playbook_v2(
     thread_id: str,
@@ -2674,3 +2923,180 @@ def auto_remediate_editorial_v2(
                 "auto_execute_requested": body.auto_execute,
                 "brand_auto_enabled": brand_auto_enabled,
             }
+
+
+# ============================================================================
+# SLO Alerts Hub - Task A: Agregador determinístico de alertas editoriais
+# ============================================================================
+
+@router.get("/v2/threads/{thread_id}/alerts")
+def get_thread_alerts_v2(
+    thread_id: str,
+    request: Request,
+    severity: str | None = None,
+) -> dict[str, object]:
+    """Get aggregated editorial alerts for a thread.
+    
+    Combines multiple alert sources:
+    - SLO violations (baseline_none_rate, policy_denied_rate)
+    - Drift alerts (when drift_severity >= medium)
+    - Baseline-none alerts (when source=none)
+    - Policy-denied alerts (denied attempts)
+    - Forecast risk alerts (predictive)
+    
+    Returns alerts ordered by severity (critical > warning > info) with
+    causa, recomendação, timestamps and metadata.
+    
+    Query params:
+        severity: Filter by severity (critical, warning, info)
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from vm_webapp.models import TimelineItemView, EventLog
+    from vm_webapp.alerts_v2 import (
+        aggregate_alerts,
+        alerts_to_dict,
+        get_alerts_summary,
+        filter_alerts_by_severity,
+    )
+    from vm_webapp.editorial_drift import detect_drift
+    from vm_webapp.editorial_forecast import calculate_forecast
+    
+    pump_event_worker(request, max_events=20)
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get SLO config for the brand
+        slo_config = None
+        slo = get_editorial_slo(session, thread.brand_id)
+        if slo:
+            slo_config = {
+                "max_baseline_none_rate": slo.max_baseline_none_rate,
+                "max_policy_denied_rate": slo.max_policy_denied_rate,
+                "min_confidence": slo.min_confidence,
+            }
+        
+        # Query editorial events for insights
+        query = (
+            select(TimelineItemView)
+            .where(TimelineItemView.thread_id == thread_id)
+            .where(TimelineItemView.event_type == "EditorialGoldenMarked")
+            .order_by(TimelineItemView.timeline_pk.asc())
+        )
+        
+        rows = list(session.scalars(query))
+        
+        marked_total = len(rows)
+        by_scope: dict[str, int] = {"global": 0, "objective": 0}
+        by_reason_code: dict[str, int] = {}
+        last_marked_at: str | None = None
+        last_actor_id: str | None = None
+        
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            scope = payload.get("scope")
+            if scope in by_scope:
+                by_scope[scope] += 1
+            
+            reason_code = payload.get("reason_code") or "other"
+            by_reason_code[reason_code] = by_reason_code.get(reason_code, 0) + 1
+            
+            if last_marked_at is None or row.occurred_at > last_marked_at:
+                last_marked_at = row.occurred_at
+                last_actor_id = row.actor_id
+        
+        # Query policy denials
+        denial_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialGoldenPolicyDenied")
+        )
+        denied_total = len(list(session.scalars(denial_query)))
+        
+        # Query baseline resolutions
+        baseline_query = (
+            select(EventLog)
+            .where(EventLog.thread_id == thread_id)
+            .where(EventLog.event_type == "EditorialBaselineResolved")
+        )
+        baseline_rows = list(session.scalars(baseline_query))
+        by_source: dict[str, int] = {
+            "objective_golden": 0,
+            "global_golden": 0,
+            "previous": 0,
+            "none": 0,
+        }
+        for row in baseline_rows:
+            payload = json.loads(row.payload_json)
+            source = payload.get("source", "none")
+            if source in by_source:
+                by_source[source] += 1
+        
+        # Build insights data
+        insights_data = {
+            "thread_id": thread_id,
+            "totals": {
+                "marked_total": marked_total,
+                "by_scope": by_scope,
+                "by_reason_code": by_reason_code,
+            },
+            "policy": {
+                "denied_total": denied_total,
+            },
+            "baseline": {
+                "resolved_total": len(baseline_rows),
+                "by_source": by_source,
+            },
+            "recency": {
+                "last_marked_at": last_marked_at,
+                "last_actor_id": last_actor_id,
+            },
+        }
+        
+        # Calculate forecast for drift detection
+        forecast = calculate_forecast(insights_data)
+        forecast_data = {
+            "risk_score": forecast.risk_score,
+            "trend": forecast.trend,
+            "confidence": forecast.confidence,
+            "volatility": forecast.volatility,
+        }
+        
+        # Detect drift
+        drift = detect_drift(insights_data, forecast_data, slo_config)
+        drift_data = {
+            "drift_score": drift.drift_score,
+            "drift_severity": drift.drift_severity,
+            "drift_flags": drift.drift_flags,
+        }
+        
+        # Aggregate alerts
+        alerts = aggregate_alerts(
+            insights_data=insights_data,
+            drift_data=drift_data,
+            forecast_data=forecast_data,
+            thread_id=thread_id,
+        )
+        
+        # Filter by severity if requested
+        if severity and severity in ("critical", "warning", "info"):
+            from typing import cast
+            from vm_webapp.alerts_v2 import Severity
+            severity_filter = cast(Severity, severity)
+            alerts = filter_alerts_by_severity(alerts, severity_filter)
+        
+        # Record metrics
+        request.app.state.workflow_runtime.metrics.record_count("alerts_hub_requested_total")
+        request.app.state.workflow_runtime.metrics.record_count(f"alerts_hub_count:{len(alerts)}")
+        
+        return {
+            "thread_id": thread_id,
+            "alerts": alerts_to_dict(alerts),
+            "total_count": len(alerts),
+            "by_severity": get_alerts_summary(alerts),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }

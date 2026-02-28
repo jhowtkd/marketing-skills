@@ -10,10 +10,20 @@ on:
         description: "Comma-separated list of thread IDs to include (default: all)"
         required: false
         default: ""
+      staging_url:
+        description: "Staging URL for testing (if empty, tests will be SKIPPED)"
+        required: false
+        default: ""
+
+env:
+  STAGING_URL: ${{ inputs.staging_url || vars.STAGING_URL || '' }}
 
 jobs:
   collect-and-report:
     runs-on: ubuntu-latest
+    outputs:
+      has_staging_url: ${{ steps.check-staging.outputs.has_staging_url }}
+      report_status: ${{ steps.generate-report.outputs.report_status }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +33,27 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
+      - name: Check staging URL
+        id: check-staging
+        run: |
+          if [ -n "$STAGING_URL" ]; then
+            echo "has_staging_url=true" >> $GITHUB_OUTPUT
+            echo "✅ Staging URL configured"
+          else
+            echo "has_staging_url=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No staging URL - tests will run in SKIPPED mode"
+          fi
+
       - name: Install dependencies
         run: uv sync --frozen
 
       - name: Collect editorial insights and forecasts
         id: collect
         run: |
+          # Create logs directory
+          mkdir -p ./logs
+          mkdir -p ./traces
+          
           # Start the webapp in background for API access
           uv run python -c "
           import subprocess
@@ -41,6 +66,8 @@ jobs:
               ['uv', 'run', 'python', '-m', 'vm_webapp.app'],
               cwd='09-tools',
               env={'VM_DB_PATH': '/tmp/test_workspace.sqlite3', 'VM_WORKSPACE_ROOT': '/tmp/test_vm'},
+              stdout=open('./logs/webapp.log', 'w'),
+              stderr=subprocess.STDOUT,
           )
           time.sleep(3)  # Wait for startup
           
@@ -118,6 +145,18 @@ jobs:
           cp /tmp/insights.json ./insights.json
           cp /tmp/forecasts.json ./forecasts.json
           cp /tmp/recommendations.json ./recommendations.json
+          
+          # Create trace file
+          cat > ./traces/collection-trace.json << EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "staging_url": "$STAGING_URL",
+            "has_staging_url": "$([ -n "$STAGING_URL" ] && echo "true" || echo "false")",
+            "insights_file": "./insights.json",
+            "forecasts_file": "./forecasts.json",
+            "recommendations_file": "./recommendations.json"
+          }
+          EOF
 
       - name: Download previous report for delta
         uses: actions/download-artifact@v4
@@ -127,10 +166,17 @@ jobs:
         continue-on-error: true  # May not exist on first run
 
       - name: Generate report with forecast delta
+        id: generate-report
         run: |
           PREVIOUS_REPORT=""
           if [ -f "./previous-report/editorial-ops-report.md" ]; then
             PREVIOUS_REPORT="--previous-report ./previous-report/editorial-ops-report.md"
+          fi
+          
+          # Set staging URL parameter
+          STAGING_PARAM=""
+          if [ -n "$STAGING_URL" ]; then
+            STAGING_PARAM="--staging-url $STAGING_URL"
           fi
           
           python3 09-tools/scripts/editorial_ops_report.py \
@@ -138,8 +184,101 @@ jobs:
             --forecasts-file ./forecasts.json \
             --recommendations-file ./recommendations.json \
             $PREVIOUS_REPORT \
+            $STAGING_PARAM \
             --output ./editorial-ops-report.md \
-            --github-step-summary
+            --github-step-summary \
+            2>&1 | tee ./logs/report-generation.log
+          
+          # Determine status
+          if grep -q "SKIPPED" ./editorial-ops-report.md; then
+            echo "report_status=skipped" >> $GITHUB_OUTPUT
+          else
+            echo "report_status=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate evidence summary
+        run: |
+          # Create evidence summary file
+          cat > ./evidence-summary.md << 'EOF'
+          ## 📊 Evidência Automática - Nightly E2E
+          
+          ### Resumo da Execução
+          
+          | Item | Valor |
+          |------|-------|
+          | Timestamp | $(date -u +%Y-%m-%dT%H:%M:%SZ) |
+          | Staging URL | ${{ env.STAGING_URL || 'Não configurado' }} |
+          | Status | ${{ steps.generate-report.outputs.report_status == 'skipped' && '⚠️ SKIPPED' || '✅ SUCCESS' }} |
+          
+          ### Top 3 Riscos Identificados
+          
+          EOF
+          
+          # Extract top 3 risks from report
+          if grep -q "## Top 3 Threads by Risk" ./editorial-ops-report.md; then
+            awk '/## Top 3 Threads by Risk/{found=1} found{print} /^## [^#]/{if(found && $0 !~ "Top 3") exit}' ./editorial-ops-report.md >> ./evidence-summary.md
+          else
+            echo "_Nenhum risco identificado no relatório._" >> ./evidence-summary.md
+          fi
+          
+          # Add Ações section
+          cat >> ./evidence-summary.md << 'EOF'
+          
+          ### Ações Executadas/Pendentes
+          
+          EOF
+          
+          if grep -q "## Ações Executadas e Pendentes" ./editorial-ops-report.md; then
+            awk '/## Ações Executadas e Pendentes/{found=1} found{print} /^## [^#]/{if(found && $0 !~ "Ações") exit}' ./editorial-ops-report.md >> ./evidence-summary.md
+          else
+            echo "_Nenhuma ação registrada._" >> ./evidence-summary.md
+          fi
+          
+          # Add SLO alerts section
+          cat >> ./evidence-summary.md << 'EOF'
+          
+          ### SLO Alerts Evidence
+          
+          EOF
+          
+          if grep -q "## SLO Alerts Evidence" ./editorial-ops-report.md; then
+            awk '/## SLO Alerts Evidence/{found=1} found{print} /^## [^#]/{if(found && $0 !~ "SLO") exit}' ./editorial-ops-report.md >> ./evidence-summary.md
+          else
+            echo "_Nenhum alerta SLO registrado._" >> ./evidence-summary.md
+          fi
+          
+          # Add to job summary
+          cat ./evidence-summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload logs artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs
+          path: ./logs/
+          retention-days: 7
+
+      - name: Upload traces artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traces
+          path: ./traces/
+          retention-days: 7
+
+      - name: Upload evidence artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence
+          path: |
+            ./evidence-summary.md
+            ./editorial-ops-report.md
+            ./insights.json
+            ./forecasts.json
+            ./recommendations.json
+          retention-days: 30
+          overwrite: true
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
@@ -167,9 +306,11 @@ jobs:
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📄 Full report available as artifact: \"editorial-ops-report\"" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Evidence summary available as artifact: \"evidence\"" >> $GITHUB_STEP_SUMMARY
 
   test-report-generator:
     runs-on: ubuntu-latest
+    needs: collect-and-report
     steps:
       - uses: actions/checkout@v4
 
@@ -197,7 +338,7 @@ jobs:
             }
           ]' > /tmp/sample-insights.json
 
-          # Create sample forecasts with signal quality metrics
+          # Create sample forecasts with signal quality metrics and SLO alerts
           echo '[
             {
               "thread_id": "t-1",
@@ -207,7 +348,26 @@ jobs:
               "recommended_focus": "Aumentar cobertura de golden",
               "confidence": 0.7,
               "volatility": 45,
-              "calibration_notes": ["Dados históricos moderados"]
+              "calibration_notes": ["Dados históricos moderados"],
+              "slo_alerts": [
+                {
+                  "alert_id": "slo-latency-1",
+                  "severity": "warning",
+                  "message": "Latência próxima ao limite SLO",
+                  "threshold": 0.95,
+                  "current_value": 0.92
+                }
+              ],
+              "playbook_executions": [
+                {
+                  "playbook_id": "pb-auto-scale",
+                  "status": "completed",
+                  "executed_at": "2026-02-27T06:00:00Z",
+                  "actions_taken": ["scale_up", "notify_team"]
+                }
+              ],
+              "executed_actions": ["scale_up", "notify_team"],
+              "pending_actions": ["review_capacity"]
             },
             {
               "thread_id": "t-2",
@@ -217,7 +377,11 @@ jobs:
               "recommended_focus": "Manter práticas atuais",
               "confidence": 0.8,
               "volatility": 25,
-              "calibration_notes": ["Alta confiança"]
+              "calibration_notes": ["Alta confiança"],
+              "slo_alerts": [],
+              "playbook_executions": [],
+              "executed_actions": ["validate_setup"],
+              "pending_actions": []
             }
           ]' > /tmp/sample-forecasts.json
           
@@ -255,11 +419,16 @@ jobs:
           grep -q "Signal Quality" /tmp/test-report.md || (echo "Missing Signal Quality" && exit 1)
           grep -q "Avg Confidence" /tmp/test-report.md || (echo "Missing Avg Confidence" && exit 1)
           
+          # Check for Task D requirements
+          grep -q "SLO Alerts Evidence" /tmp/test-report.md || (echo "Missing SLO Alerts Evidence" && exit 1)
+          grep -q "Playbook Execution Status" /tmp/test-report.md || (echo "Missing Playbook Execution Status" && exit 1)
+          grep -q "Ações Executadas e Pendentes" /tmp/test-report.md || (echo "Missing Ações Executadas e Pendentes" && exit 1)
+          
           echo "✅ Report generator test passed"
 
       - name: Test report generator JSON output
         run: |
-          echo '[{"thread_id": "t-1", "totals": {"marked_total": 1}, "policy": {"denied_total": 0}, "baseline": {"by_source": {"none": 1}}}]}' > /tmp/minimal.json
+          echo '[{"thread_id": "t-1", "totals": {"marked_total": 1}, "policy": {"denied_total": 0}, "baseline": {"by_source": {"none": 1}}}]' > /tmp/minimal.json
           echo '[{"thread_id": "t-1", "risk_score": 50, "trend": "stable", "drivers": [], "recommended_focus": "Test"}]' > /tmp/minimal-forecasts.json
           
           python3 09-tools/scripts/editorial_ops_report.py \
@@ -277,6 +446,7 @@ jobs:
               assert 'metrics' in data
               assert 'forecasts' in data
               assert 'top_risks' in data
+              assert 'has_staging_url' in data
               print('JSON structure valid')
           "
           
@@ -316,3 +486,54 @@ jobs:
           grep -q "📉" /tmp/delta-report.md || (echo "Missing decrease indicator" && exit 1)
           
           echo "✅ Delta calculation test passed"
+
+      - name: Test SKIPPED behavior without staging URL
+        run: |
+          # Create sample data
+          echo '[]' > /tmp/empty-insights.json
+          echo '[]' > /tmp/empty-forecasts.json
+          
+          # Generate report without staging URL
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file /tmp/empty-insights.json \
+            --forecasts-file /tmp/empty-forecasts.json \
+            --output /tmp/skipped-report.md
+          
+          # Verify SKIPPED status is in report
+          cat /tmp/skipped-report.md
+          
+          grep -q "SKIPPED" /tmp/skipped-report.md || (echo "Missing SKIPPED status" && exit 1)
+          grep -q "No staging URL" /tmp/skipped-report.md || (echo "Missing staging URL message" && exit 1)
+          
+          echo "✅ SKIPPED behavior test passed"
+
+      - name: Test structural PASS without real data
+        run: |
+          # Create sample/demo data
+          echo '[{
+            "thread_id": "sample",
+            "totals": {"marked_total": 0, "by_scope": {"global": 0, "objective": 0}},
+            "policy": {"denied_total": 0},
+            "baseline": {"resolved_total": 0, "by_source": {}}
+          }]' > /tmp/sample-only.json
+          
+          echo '[{
+            "thread_id": "sample",
+            "risk_score": 45,
+            "trend": "stable",
+            "recommended_focus": "Demo"
+          }]' > /tmp/sample-forecast-only.json
+          
+          # Generate report with staging URL but sample data
+          python3 09-tools/scripts/editorial_ops_report.py \
+            --insights-file /tmp/sample-only.json \
+            --forecasts-file /tmp/sample-forecast-only.json \
+            --staging-url "https://example-staging.com" \
+            --output /tmp/structural-pass-report.md
+          
+          # Verify report is generated
+          cat /tmp/structural-pass-report.md
+          
+          grep -q "Editorial Operations Report" /tmp/structural-pass-report.md || (echo "Missing report header" && exit 1)
+          
+          echo "✅ Structural PASS test passed"

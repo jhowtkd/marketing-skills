@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,11 @@ STAGE_ARTIFACT_CANDIDATES = {
 }
 
 
-@dataclass(slots=True)
+# Python 3.9 compatibility: slots is only available in Python 3.10+
+_dataclass_kwargs = {"slots": True} if sys.version_info >= (3, 10) else {}
+
+
+@dataclass(**_dataclass_kwargs)
 class FoundationStageResult:
     stage_key: str
     pipeline_status: str
