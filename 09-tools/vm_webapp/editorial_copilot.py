@@ -18,7 +18,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Literal, Self, TYPE_CHECKING
+from typing import Literal, TYPE_CHECKING
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 if TYPE_CHECKING:
     from vm_webapp.copilot_segments import CopilotSegmentView

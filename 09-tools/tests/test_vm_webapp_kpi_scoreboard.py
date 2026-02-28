@@ -4,7 +4,8 @@ Covers: API contract, delta calculations, empty scenarios
 """
 
 import pytest
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
+UTC = timezone.utc
 from unittest.mock import MagicMock, patch
 
 from vm_webapp.kpi_scoreboard import (

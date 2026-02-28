@@ -4,7 +4,8 @@ Governança operacional v15 - Painel semanal de KPI real vs meta
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
+UTC = timezone.utc
 from enum import Enum
 from typing import Optional
 

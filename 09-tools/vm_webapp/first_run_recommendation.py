@@ -5,7 +5,11 @@ for profile/mode recommendations to improve approval_without_regen_24h KPI.
 """
 
 from dataclasses import dataclass, field
-from typing import Self
+from typing import Optional
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 
 @dataclass
@@ -235,7 +239,7 @@ FALLBACK_CHAIN = ["objective", "brand", "global", "default"]
 
 def get_fallback_recommendation(
     scope: str,
-    objective_key: str | None = None,
+    objective_key: Optional[str] = None,
 ) -> RankedRecommendation:
     """Get fallback recommendation when no data is available.
     

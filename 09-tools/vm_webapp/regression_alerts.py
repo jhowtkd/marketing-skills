@@ -4,7 +4,8 @@ Governança operacional v15 - Alertas automáticos de regressão por segmento
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
+UTC = timezone.utc
 from enum import Enum
 from typing import Optional
 from collections import defaultdict
