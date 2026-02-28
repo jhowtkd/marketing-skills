@@ -255,3 +255,48 @@ class EditorialSLO(Base):
     # Enable auto-remediation for this brand
     auto_remediation_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class FirstRunOutcomeView(Base):
+    """First-run outcome tracking for recommendation engine (v12).
+    
+    Tracks success of runs within a 24-hour window to determine
+    which profile/mode combinations are most effective.
+    """
+
+    __tablename__ = "first_run_outcomes_view"
+
+    outcome_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    profile: Mapped[str] = mapped_column(String(64), nullable=False)
+    mode: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    success_24h: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    quality_score: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    duration_ms: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    completed_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
+
+
+class FirstRunOutcomeAggregate(Base):
+    """Aggregated first-run outcomes by brand/project/profile/mode (v12).
+    
+    Pre-computed aggregates for fast recommendation queries.
+    """
+
+    __tablename__ = "first_run_outcome_aggregates"
+
+    aggregate_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    profile: Mapped[str] = mapped_column(String(64), nullable=False)
+    mode: Mapped[str] = mapped_column(String(64), nullable=False)
+    total_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_24h_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    approved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quality_score_sum: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    duration_ms_sum: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)

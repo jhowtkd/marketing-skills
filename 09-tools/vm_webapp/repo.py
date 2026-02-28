@@ -18,6 +18,8 @@ from vm_webapp.models import (
     EditorialPolicy,
     EditorialSLO,
     EventLog,
+    FirstRunOutcomeAggregate,
+    FirstRunOutcomeView,
     Project,
     ProjectView,
     Run,
@@ -561,3 +563,147 @@ def upsert_editorial_slo(
     session.add(slo)
     session.flush()
     return slo
+
+
+# First-run outcome repository functions (v12)
+
+def get_first_run_outcome(session: Session, run_id: str) -> FirstRunOutcomeView | None:
+    """Get first-run outcome by run_id."""
+    return session.get(FirstRunOutcomeView, run_id)
+
+
+def list_first_run_outcomes(session: Session, *, thread_id: str) -> list[FirstRunOutcomeView]:
+    """List all first-run outcomes for a thread."""
+    return list(
+        session.scalars(
+            select(FirstRunOutcomeView)
+            .where(FirstRunOutcomeView.thread_id == thread_id)
+            .order_by(FirstRunOutcomeView.completed_at.desc())
+        )
+    )
+
+
+def upsert_first_run_outcome(
+    session: Session,
+    *,
+    outcome_id: str,
+    run_id: str,
+    thread_id: str,
+    brand_id: str,
+    project_id: str,
+    profile: str,
+    mode: str,
+    approved: bool,
+    success_24h: bool,
+    quality_score: float,
+    duration_ms: float,
+    completed_at: str,
+) -> FirstRunOutcomeView:
+    """Create or update a first-run outcome."""
+    existing = session.get(FirstRunOutcomeView, outcome_id)
+    if existing is not None:
+        existing.approved = approved
+        existing.success_24h = success_24h
+        existing.quality_score = quality_score
+        existing.duration_ms = duration_ms
+        existing.updated_at = _now_iso()
+        session.flush()
+        return existing
+    
+    outcome = FirstRunOutcomeView(
+        outcome_id=outcome_id,
+        run_id=run_id,
+        thread_id=thread_id,
+        brand_id=brand_id,
+        project_id=project_id,
+        profile=profile,
+        mode=mode,
+        approved=approved,
+        success_24h=success_24h,
+        quality_score=quality_score,
+        duration_ms=duration_ms,
+        completed_at=completed_at,
+    )
+    session.add(outcome)
+    session.flush()
+    return outcome
+
+
+def mark_outcome_failed_by_new_run(
+    session: Session,
+    *,
+    thread_id: str,
+    before_timestamp: str,
+) -> int:
+    """Mark outcomes as failed (success_24h=False) when a new run is created.
+    
+    Returns number of outcomes updated.
+    """
+    result = session.execute(
+        update(FirstRunOutcomeView)
+        .where(
+            FirstRunOutcomeView.thread_id == thread_id,
+            FirstRunOutcomeView.completed_at <= before_timestamp,
+            FirstRunOutcomeView.success_24h == True,
+        )
+        .values(success_24h=False, updated_at=_now_iso())
+    )
+    return int(result.rowcount or 0)
+
+
+def get_first_run_outcome_aggregate(
+    session: Session,
+    *,
+    brand_id: str,
+    project_id: str,
+    profile: str,
+    mode: str,
+) -> FirstRunOutcomeAggregate | None:
+    """Get aggregated outcome data for a profile/mode combination."""
+    aggregate_id = f"{brand_id}:{project_id}:{profile}:{mode}"
+    return session.get(FirstRunOutcomeAggregate, aggregate_id)
+
+
+def upsert_first_run_outcome_aggregate(
+    session: Session,
+    *,
+    brand_id: str,
+    project_id: str,
+    profile: str,
+    mode: str,
+    approved: bool,
+    success_24h: bool,
+    quality_score: float,
+    duration_ms: float,
+) -> FirstRunOutcomeAggregate:
+    """Update aggregate when a new outcome is recorded."""
+    aggregate_id = f"{brand_id}:{project_id}:{profile}:{mode}"
+    existing = session.get(FirstRunOutcomeAggregate, aggregate_id)
+    
+    if existing is not None:
+        existing.total_runs += 1
+        if approved:
+            existing.approved_count += 1
+        if success_24h:
+            existing.success_24h_count += 1
+        existing.quality_score_sum += quality_score
+        existing.duration_ms_sum += duration_ms
+        existing.updated_at = _now_iso()
+        session.flush()
+        return existing
+    
+    agg = FirstRunOutcomeAggregate(
+        aggregate_id=aggregate_id,
+        brand_id=brand_id,
+        project_id=project_id,
+        profile=profile,
+        mode=mode,
+        total_runs=1,
+        success_24h_count=1 if success_24h else 0,
+        approved_count=1 if approved else 0,
+        quality_score_sum=quality_score,
+        duration_ms_sum=duration_ms,
+    )
+    session.add(agg)
+    session.flush()
+    return agg
