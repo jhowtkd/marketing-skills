@@ -23,3 +23,4 @@ __pycache__/
 # Git worktrees locais
 .worktrees/
 09-tools/marketing_skills.egg-info/
+.venv312/
