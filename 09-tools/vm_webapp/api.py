@@ -3611,6 +3611,110 @@ def get_copilot_segment_status(
             ),
         }
 
+# ROI Optimizer v19 endpoints
+@router.get("/v2/roi/status")
+def get_roi_status():
+    """Get ROI optimizer status and current score."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    status = service.get_status()
+    
+    return {
+        "mode": status.mode,
+        "cadence": status.cadence,
+        "weights": status.weights,
+        "current_score": status.current_score,
+        "last_run_at": status.last_run_at,
+    }
+
+
+@router.get("/v2/roi/proposals")
+def list_roi_proposals(status: Optional[str] = None):
+    """List ROI optimization proposals."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    proposals = service.list_proposals(status=status)
+    
+    return [p.__dict__ for p in proposals]
+
+
+class RunRoiRequest(BaseModel):
+    """Request body for running ROI optimization."""
+    approval_without_regen_24h: float = 0.7
+    revenue_attribution_usd: float = 100000
+    regen_per_job: float = 0.5
+    quality_score_avg: float = 0.8
+    avg_latency_ms: float = 150
+    cost_per_job_usd: float = 0.05
+    incident_rate: float = 0.0
+    projected_incident_rate: Optional[float] = None
+    target_improvement: Optional[float] = None
+
+
+@router.post("/v2/roi/run")
+def run_roi_optimization(request: RunRoiRequest):
+    """Run ROI optimization and generate proposals."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    result = service.run_optimization(
+        current_state=request.model_dump(),
+        target_improvement=request.target_improvement,
+        projected_incident_rate=request.projected_incident_rate,
+    )
+    
+    return result
+
+
+@router.post("/v2/roi/proposals/{proposal_id}/apply")
+def apply_roi_proposal(proposal_id: str):
+    """Apply an ROI proposal."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    proposal = service.apply_proposal(proposal_id)
+    
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal not found: {proposal_id}")
+    
+    return proposal.__dict__
+
+
+class RejectProposalRequest(BaseModel):
+    """Request body for rejecting a proposal."""
+    reason: str = "Rejected by user"
+
+
+@router.post("/v2/roi/proposals/{proposal_id}/reject")
+def reject_roi_proposal(proposal_id: str, request: RejectProposalRequest):
+    """Reject an ROI proposal."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    proposal = service.reject_proposal(proposal_id, request.reason)
+    
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal not found: {proposal_id}")
+    
+    return proposal.__dict__
+
+
+@router.post("/v2/roi/rollback")
+def rollback_roi_proposal():
+    """Rollback the last applied ROI proposal."""
+    from vm_webapp.roi_operations import get_roi_service
+    
+    service = get_roi_service()
+    result = service.rollback_last()
+    
+    if result is None:
+        raise HTTPException(status_code=404, detail="No proposal to rollback")
+    
+    return result
+
+
 # Import safety tuning routes
 from vm_webapp.api_safety_tuning import router as safety_tuning_router
 
