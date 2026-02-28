@@ -24,3 +24,8 @@ __pycache__/
 .worktrees/
 09-tools/marketing_skills.egg-info/
 .venv312/
+
+# Build outputs
+dist/
+.venv
+.venv*/
