@@ -134,6 +134,50 @@ def generate_nightly_report(
             "critical": 2,
             "warning": 8,
             "info": 15
+        },
+        
+        # v19: ROI Optimizer section
+        "roi_optimizer": {
+            "cycles_run": 1,
+            "proposals": {
+                "generated": 2,
+                "applied": 1,
+                "blocked": 0,
+                "rejected": 0,
+                "pending": 1
+            },
+            "current_score": {
+                "composite": 0.72,
+                "business": 0.68,
+                "quality": 0.75,
+                "efficiency": 0.73
+            },
+            "score_change_24h": {
+                "composite": +0.03,
+                "business": +0.02,
+                "quality": +0.04,
+                "efficiency": +0.01
+            },
+            "top_roi_gains": [
+                {
+                    "proposal_id": "prop_001",
+                    "pillar": "quality",
+                    "expected_delta": 0.05,
+                    "applied_at": f"{report_date}T10:30:00Z"
+                }
+            ],
+            "guardrails_triggered": [
+                {
+                    "type": "incident_hard_stop",
+                    "count": 0,
+                    "description": "Blocked proposals that would increase incident rate"
+                },
+                {
+                    "type": "adjustment_clamp",
+                    "count": 1,
+                    "description": "Proposals adjusted to stay within ±10% limit"
+                }
+            ]
         }
     }
     
