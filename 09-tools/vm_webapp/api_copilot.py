@@ -3,6 +3,7 @@
 Provides:
 - GET /api/v2/threads/{thread_id}/copilot/suggestions - Get phase-based suggestions
 - POST /api/v2/threads/{thread_id}/copilot/feedback - Submit feedback on suggestions
+- GET /api/v2/threads/{thread_id}/copilot/segment-status - Get segment status (v14)
 """
 
 from __future__ import annotations
@@ -19,9 +20,18 @@ from vm_webapp.editorial_copilot import (
     record_feedback,
     SuggestionPhase,
     FeedbackAction,
+    get_segment_explanation,
+)
+from vm_webapp.copilot_segments import (
+    CopilotSegmentView,
+    SegmentStatus,
+    check_segment_eligibility,
+    build_segment_key,
+    SEGMENT_MINIMUM_RUNS_THRESHOLD,
 )
 from vm_webapp.repo import (
     get_thread_view,
+    get_project_view,
     insert_copilot_suggestion,
     insert_copilot_feedback,
     list_first_run_outcomes,
@@ -74,6 +84,32 @@ def _convert_outcomes_to_dict(outcomes: list) -> list[dict]:
     ]
 
 
+def _get_or_create_segment(
+    session,
+    brand_id: str,
+    objective_key: str | None,
+) -> CopilotSegmentView:
+    """Get or create a segment view for the given brand + objective.
+    
+    In production, this would query the segment read model.
+    For now, we create a default segment based on available data.
+    """
+    segment_key = build_segment_key(brand_id, objective_key or "")
+    
+    # In production, this would query the database for actual segment data
+    # For now, we return a default segment with 0 runs (insufficient volume)
+    return CopilotSegmentView(
+        segment_key=segment_key,
+        segment_runs_total=0,  # No runs yet for new segments
+        segment_success_24h_rate=0.0,
+        segment_v1_score_avg=0.0,
+        segment_regen_rate=0.0,
+        segment_last_updated_at=datetime.now(timezone.utc).isoformat(),
+        segment_status=SegmentStatus.INSUFFICIENT_VOLUME.value,
+        adjustment_factor=0.0,
+    )
+
+
 @router.get("/v2/threads/{thread_id}/copilot/suggestions")
 def get_copilot_suggestions(
     thread_id: str,
@@ -87,7 +123,8 @@ def get_copilot_suggestions(
         phase: One of 'initial', 'refine', 'strategy' (default: 'initial')
     
     Returns:
-        Suggestions with confidence, reason_codes, why, and expected_impact
+        Suggestions with confidence, reason_codes, why, expected_impact,
+        and v14 segment personalization metadata
     """
     # Validate phase
     if phase not in VALID_PHASES:
@@ -101,6 +138,14 @@ def get_copilot_suggestions(
         thread = get_thread_view(session, thread_id)
         if thread is None:
             raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get project for objective_key (v14 segmentation)
+        project = get_project_view(session, thread.project_id)
+        objective_key = project.objective_key if project else None
+        
+        # Get segment for personalization (v14)
+        segment = _get_or_create_segment(session, thread.brand_id, objective_key)
+        is_eligible, segment_status = check_segment_eligibility(segment)
         
         context = {
             "thread_id": thread_id,
@@ -140,6 +185,18 @@ def get_copilot_suggestions(
         request.app.state.workflow_runtime.metrics.record_count("copilot_suggestion_generated_total")
         request.app.state.workflow_runtime.metrics.record_count(f"copilot_suggestion_phase:{phase}")
         
+        # v14: Record segment metrics
+        if is_eligible:
+            request.app.state.workflow_runtime.metrics.record_count("copilot_segment_eligible_total")
+        else:
+            request.app.state.workflow_runtime.metrics.record_count("copilot_segment_fallback_total")
+        
+        # v14: Record adjustment bucket metric
+        adjustment_bucket = _get_adjustment_bucket(segment.adjustment_factor)
+        request.app.state.workflow_runtime.metrics.record_count(
+            f"copilot_segment_adjustment_bucket:{adjustment_bucket}"
+        )
+        
         return {
             "thread_id": thread_id,
             "phase": phase,
@@ -155,6 +212,79 @@ def get_copilot_suggestions(
                 }
             ] if suggestion.content else [],  # Only return if has content (not passive)
             "guardrail_applied": suggestion.confidence < 0.4,
+            # v14: Segment personalization metadata
+            "segment_key": segment.segment_key,
+            "segment_status": segment_status,
+            "adjustment_factor": segment.adjustment_factor,
+            "is_eligible": is_eligible,
+        }
+
+
+def _get_adjustment_bucket(adjustment_factor: float) -> str:
+    """Get metric bucket label for adjustment factor."""
+    if adjustment_factor <= -0.10:
+        return "minus_15_to_10"
+    elif adjustment_factor < 0:
+        return "minus_10_to_0"
+    elif adjustment_factor == 0:
+        return "zero"
+    elif adjustment_factor <= 0.10:
+        return "0_to_10"
+    else:
+        return "10_to_15"
+
+
+@router.get("/v2/threads/{thread_id}/copilot/segment-status")
+def get_copilot_segment_status(
+    thread_id: str,
+    request: Request,
+) -> dict[str, object]:
+    """Get copilot segment status for personalization eligibility.
+    
+    v14 endpoint to inspect segment eligibility and metrics.
+    
+    Args:
+        thread_id: The thread ID
+    
+    Returns:
+        Segment status with eligibility, metrics, and personalization info
+    """
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get project for objective_key (v14 segmentation)
+        project = get_project_view(session, thread.project_id)
+        objective_key = project.objective_key if project else None
+        
+        # Get segment for personalization (v14)
+        segment = _get_or_create_segment(session, thread.brand_id, objective_key)
+        is_eligible, segment_status = check_segment_eligibility(segment)
+        
+        # Record metric for segment status check
+        if segment_status == SegmentStatus.FROZEN.value:
+            request.app.state.workflow_runtime.metrics.record_count("copilot_segment_freeze_total")
+        
+        return {
+            "thread_id": thread_id,
+            "brand_id": thread.brand_id,
+            "project_id": thread.project_id,
+            "segment_key": segment.segment_key,
+            "segment_status": segment_status,
+            "is_eligible": is_eligible,
+            "segment_runs_total": segment.segment_runs_total,
+            "segment_success_24h_rate": segment.segment_success_24h_rate,
+            "segment_v1_score_avg": segment.segment_v1_score_avg,
+            "segment_regen_rate": segment.segment_regen_rate,
+            "adjustment_factor": segment.adjustment_factor,
+            "minimum_runs_threshold": SEGMENT_MINIMUM_RUNS_THRESHOLD,
+            "explanation": get_segment_explanation(
+                segment_status,  # type: ignore
+                segment.segment_runs_total,
+                segment.adjustment_factor,
+            ),
         }
 
 
