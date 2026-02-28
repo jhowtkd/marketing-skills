@@ -12,6 +12,16 @@ type Suggestion = {
 
 type FeedbackAction = "accepted" | "edited" | "ignored";
 
+// v14: Segment Status Type
+type SegmentStatus = {
+  segment_key: string;
+  segment_status: "eligible" | "insufficient_volume" | "frozen" | "fallback";
+  is_eligible: boolean;
+  segment_runs_total: number;
+  adjustment_factor: number;
+  explanation?: string;
+};
+
 type CopilotPanelProps = {
   suggestions: Suggestion[];
   phase: "initial" | "refine" | "strategy";
@@ -23,6 +33,8 @@ type CopilotPanelProps = {
     action: FeedbackAction;
     edited_content?: string;
   }) => void;
+  // v14: Optional segment status for personalization badges
+  segmentStatus?: SegmentStatus | null;
 };
 
 const phaseLabels: Record<string, string> = {
@@ -56,6 +68,35 @@ function getConfidenceClasses(confidence: number): string {
   return "bg-gray-100 text-gray-800";
 }
 
+// v14: Segment status badge helpers
+function getSegmentBadgeClasses(status: SegmentStatus["segment_status"]): string {
+  if (status === "eligible") {
+    return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100";
+  }
+  return "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+}
+
+function getSegmentBadgeLabel(status: SegmentStatus["segment_status"]): string {
+  if (status === "eligible") {
+    return "Personalização ativa";
+  }
+  return "Fallback global";
+}
+
+function formatSegmentRuns(status: SegmentStatus): string {
+  if (status.segment_status === "eligible") {
+    return `${status.segment_runs_total} runs`;
+  }
+  return `${status.segment_runs_total}/20 runs`;
+}
+
+function formatAdjustmentFactor(factor: number): string {
+  const percent = Math.round(factor * 100);
+  if (percent > 0) return `+${percent}%`;
+  if (percent < 0) return `${percent}%`;
+  return "0%";
+}
+
 export function CopilotPanel({
   suggestions,
   phase,
@@ -63,6 +104,7 @@ export function CopilotPanel({
   loading,
   onRefresh,
   onFeedback,
+  segmentStatus,
 }: CopilotPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState("");
@@ -104,7 +146,25 @@ export function CopilotPanel({
 
   return (
     <div className="rounded-lg border p-4" data-testid="copilot-panel">
-      <h3 className="text-lg font-semibold mb-3">Copilot Editorial</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">Copilot Editorial</h3>
+        
+        {/* v14: Segment Status Badge */}
+        {segmentStatus && (
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2 py-1 text-xs font-medium rounded-full ${getSegmentBadgeClasses(segmentStatus.segment_status)}`}
+              title={segmentStatus.explanation || getSegmentBadgeLabel(segmentStatus.segment_status)}
+              data-testid="segment-badge"
+            >
+              {getSegmentBadgeLabel(segmentStatus.segment_status)}
+            </span>
+            <span className="text-xs text-gray-500">
+              {formatSegmentRuns(segmentStatus)}
+            </span>
+          </div>
+        )}
+      </div>
 
       <div className="flex gap-1 mb-4">
         {(["initial", "refine", "strategy"] as const).map((p) => (
@@ -135,6 +195,22 @@ export function CopilotPanel({
         <p className="text-sm text-gray-500">
           Nenhuma sugestão disponível para esta fase.
         </p>
+      )}
+
+      {/* v14: Dev Info (only when segment status is provided) */}
+      {segmentStatus && (
+        <div className="mb-4 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs font-mono text-gray-600 dark:text-gray-400">
+          <div className="flex items-center gap-2">
+            <span>segment:</span>
+            <span className="text-blue-600 dark:text-blue-400">{segmentStatus.segment_key}</span>
+            <span>|</span>
+            <span className={segmentStatus.is_eligible ? "text-green-600" : "text-gray-500"}>
+              {segmentStatus.segment_status}
+            </span>
+            <span>|</span>
+            <span>adj: {formatAdjustmentFactor(segmentStatus.adjustment_factor)}</span>
+          </div>
+        </div>
       )}
 
       {suggestions.map((suggestion) => (
