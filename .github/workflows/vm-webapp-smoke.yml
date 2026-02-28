@@ -95,7 +95,34 @@ jobs:
       - name: Test frontend
         working-directory: ./09-tools/web/vm-ui
         run: |
-          npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx src/features/workspace/useWorkspace.editorialDecision.test.tsx src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx src/features/workspace/EditorialAuditPanel.test.tsx
+          npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx src/features/workspace/useWorkspace.editorialDecision.test.tsx src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx src/features/workspace/EditorialAuditPanel.test.tsx src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
+
+  first-run-quality-gate-v12:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Test first-run quality engine backend
+        run: |
+          uv run pytest 09-tools/tests/test_vm_webapp_first_run_recommendation.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_projectors_v2.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_additions.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -k "first_run" -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      - name: Install frontend dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+      - name: Test first-run recommendation UI
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run test -- --run src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx
