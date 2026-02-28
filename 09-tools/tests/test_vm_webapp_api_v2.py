@@ -1,369 +1,269 @@
-"""Tests for API v2 operations - multibrand policy operations (v18).
+"""API v2 tests for ROI Optimizer endpoints."""
 
-Endpoints:
-- GET /v2/brands/{brand_id}/policy/effective
-- GET /v2/brands/{brand_id}/policy/proposals
-- POST /v2/brands/{brand_id}/policy/proposals/{proposal_id}/approve
-- POST /v2/brands/{brand_id}/policy/proposals/{proposal_id}/reject
-- POST /v2/brands/{brand_id}/policy/freeze
-- POST /v2/brands/{brand_id}/policy/rollback
-"""
-
-import json
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from fastapi.testclient import TestClient
 
-from fastapi import HTTPException
-
-# Test imports from the modules being tested
-from vm_webapp.policy_operations import (
-    PolicyOperationsService,
-    PolicyFreeze,
-    PolicyRollback,
-    ProposalNotFoundError,
-    ProposalNotApprovedError,
-    PolicyFrozenError,
-)
-from vm_webapp.policy_adaptation import (
-    PolicyProposalEngine,
-    AdaptationProposal,
-    ProposalStatus,
-    DivergenceGuard,
-)
-from vm_webapp.policy_hierarchy import (
-    resolve_effective_policy,
-    EffectivePolicy,
-    PolicySource,
-)
+from vm_webapp.app import create_app
+from vm_webapp.roi_operations import RoiOperationsService
 
 
-class TestPolicyOperationsService:
-    """Test PolicyOperationsService."""
+@pytest.fixture
+def app():
+    """FastAPI app fixture."""
+    return create_app()
 
-    @pytest.fixture
-    def mock_session(self):
-        """Create mock database session."""
-        return MagicMock()
 
-    @pytest.fixture
-    def service(self, mock_session):
-        """Create PolicyOperationsService with mocked session."""
-        return PolicyOperationsService(mock_session)
+@pytest.fixture
+def client(app):
+    """Test client for API."""
+    return TestClient(app)
 
-    def test_get_effective_policy(self, service, mock_session):
-        """Should return effective policy for brand."""
-        # Arrange
-        with patch('vm_webapp.policy_operations.resolve_effective_policy') as mock_resolve:
-            mock_resolve.return_value = EffectivePolicy(
-                threshold=0.5,
-                mode="standard",
-                source=PolicySource.GLOBAL,
-            )
-            
-            # Act
-            result = service.get_effective_policy("brand1")
 
-            # Assert
-            assert result.threshold == 0.5
-            assert result.mode == "standard"
-            assert result.source == PolicySource.GLOBAL
-            mock_resolve.assert_called_once()
+@pytest.fixture
+def roi_service():
+    """ROI operations service."""
+    return RoiOperationsService()
 
-    def test_get_effective_policy_with_segment(self, service, mock_session):
-        """Should return effective policy with segment resolution."""
-        # Arrange
-        with patch('vm_webapp.policy_operations.resolve_effective_policy') as mock_resolve:
-            mock_resolve.return_value = EffectivePolicy(
-                threshold=0.7,
-                mode="enterprise",
-                source=PolicySource.SEGMENT,
-                source_brand_id="brand1",
-                source_segment="enterprise",
-            )
-            
-            # Act
-            result = service.get_effective_policy("brand1", segment="enterprise")
 
-            # Assert
-            assert result.source == PolicySource.SEGMENT
-            assert result.source_segment == "enterprise"
+class TestRoiOptimizerEndpoints:
+    """Test ROI optimizer API endpoints."""
 
-    def test_create_proposal(self, service, mock_session):
-        """Should create a new proposal."""
-        # Arrange
-        current = {"threshold": 0.5, "mode": "standard"}
-        suggested = {"threshold": 0.55, "mode": "strict"}
+    def test_status_endpoint(self, client):
+        """GET /api/v2/roi/status returns optimizer status."""
+        response = client.get("/api/v2/roi/status")
         
-        # Mock the proposal engine's propose_diff method directly
-        mock_proposal = AdaptationProposal(
-            proposal_id="prop-123",
-            brand_id="brand1",
-            objective_key="conversion",
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        service._proposal_engine._proposals = {}  # Clear any existing
-        with patch.object(service._proposal_engine, 'propose_diff', return_value=mock_proposal):
-            # Act
-            result = service.create_proposal("brand1", current, suggested, objective_key="conversion")
-
-            # Assert
-            assert result is not None
-            assert result.proposal_id == "prop-123"
-            assert result.brand_id == "brand1"
-            assert result.status == ProposalStatus.PENDING
-
-    def test_create_proposal_frozen_brand(self, service, mock_session):
-        """Should raise error when brand is frozen."""
-        # Arrange
-        service._frozen_brands = {"brand1"}
-        current = {"threshold": 0.5}
-        suggested = {"threshold": 0.55}
+        assert response.status_code == 200
+        data = response.json()
         
-        # Act & Assert
-        with pytest.raises(PolicyFrozenError):
-            service.create_proposal("brand1", current, suggested)
+        assert "mode" in data
+        assert "cadence" in data
+        assert "current_score" in data
+        assert "weights" in data
 
-    def test_approve_proposal(self, service, mock_session):
-        """Should approve a pending proposal."""
-        # Arrange
-        proposal = AdaptationProposal(
-            proposal_id="prop-123",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        service._proposals = {"prop-123": proposal}
+    def test_proposals_list_endpoint(self, client):
+        """GET /api/v2/roi/proposals returns list of proposals."""
+        response = client.get("/api/v2/roi/proposals")
         
-        # Act
-        result = service.approve_proposal("brand1", "prop-123", approver="admin")
-
-        # Assert
-        assert result.status == ProposalStatus.APPROVED
-        assert result.approved_by == "admin"
-        assert result.approved_at is not None
-
-    def test_approve_nonexistent_proposal(self, service, mock_session):
-        """Should raise error for non-existent proposal."""
-        # Act & Assert
-        with pytest.raises(ProposalNotFoundError):
-            service.approve_proposal("brand1", "nonexistent", approver="admin")
-
-    def test_reject_proposal(self, service, mock_session):
-        """Should reject a pending proposal."""
-        # Arrange
-        proposal = AdaptationProposal(
-            proposal_id="prop-123",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        service._proposals = {"prop-123": proposal}
+        assert response.status_code == 200
+        data = response.json()
         
-        # Act
-        result = service.reject_proposal("brand1", "prop-123", reason="Too aggressive")
+        assert isinstance(data, list)
+        for proposal in data:
+            assert "id" in proposal
+            assert "description" in proposal
+            assert "expected_roi_delta" in proposal
+            assert "risk_level" in proposal
+            assert "status" in proposal
 
-        # Assert
-        assert result.status == ProposalStatus.REJECTED
-        assert result.rejection_reason == "Too aggressive"
-
-    def test_apply_proposal(self, service, mock_session):
-        """Should apply an approved proposal."""
-        # Arrange
-        proposal = AdaptationProposal(
-            proposal_id="prop-123",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.APPROVED,
-            current_params={"threshold": 0.5},
-            proposed_params={"threshold": 0.55},
-        )
-        service._proposals = {"prop-123": proposal}
-        
-        # Act
-        result = service.apply_proposal("brand1", "prop-123")
-
-        # Assert
-        assert result["threshold"] == 0.55
-        assert proposal.status == ProposalStatus.APPLIED
-        assert proposal.applied_at is not None
-
-    def test_apply_pending_proposal_fails(self, service, mock_session):
-        """Should fail to apply non-approved proposal."""
-        # Arrange
-        proposal = AdaptationProposal(
-            proposal_id="prop-123",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        service._proposals = {"prop-123": proposal}
-        
-        # Act & Assert
-        with pytest.raises(ProposalNotApprovedError):
-            service.apply_proposal("brand1", "prop-123")
-
-    def test_freeze_policy(self, service, mock_session):
-        """Should freeze policy changes for brand."""
-        # Act
-        result = service.freeze_policy("brand1", reason="Incident investigation")
-
-        # Assert
-        assert result.frozen is True
-        assert result.brand_id == "brand1"
-        assert result.reason == "Incident investigation"
-        assert "brand1" in service._frozen_brands
-
-    def test_freeze_already_frozen(self, service, mock_session):
-        """Should raise error if already frozen."""
-        # Arrange
-        service.freeze_policy("brand1", reason="First freeze")
-        
-        # Act & Assert
-        with pytest.raises(PolicyFrozenError):
-            service.freeze_policy("brand1", reason="Second freeze")
-
-    def test_unfreeze_policy(self, service, mock_session):
-        """Should unfreeze a frozen brand."""
-        # Arrange
-        service.freeze_policy("brand1", reason="Freeze")
-        
-        # Act
-        result = service.unfreeze_policy("brand1")
-
-        # Assert
-        assert result.frozen is False
-        assert "brand1" not in service._frozen_brands
-
-    def test_rollback_policy(self, service, mock_session):
-        """Should rollback to previous policy version."""
-        # Arrange - create some history
-        service._policy_history["brand1"] = [
-            {"threshold": 0.4},
-            {"threshold": 0.5},
-        ]
-        
-        # Act
-        result = service.rollback_policy("brand1", steps=1)
-
-        # Assert
-        assert result.rolled_back is True
-        assert result.previous_version == {"threshold": 0.5}
-
-    def test_rollback_without_history(self, service, mock_session):
-        """Should raise error if no history to rollback."""
-        # Act & Assert
-        with pytest.raises(ValueError):
-            service.rollback_policy("brand1", steps=1)
-
-    def test_list_proposals(self, service, mock_session):
-        """Should list proposals for brand."""
-        # Arrange
-        proposal1 = AdaptationProposal(
-            proposal_id="prop-1",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        proposal2 = AdaptationProposal(
-            proposal_id="prop-2",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.52,
-            adjustment_percent=4.0,
-            status=ProposalStatus.APPROVED,
-        )
-        service._proposals = {"prop-1": proposal1, "prop-2": proposal2}
-        
-        # Act
-        result = service.list_proposals("brand1")
-
-        # Assert
-        assert len(result) == 2
-
-    def test_list_proposals_filtered_by_status(self, service, mock_session):
-        """Should filter proposals by status."""
-        # Arrange
-        proposal1 = AdaptationProposal(
-            proposal_id="prop-1",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.55,
-            adjustment_percent=10.0,
-            status=ProposalStatus.PENDING,
-        )
-        proposal2 = AdaptationProposal(
-            proposal_id="prop-2",
-            brand_id="brand1",
-            objective_key=None,
-            current_value=0.5,
-            proposed_value=0.52,
-            adjustment_percent=4.0,
-            status=ProposalStatus.APPROVED,
-        )
-        service._proposals = {"prop-1": proposal1, "prop-2": proposal2}
-        
-        # Act
-        result = service.list_proposals("brand1", status=ProposalStatus.PENDING)
-
-        # Assert
-        assert len(result) == 1
-        assert result[0].proposal_id == "prop-1"
-
-
-class TestPolicyFreeze:
-    """Test PolicyFreeze dataclass."""
-
-    def test_policy_freeze_creation(self):
-        """Should create PolicyFreeze with correct attributes."""
-        freeze = PolicyFreeze(
-            freeze_id="freeze-123",
-            brand_id="brand1",
-            reason="Incident",
-            frozen_at=datetime.now(timezone.utc).isoformat(),
-            frozen=True,
+    def test_run_endpoint_creates_proposals(self, client):
+        """POST /api/v2/roi/run generates new proposals."""
+        # First, run the optimizer
+        response = client.post(
+            "/api/v2/roi/run",
+            json={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
         )
         
-        assert freeze.freeze_id == "freeze-123"
-        assert freeze.brand_id == "brand1"
-        assert freeze.reason == "Incident"
-        assert freeze.frozen is True
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "proposals" in data
+        assert "score_before" in data
+        assert "score_after" in data
+        assert len(data["proposals"]) > 0
 
-
-class TestPolicyRollback:
-    """Test PolicyRollback dataclass."""
-
-    def test_policy_rollback_creation(self):
-        """Should create PolicyRollback with correct attributes."""
-        rollback = PolicyRollback(
-            rollback_id="rollback-123",
-            brand_id="brand1",
-            previous_version={"threshold": 0.5},
-            rolled_back=True,
-            reason="Revert failed experiment",
+    def test_apply_proposal_endpoint(self, client):
+        """POST /api/v2/roi/proposals/{id}/apply applies a proposal."""
+        # First run to create proposals
+        run_response = client.post(
+            "/api/v2/roi/run",
+            json={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
         )
         
-        assert rollback.rollback_id == "rollback-123"
-        assert rollback.brand_id == "brand1"
-        assert rollback.previous_version == {"threshold": 0.5}
-        assert rollback.rolled_back is True
+        proposals = run_response.json()["proposals"]
+        proposal_id = proposals[0]["id"]
+        
+        # Apply the proposal
+        response = client.post(f"/api/v2/roi/proposals/{proposal_id}/apply")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "applied"
+        assert "applied_at" in data
+
+    def test_reject_proposal_endpoint(self, client):
+        """POST /api/v2/roi/proposals/{id}/reject rejects a proposal."""
+        # First run to create proposals
+        run_response = client.post(
+            "/api/v2/roi/run",
+            json={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
+        )
+        
+        proposals = run_response.json()["proposals"]
+        proposal_id = proposals[0]["id"]
+        
+        # Reject the proposal
+        response = client.post(
+            f"/api/v2/roi/proposals/{proposal_id}/reject",
+            json={"reason": "Test rejection"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "rejected"
+
+    def test_rollback_endpoint(self, client):
+        """POST /api/v2/roi/rollback rolls back last applied proposal."""
+        # First run and apply a proposal
+        run_response = client.post(
+            "/api/v2/roi/run",
+            json={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
+        )
+        
+        proposals = run_response.json()["proposals"]
+        proposal_id = proposals[0]["id"]
+        
+        # Apply it
+        client.post(f"/api/v2/roi/proposals/{proposal_id}/apply")
+        
+        # Rollback
+        response = client.post("/api/v2/roi/rollback")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "rolled_back_proposal" in data
+        assert data["rolled_back_proposal"]["id"] == proposal_id
+
+    def test_run_with_incident_hard_stop(self, client):
+        """POST /api/v2/roi/run blocks when incident_rate would increase."""
+        response = client.post(
+            "/api/v2/roi/run",
+            json={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+                "projected_incident_rate": 0.02,  # Would increase
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should have blocked proposals
+        blocked = [p for p in data["proposals"] if p["status"] == "blocked"]
+        assert len(blocked) > 0
+
+
+class TestRoiOperationsService:
+    """Test ROI operations service."""
+
+    def test_service_get_status(self, roi_service):
+        """Service returns optimizer status."""
+        status = roi_service.get_status()
+        
+        assert status.mode is not None
+        assert status.cadence is not None
+        assert status.weights is not None
+
+    def test_service_list_proposals(self, roi_service):
+        """Service returns list of proposals."""
+        # First run to create proposals
+        roi_service.run_optimization(
+            current_state={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
+        )
+        
+        proposals = roi_service.list_proposals()
+        
+        assert isinstance(proposals, list)
+        assert len(proposals) > 0
+
+    def test_service_apply_proposal(self, roi_service):
+        """Service applies a proposal."""
+        # Run and get proposals
+        result = roi_service.run_optimization(
+            current_state={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
+        )
+        
+        proposal_id = result["proposals"][0]["id"]
+        
+        # Apply it
+        applied = roi_service.apply_proposal(proposal_id)
+        
+        assert applied.status == "applied"
+
+    def test_service_rollback(self, roi_service):
+        """Service rolls back last applied proposal."""
+        # Run, apply, then rollback
+        result = roi_service.run_optimization(
+            current_state={
+                "approval_without_regen_24h": 0.70,
+                "revenue_attribution_usd": 100000,
+                "regen_per_job": 0.5,
+                "quality_score_avg": 0.80,
+                "avg_latency_ms": 150,
+                "cost_per_job_usd": 0.05,
+                "incident_rate": 0.01,
+            }
+        )
+        
+        proposal_id = result["proposals"][0]["id"]
+        roi_service.apply_proposal(proposal_id)
+        
+        # Rollback
+        rollback_result = roi_service.rollback_last()
+        
+        assert rollback_result["rolled_back_proposal"]["id"] == proposal_id

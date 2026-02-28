@@ -393,3 +393,45 @@ class PolicyProposalEngine:
                 continue
             results.append(proposal)
         return sorted(results, key=lambda p: p.created_at, reverse=True)
+
+
+# ROI Optimizer v19 integration exports
+# Re-export ROI optimizer components for unified policy adaptation API
+try:
+    from vm_webapp.roi_optimizer import (
+        RoiScoreInput,
+        RoiCompositeScore,
+        RoiScoreCalculator,
+        RoiProposal,
+        RoiOptimizer,
+        RiskLevel,
+        ProposalStatus as RoiProposalStatus,
+    )
+    
+    __all__ = [
+        # v18 adaptation
+        "ProposalStatus",
+        "AdaptationProposal",
+        "ProposalEvaluation",
+        "CrossBrandMetrics",
+        "DivergenceGuard",
+        "PolicyProposalEngine",
+        # v19 ROI optimizer
+        "RoiScoreInput",
+        "RoiCompositeScore",
+        "RoiScoreCalculator",
+        "RoiProposal",
+        "RoiOptimizer",
+        "RiskLevel",
+        "RoiProposalStatus",
+    ]
+except ImportError:
+    # ROI optimizer not available, export only v18 components
+    __all__ = [
+        "ProposalStatus",
+        "AdaptationProposal",
+        "ProposalEvaluation",
+        "CrossBrandMetrics",
+        "DivergenceGuard",
+        "PolicyProposalEngine",
+    ]
