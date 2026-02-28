@@ -3151,6 +3151,9 @@ def get_first_run_recommendation(thread_id: str, request: Request) -> FirstRunRe
     Returns top 3 profile/mode combinations ranked by success rate,
     quality score, and speed within a 24-hour window.
     """
+    # Record metrics
+    request.app.state.workflow_runtime.metrics.record_count("first_run_recommendation_requested_total")
+    
     with session_scope(request.app.state.engine) as session:
         thread = get_thread_view(session, thread_id)
         if thread is None:
@@ -3247,6 +3250,9 @@ def get_first_run_outcomes(thread_id: str, request: Request) -> FirstRunOutcomes
     Returns aggregated outcome data for each profile/mode combination
     used in this thread's runs.
     """
+    # Record metrics
+    request.app.state.workflow_runtime.metrics.record_count("first_run_outcomes_requested_total")
+    
     with session_scope(request.app.state.engine) as session:
         thread = get_thread_view(session, thread_id)
         if thread is None:
