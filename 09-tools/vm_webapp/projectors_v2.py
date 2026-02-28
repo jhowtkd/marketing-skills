@@ -5,16 +5,24 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timedelta, timezone
+
 from vm_webapp.models import (
     ApprovalView,
     BrandView,
     CampaignView,
     EditorialDecisionView,
     EventLog,
+    FirstRunOutcomeView,
     ProjectView,
     TaskView,
     ThreadView,
     TimelineItemView,
+)
+from vm_webapp.repo import (
+    mark_outcome_failed_by_new_run,
+    upsert_first_run_outcome,
+    upsert_first_run_outcome_aggregate,
 )
 
 
@@ -229,3 +237,60 @@ def apply_event_to_read_models(session: Session, event: EventLog) -> None:
             row.justification = payload.get("justification", row.justification)
             row.event_id = event.event_id
             row.updated_at = event.occurred_at
+
+    # First-run outcome tracking (v12)
+    if event.event_type == "RunCompleted":
+        run_id = payload.get("run_id", event.aggregate_id)
+        thread_id = payload.get("thread_id", event.thread_id or "")
+        brand_id = payload.get("brand_id", event.brand_id or "")
+        project_id = payload.get("project_id", event.project_id or "")
+        profile = payload.get("profile", "default")
+        mode = payload.get("mode", "balanced")
+        approved = payload.get("approved", False)
+        quality_score = payload.get("quality_score", 0.0)
+        duration_ms = payload.get("duration_ms", 0.0)
+        completed_at = payload.get("completed_at", event.occurred_at)
+        
+        # Assume success_24h=True initially (will be marked False if new run created)
+        outcome = upsert_first_run_outcome(
+            session,
+            outcome_id=run_id,
+            run_id=run_id,
+            thread_id=thread_id,
+            brand_id=brand_id,
+            project_id=project_id,
+            profile=profile,
+            mode=mode,
+            approved=approved,
+            success_24h=approved,  # Only approved runs can be successful
+            quality_score=quality_score,
+            duration_ms=duration_ms,
+            completed_at=completed_at,
+        )
+        
+        # Update aggregate
+        upsert_first_run_outcome_aggregate(
+            session,
+            brand_id=brand_id,
+            project_id=project_id,
+            profile=profile,
+            mode=mode,
+            approved=approved,
+            success_24h=approved,
+            quality_score=quality_score,
+            duration_ms=duration_ms,
+        )
+
+    if event.event_type == "RunCreated":
+        # When a new run is created, mark previous runs in the same thread
+        # within 24h as not successful (user regenerated)
+        thread_id = payload.get("thread_id", event.thread_id or "")
+        created_at = payload.get("created_at", event.occurred_at)
+        
+        if thread_id:
+            # Mark outcomes completed within 24h before this new run as failed
+            mark_outcome_failed_by_new_run(
+                session,
+                thread_id=thread_id,
+                before_timestamp=created_at,
+            )

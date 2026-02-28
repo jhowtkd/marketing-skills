@@ -165,6 +165,36 @@ export type EditorialDrift = {
   generated_at: string;
 };
 
+// v12 First-run recommendation types
+export type FirstRunRecommendationItem = {
+  profile: string;
+  mode: string;
+  score: number;
+  confidence: number;
+  reason_codes: string[];
+};
+
+export type FirstRunRecommendation = {
+  thread_id: string;
+  scope: string;
+  recommendations: FirstRunRecommendationItem[];
+};
+
+export type FirstRunOutcomeAggregate = {
+  profile: string;
+  mode: string;
+  total_runs: number;
+  success_24h_count: number;
+  success_rate: number;
+  avg_quality_score: number;
+  avg_duration_ms: number;
+};
+
+export type FirstRunOutcomes = {
+  thread_id: string;
+  aggregates: FirstRunOutcomeAggregate[];
+};
+
 export type AutoRemediationEvent = {
   event_type: "AutoRemediationExecuted" | "AutoRemediationSkipped";
   occurred_at: string;
@@ -254,6 +284,11 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
   const [loadingDrift, setLoadingDrift] = useState(false);
   const [autoRemediationHistory, setAutoRemediationHistory] = useState<AutoRemediationEvent[]>([]);
   const [loadingAutoHistory, setLoadingAutoHistory] = useState(false);
+  // v12 First-run recommendation state
+  const [firstRunRecommendation, setFirstRunRecommendation] = useState<FirstRunRecommendation | null>(null);
+  const [loadingFirstRunRecommendation, setLoadingFirstRunRecommendation] = useState(false);
+  const [firstRunOutcomes, setFirstRunOutcomes] = useState<FirstRunOutcomes | null>(null);
+  const [loadingFirstRunOutcomes, setLoadingFirstRunOutcomes] = useState(false);
   const [auditScopeFilter, setAuditScopeFilter] = useState<"all" | "global" | "objective">("all");
   const [auditPagination, setAuditPagination] = useState({ limit: 20, offset: 0 });
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -564,6 +599,41 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     }
   };
 
+  // v12 First-run recommendation functions
+  const fetchFirstRunRecommendation = async () => {
+    if (!activeThreadId) {
+      setFirstRunRecommendation(null);
+      return;
+    }
+    setLoadingFirstRunRecommendation(true);
+    try {
+      const data = await fetchJson<FirstRunRecommendation>(`/api/v2/threads/${activeThreadId}/first-run-recommendation`);
+      setFirstRunRecommendation(data);
+    } catch (e) {
+      console.error("Failed to fetch first-run recommendation", e);
+      // Fallback: keep current state (null or previous)
+    } finally {
+      setLoadingFirstRunRecommendation(false);
+    }
+  };
+
+  const fetchFirstRunOutcomes = async () => {
+    if (!activeThreadId) {
+      setFirstRunOutcomes(null);
+      return;
+    }
+    setLoadingFirstRunOutcomes(true);
+    try {
+      const data = await fetchJson<FirstRunOutcomes>(`/api/v2/threads/${activeThreadId}/first-run-outcomes`);
+      setFirstRunOutcomes(data);
+    } catch (e) {
+      console.error("Failed to fetch first-run outcomes", e);
+      // Fallback: keep current state (null or previous)
+    } finally {
+      setLoadingFirstRunOutcomes(false);
+    }
+  };
+
   const fetchResolvedBaseline = async (runId?: string) => {
     const targetRunId = runId || effectiveActiveRunId;
     if (!targetRunId) {
@@ -724,6 +794,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchEditorialInsights();
     fetchRecommendations();
     fetchEditorialForecast();
+    // v12 First-run recommendation
+    fetchFirstRunRecommendation();
+    fetchFirstRunOutcomes();
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -805,5 +878,12 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadingAutoHistory,
     refreshAutoRemediationHistory: fetchAutoRemediationHistory,
     triggerAutoRemediation,
+    // v12 First-run recommendation
+    firstRunRecommendation,
+    loadingFirstRunRecommendation,
+    refreshFirstRunRecommendation: fetchFirstRunRecommendation,
+    firstRunOutcomes,
+    loadingFirstRunOutcomes,
+    refreshFirstRunOutcomes: fetchFirstRunOutcomes,
   };
 }

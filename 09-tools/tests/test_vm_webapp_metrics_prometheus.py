@@ -202,3 +202,147 @@ def test_threshold_checker_validates_baseline_none_acceptable(tmp_path: Path) ->
     ok, value = checker.check_threshold("vm_editorial_baseline_source_none", threshold=10.0)
     assert ok, f"Expected baseline_none within threshold, got {value}"
     assert value == 1.0
+
+
+# v12 First-run recommendation metrics tests
+
+def test_first_run_recommendation_metrics_include_source_and_confidence_bucket(tmp_path: Path) -> None:
+    """Metrics should include recommendation source and confidence bucket."""
+    from vm_webapp.db import build_engine, init_db, session_scope
+    from vm_webapp.events import EventEnvelope
+    from vm_webapp.projectors_v2 import apply_event_to_read_models
+    from vm_webapp.repo import append_event
+    
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+    engine = build_engine(tmp_path / "runtime" / "vm" / "workspace.sqlite3")
+    init_db(engine)
+
+    # Create test data with RunCompleted events
+    with session_scope(engine) as session:
+        # Create brand, project, thread
+        for evt in [
+            EventEnvelope(
+                event_id="evt-b", event_type="BrandCreated", aggregate_type="brand", aggregate_id="b1",
+                stream_id="brand:b1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"brand_id": "b1", "name": "Acme"}, brand_id="b1",
+            ),
+            EventEnvelope(
+                event_id="evt-p", event_type="ProjectCreated", aggregate_type="project", aggregate_id="p1",
+                stream_id="project:p1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"project_id": "p1", "brand_id": "b1", "name": "Launch"}, brand_id="b1", project_id="p1",
+            ),
+            EventEnvelope(
+                event_id="evt-t", event_type="ThreadCreated", aggregate_type="thread", aggregate_id="t1",
+                stream_id="thread:t1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"thread_id": "t1", "brand_id": "b1", "project_id": "p1", "title": "Test"},
+                brand_id="b1", project_id="p1", thread_id="t1",
+            ),
+        ]:
+            row = append_event(session, evt)
+            apply_event_to_read_models(session, row)
+        
+        # Add completed runs
+        for i, (profile, mode) in enumerate([("engagement", "fast"), ("awareness", "balanced")]):
+            row = append_event(
+                session,
+                EventEnvelope(
+                    event_id=f"evt-r{i}", event_type="RunCompleted", aggregate_type="run", aggregate_id=f"r{i}",
+                    stream_id=f"run:{i}", expected_version=0, actor_type="system", actor_id="runner",
+                    thread_id="t1", brand_id="b1", project_id="p1",
+                    payload={
+                        "run_id": f"r{i}", "thread_id": "t1", "brand_id": "b1", "project_id": "p1",
+                        "profile": profile, "mode": mode, "approved": True,
+                        "quality_score": 0.85, "duration_ms": 4000,
+                        "completed_at": "2026-02-28T10:00:00Z",
+                    },
+                ),
+            )
+            apply_event_to_read_models(session, row)
+
+    # Call recommendation endpoint to trigger metrics
+    response = client.get("/api/v2/threads/t1/first-run-recommendation")
+    assert response.status_code == 200
+
+    # Get metrics
+    metrics_response = client.get("/api/v2/metrics/prometheus")
+    assert metrics_response.status_code == 200
+    body = metrics_response.text
+
+    # Check recommendation metrics
+    assert "vm_first_run_recommendation_requested_total 1" in body
+
+
+def test_first_run_outcome_metrics_include_success_24h_ratio_inputs(tmp_path: Path) -> None:
+    """Metrics should include success_24h ratio inputs for tracking KPI."""
+    from vm_webapp.db import build_engine, init_db, session_scope
+    from vm_webapp.events import EventEnvelope
+    from vm_webapp.projectors_v2 import apply_event_to_read_models
+    from vm_webapp.repo import append_event
+    
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=tmp_path / "runtime" / "vm",
+            vm_db_path=tmp_path / "runtime" / "vm" / "workspace.sqlite3",
+        )
+    )
+    client = TestClient(app)
+    engine = build_engine(tmp_path / "runtime" / "vm" / "workspace.sqlite3")
+    init_db(engine)
+
+    # Create test data
+    with session_scope(engine) as session:
+        for evt in [
+            EventEnvelope(
+                event_id="evt-b", event_type="BrandCreated", aggregate_type="brand", aggregate_id="b1",
+                stream_id="brand:b1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"brand_id": "b1", "name": "Acme"}, brand_id="b1",
+            ),
+            EventEnvelope(
+                event_id="evt-p", event_type="ProjectCreated", aggregate_type="project", aggregate_id="p1",
+                stream_id="project:p1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"project_id": "p1", "brand_id": "b1", "name": "Launch"}, brand_id="b1", project_id="p1",
+            ),
+            EventEnvelope(
+                event_id="evt-t", event_type="ThreadCreated", aggregate_type="thread", aggregate_id="t1",
+                stream_id="thread:t1", expected_version=0, actor_type="human", actor_id="u1",
+                payload={"thread_id": "t1", "brand_id": "b1", "project_id": "p1", "title": "Test"},
+                brand_id="b1", project_id="p1", thread_id="t1",
+            ),
+        ]:
+            row = append_event(session, evt)
+            apply_event_to_read_models(session, row)
+        
+        # Add approved run
+        row = append_event(
+            session,
+            EventEnvelope(
+                event_id="evt-r1", event_type="RunCompleted", aggregate_type="run", aggregate_id="r1",
+                stream_id="run:1", expected_version=0, actor_type="system", actor_id="runner",
+                thread_id="t1", brand_id="b1", project_id="p1",
+                payload={
+                    "run_id": "r1", "thread_id": "t1", "brand_id": "b1", "project_id": "p1",
+                    "profile": "engagement", "mode": "fast", "approved": True,
+                    "quality_score": 0.9, "duration_ms": 3500,
+                    "completed_at": "2026-02-28T10:00:00Z",
+                },
+            ),
+        )
+        apply_event_to_read_models(session, row)
+
+    # Call outcomes endpoint
+    response = client.get("/api/v2/threads/t1/first-run-outcomes")
+    assert response.status_code == 200
+
+    # Get metrics
+    metrics_response = client.get("/api/v2/metrics/prometheus")
+    assert metrics_response.status_code == 200
+    body = metrics_response.text
+
+    # Check outcome metrics
+    assert "vm_first_run_outcomes_requested_total 1" in body

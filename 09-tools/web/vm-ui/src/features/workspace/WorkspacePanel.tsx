@@ -109,6 +109,10 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     loadingAutoHistory = false,
     refreshAutoRemediationHistory = () => undefined,
     triggerAutoRemediation = async () => undefined,
+    // v12 First-run recommendation
+    firstRunRecommendation = null,
+    loadingFirstRunRecommendation = false,
+    firstRunOutcomes = null,
   } = useWorkspace(activeThreadId, activeRunId);
 
   // Alerts hook for Control Center
@@ -138,6 +142,25 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   useEffect(() => {
     writeWorkspaceView(activeThreadId, activeView);
   }, [activeThreadId, activeView]);
+
+  // v12: Auto-preselect recommended profile when confidence >= 0.55
+  const [hasUserManuallySelectedProfile, setHasUserManuallySelectedProfile] = useState(false);
+  const topRecommendation = firstRunRecommendation?.recommendations[0];
+  const canAutoSelectProfile = topRecommendation && topRecommendation.confidence >= 0.55;
+  
+  useEffect(() => {
+    if (canAutoSelectProfile && !hasUserManuallySelectedProfile && !selectedProfile) {
+      const recommendedMode = `${topRecommendation.profile}:${topRecommendation.mode}`;
+      // Check if the recommended mode exists in available profiles
+      const profileExists = profiles.some(p => p.mode === recommendedMode || p.mode === topRecommendation.profile);
+      if (profileExists) {
+        setSelectedProfile(recommendedMode);
+      } else {
+        // Fallback to just the profile name
+        setSelectedProfile(topRecommendation.profile);
+      }
+    }
+  }, [canAutoSelectProfile, hasUserManuallySelectedProfile, selectedProfile, profiles, topRecommendation]);
 
   const sortedTimeline = useMemo(() => {
     const filtered = filterTimelineEvents(timeline, timelineFilter);
@@ -409,19 +432,53 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-slate-700">Perfil</label>
-              <select
-                value={selectedProfile}
-                onChange={(e) => setSelectedProfile(e.target.value)}
-                disabled={!activeThreadId}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
-              >
-                <option value="">Selecione um perfil</option>
-                {profiles.map((p) => (
-                  <option key={p.mode} value={p.mode}>
-                    {p.mode}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedProfile}
+                  onChange={(e) => {
+                    setHasUserManuallySelectedProfile(true);
+                    setSelectedProfile(e.target.value);
+                  }}
+                  disabled={!activeThreadId}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-50"
+                >
+                  <option value="">Selecione um perfil</option>
+                  {profiles.map((p) => (
+                    <option key={p.mode} value={p.mode}>
+                      {p.mode}
+                    </option>
+                  ))}
+                </select>
+                {/* v12: Recommendation badge */}
+                {topRecommendation && (
+                  <div
+                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium ${
+                      topRecommendation.confidence >= 0.55
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : topRecommendation.confidence >= 0.3
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                          : "bg-slate-50 text-slate-600 border border-slate-200"
+                    }`}
+                    title={`Confiança: ${(topRecommendation.confidence * 100).toFixed(0)}% - ${topRecommendation.reason_codes.join(", ")}`}
+                  >
+                    <span>{(topRecommendation.confidence * 100).toFixed(0)}%</span>
+                    {topRecommendation.confidence >= 0.55 && <span className="text-emerald-600">★</span>}
+                  </div>
+                )}
+              </div>
+              {/* v12: Reason codes display */}
+              {topRecommendation && topRecommendation.reason_codes.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {topRecommendation.reason_codes.map((code) => (
+                    <span
+                      key={code}
+                      className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                    >
+                      {code.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

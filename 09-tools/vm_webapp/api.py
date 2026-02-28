@@ -35,6 +35,11 @@ from vm_webapp.db import session_scope
 from vm_webapp.events import EventEnvelope
 from vm_webapp.projectors_v2 import apply_event_to_read_models
 from vm_webapp.quality_eval import evaluate_run_quality
+from vm_webapp.first_run_recommendation import (
+    ProfileModeOutcome,
+    RecommendationRanker,
+    get_fallback_recommendation,
+)
 from vm_webapp.repo import (
     append_event,
     close_thread,
@@ -42,6 +47,7 @@ from vm_webapp.repo import (
     get_editorial_policy,
     get_editorial_slo,
     get_event_by_id,
+    get_first_run_outcome_aggregate,
     get_run,
     get_brand_view,
     get_project_view,
@@ -51,6 +57,7 @@ from vm_webapp.repo import (
     list_brands,
     list_brands_view,
     list_editorial_decisions_view,
+    list_first_run_outcomes,
     list_projects_view,
     list_products_by_brand,
     list_runs_by_thread,
@@ -3100,3 +3107,184 @@ def get_thread_alerts_v2(
             "by_severity": get_alerts_summary(alerts),
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# First-run recommendation endpoints (v12)
+
+class FirstRunRecommendationResponse(BaseModel):
+    """Response model for first-run recommendation endpoint."""
+    profile: str
+    mode: str
+    score: float
+    confidence: float
+    reason_codes: list[str]
+
+
+class FirstRunRecommendationListResponse(BaseModel):
+    """Response model for first-run recommendation list."""
+    thread_id: str
+    scope: str
+    recommendations: list[FirstRunRecommendationResponse]
+
+
+class FirstRunOutcomeAggregateResponse(BaseModel):
+    """Response model for first-run outcome aggregate."""
+    profile: str
+    mode: str
+    total_runs: int
+    success_24h_count: int
+    success_rate: float
+    avg_quality_score: float
+    avg_duration_ms: float
+
+
+class FirstRunOutcomesResponse(BaseModel):
+    """Response model for first-run outcomes endpoint."""
+    thread_id: str
+    aggregates: list[FirstRunOutcomeAggregateResponse]
+
+
+@router.get("/v2/threads/{thread_id}/first-run-recommendation")
+def get_first_run_recommendation(thread_id: str, request: Request) -> FirstRunRecommendationListResponse:
+    """Get first-run recommendations for a thread.
+    
+    Returns top 3 profile/mode combinations ranked by success rate,
+    quality score, and speed within a 24-hour window.
+    """
+    # Record metrics
+    request.app.state.workflow_runtime.metrics.record_count("first_run_recommendation_requested_total")
+    
+    with session_scope(request.app.state.engine) as session:
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Get aggregates for this thread's brand/project
+        outcomes: list[ProfileModeOutcome] = []
+        scope = "default"
+        
+        # Try to get aggregates at different scopes
+        # First try brand+project level
+        from sqlalchemy import select
+        from vm_webapp.models import FirstRunOutcomeAggregate
+        
+        brand_id = thread.brand_id
+        project_id = thread.project_id
+        
+        agg_rows = session.scalars(
+            select(FirstRunOutcomeAggregate)
+            .where(
+                FirstRunOutcomeAggregate.brand_id == brand_id,
+                FirstRunOutcomeAggregate.project_id == project_id,
+            )
+            .order_by(FirstRunOutcomeAggregate.total_runs.desc())
+        ).all()
+        
+        if agg_rows:
+            scope = "objective"
+            for agg in agg_rows:
+                outcomes.append(
+                    ProfileModeOutcome(
+                        profile=agg.profile,
+                        mode=agg.mode,
+                        total_runs=agg.total_runs,
+                        success_24h_count=agg.success_24h_count,
+                        success_rate=agg.success_24h_count / agg.total_runs if agg.total_runs > 0 else 0.0,
+                        avg_quality_score=agg.quality_score_sum / agg.total_runs if agg.total_runs > 0 else 0.0,
+                        avg_duration_ms=agg.duration_ms_sum / agg.total_runs if agg.total_runs > 0 else 0.0,
+                    )
+                )
+        
+        # If no data at project level, try brand level
+        if not outcomes:
+            agg_rows = session.scalars(
+                select(FirstRunOutcomeAggregate)
+                .where(FirstRunOutcomeAggregate.brand_id == brand_id)
+                .order_by(FirstRunOutcomeAggregate.total_runs.desc())
+            ).all()
+            if agg_rows:
+                scope = "brand"
+                for agg in agg_rows:
+                    outcomes.append(
+                        ProfileModeOutcome(
+                            profile=agg.profile,
+                            mode=agg.mode,
+                            total_runs=agg.total_runs,
+                            success_24h_count=agg.success_24h_count,
+                            success_rate=agg.success_24h_count / agg.total_runs if agg.total_runs > 0 else 0.0,
+                            avg_quality_score=agg.quality_score_sum / agg.total_runs if agg.total_runs > 0 else 0.0,
+                            avg_duration_ms=agg.duration_ms_sum / agg.total_runs if agg.total_runs > 0 else 0.0,
+                        )
+                    )
+        
+        # Rank the outcomes
+        ranker = RecommendationRanker()
+        if outcomes:
+            recommendations = ranker.rank(outcomes, top_n=3)
+        else:
+            # Fallback to default
+            scope = "default"
+            fallback = get_fallback_recommendation(scope)
+            recommendations = [fallback]
+        
+        return FirstRunRecommendationListResponse(
+            thread_id=thread_id,
+            scope=scope,
+            recommendations=[
+                FirstRunRecommendationResponse(
+                    profile=r.profile,
+                    mode=r.mode,
+                    score=r.score,
+                    confidence=r.confidence,
+                    reason_codes=r.reason_codes,
+                )
+                for r in recommendations
+            ],
+        )
+
+
+@router.get("/v2/threads/{thread_id}/first-run-outcomes")
+def get_first_run_outcomes(thread_id: str, request: Request) -> FirstRunOutcomesResponse:
+    """Get first-run outcomes aggregate for a thread.
+    
+    Returns aggregated outcome data for each profile/mode combination
+    used in this thread's runs.
+    """
+    # Record metrics
+    request.app.state.workflow_runtime.metrics.record_count("first_run_outcomes_requested_total")
+    
+    with session_scope(request.app.state.engine) as session:
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        from sqlalchemy import select
+        from vm_webapp.models import FirstRunOutcomeAggregate
+        
+        # Get aggregates for this thread's brand/project
+        agg_rows = session.scalars(
+            select(FirstRunOutcomeAggregate)
+            .where(
+                FirstRunOutcomeAggregate.brand_id == thread.brand_id,
+                FirstRunOutcomeAggregate.project_id == thread.project_id,
+            )
+        ).all()
+        
+        aggregates = []
+        for agg in agg_rows:
+            aggregates.append(
+                FirstRunOutcomeAggregateResponse(
+                    profile=agg.profile,
+                    mode=agg.mode,
+                    total_runs=agg.total_runs,
+                    success_24h_count=agg.success_24h_count,
+                    success_rate=round(agg.success_24h_count / agg.total_runs, 4) if agg.total_runs > 0 else 0.0,
+                    avg_quality_score=round(agg.quality_score_sum / agg.total_runs, 4) if agg.total_runs > 0 else 0.0,
+                    avg_duration_ms=round(agg.duration_ms_sum / agg.total_runs, 2) if agg.total_runs > 0 else 0.0,
+                )
+            )
+        
+        return FirstRunOutcomesResponse(
+            thread_id=thread_id,
+            aggregates=aggregates,
+        )
