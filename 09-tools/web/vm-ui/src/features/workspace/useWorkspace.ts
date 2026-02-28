@@ -799,6 +799,64 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     fetchFirstRunOutcomes();
   }, [activeThreadId]);
 
+  // ============================================================================
+  // v13 Editorial Copilot State and Methods
+  // ============================================================================
+
+  type CopilotSuggestion = {
+    suggestion_id: string;
+    content: string;
+    confidence: number;
+    reason_codes: string[];
+    why: string;
+    expected_impact: { quality_delta: number; approval_lift: number };
+    created_at: string;
+  };
+
+  type CopilotFeedbackPayload = {
+    suggestion_id: string;
+    phase: "initial" | "refine" | "strategy";
+    action: "accepted" | "edited" | "ignored";
+    edited_content?: string;
+  };
+
+  const [copilotSuggestions, setCopilotSuggestions] = useState<CopilotSuggestion[]>([]);
+  const [copilotPhase, setCopilotPhase] = useState<"initial" | "refine" | "strategy">("initial");
+  const [copilotGuardrailApplied, setCopilotGuardrailApplied] = useState(false);
+  const [loadingCopilot, setLoadingCopilot] = useState(false);
+
+  const refreshCopilotSuggestions = async (
+    phase: "initial" | "refine" | "strategy" = "initial"
+  ) => {
+    if (!activeThreadId) return;
+    setLoadingCopilot(true);
+    setCopilotPhase(phase);
+    try {
+      const response = await fetchJson(
+        `/api/v2/threads/${activeThreadId}/copilot/suggestions?phase=${phase}`,
+        { onError: () => {} }
+      );
+      if (response && Array.isArray(response.suggestions)) {
+        setCopilotSuggestions(response.suggestions);
+        setCopilotGuardrailApplied(response.guardrail_applied || false);
+      } else {
+        setCopilotSuggestions([]);
+        setCopilotGuardrailApplied(false);
+      }
+    } finally {
+      setLoadingCopilot(false);
+    }
+  };
+
+  const submitCopilotFeedback = async (payload: CopilotFeedbackPayload) => {
+    if (!activeThreadId) throw new Error("No active thread");
+    const response = await postJson(
+      `/api/v2/threads/${activeThreadId}/copilot/feedback`,
+      payload
+    );
+    return response;
+  };
+
   useEffect(() => {
     const targetRunId = effectiveActiveRunId || runs[0]?.run_id || null;
     if (targetRunId) {
@@ -885,5 +943,12 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     firstRunOutcomes,
     loadingFirstRunOutcomes,
     refreshFirstRunOutcomes: fetchFirstRunOutcomes,
+    // v13 Editorial Copilot
+    copilotSuggestions,
+    copilotPhase,
+    copilotGuardrailApplied,
+    loadingCopilot,
+    refreshCopilotSuggestions,
+    submitCopilotFeedback,
   };
 }
