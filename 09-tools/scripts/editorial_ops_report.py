@@ -3,7 +3,8 @@
 
 This script aggregates editorial governance metrics, recommendations,
 and forecast data across threads/brands to produce a markdown report 
-for operational review. Includes forecast delta tracking and signal quality metrics.
+for operational review. Includes forecast delta tracking, signal quality metrics,
+SLO alerts evidence, and playbook execution status.
 """
 
 from __future__ import annotations
@@ -58,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also write summary to GITHUB_STEP_SUMMARY",
     )
+    parser.add_argument(
+        "--staging-url",
+        type=str,
+        default="",
+        help="Staging URL for testing (if empty, report will be marked as SKIPPED)",
+    )
     return parser.parse_args()
 
 
@@ -105,14 +112,17 @@ def extract_previous_forecasts(previous_report_path: Path | None) -> dict[str, i
             if in_forecast_section and line.startswith("## "):
                 in_forecast_section = False
                 continue
-            if in_forecast_section and line.startswith("| ") and "thread" in line.lower():
-                parts = line.split("|")
-                if len(parts) >= 4:
-                    thread_id = parts[1].strip()
+            if in_forecast_section and line.startswith("|"):
+                parts = [p.strip() for p in line.split("|")]
+                # Filter out empty parts
+                parts = [p for p in parts if p]
+                # Skip header row and separator row
+                if len(parts) >= 3 and parts[0] not in ("Thread", "--------") and not parts[0].startswith("-"):
                     try:
-                        score = int(parts[3].strip())
+                        thread_id = parts[0]
+                        score = int(parts[1])  # Risk Score is second column
                         previous_scores[thread_id] = score
-                    except ValueError:
+                    except (ValueError, IndexError):
                         pass
         
         return previous_scores
@@ -223,9 +233,9 @@ def calculate_forecast_deltas(
         if previous_score is not None:
             diff = current_score - previous_score
             if diff > 5:
-                deltas[thread_id] = f"+{diff}"
+                deltas[thread_id] = f"📈 +{diff}"
             elif diff < -5:
-                deltas[thread_id] = f"{diff}"
+                deltas[thread_id] = f"📉 {diff}"
             else:
                 deltas[thread_id] = "stable"
         else:
@@ -252,6 +262,144 @@ def get_top_risk_threads(
     return threads_with_risk[:limit]
 
 
+def generate_slo_alerts_section(forecasts: dict[str, dict[str, Any]]) -> list[str]:
+    """Generate SLO Alerts Evidence section."""
+    lines = ["## SLO Alerts Evidence", ""]
+    
+    all_alerts: list[dict[str, Any]] = []
+    for thread_id, forecast in forecasts.items():
+        slo_alerts = forecast.get("slo_alerts", [])
+        for alert in slo_alerts:
+            alert_copy = dict(alert)
+            alert_copy["thread_id"] = thread_id
+            all_alerts.append(alert_copy)
+    
+    if all_alerts:
+        lines.extend([
+            "| Thread | Alert ID | Severity | Message | Threshold | Current |",
+            "|--------|----------|----------|---------|-----------|---------|",
+        ])
+        for alert in all_alerts:
+            thread_id = alert.get("thread_id", "")
+            alert_id = alert.get("alert_id", "")
+            severity = alert.get("severity", "")
+            message = alert.get("message", "")[:40] + "..." if len(alert.get("message", "")) > 40 else alert.get("message", "")
+            threshold = alert.get("threshold", "")
+            current = alert.get("current_value", "")
+            lines.append(f"| {thread_id} | {alert_id} | {severity} | {message} | {threshold} | {current} |")
+        lines.append("")
+    else:
+        lines.append("✅ No SLO alerts at this time.")
+        lines.append("")
+    
+    return lines
+
+
+def generate_playbook_execution_section(forecasts: dict[str, dict[str, Any]]) -> list[str]:
+    """Generate Playbook Execution Status section."""
+    lines = ["## Playbook Execution Status", ""]
+    
+    has_executions = False
+    for forecast in forecasts.values():
+        if forecast.get("playbook_executions"):
+            has_executions = True
+            break
+    
+    if has_executions:
+        lines.extend([
+            "| Thread | Playbook ID | Status | Executed At | Actions |",
+            "|--------|-------------|--------|-------------|---------|",
+        ])
+        for thread_id, forecast in forecasts.items():
+            executions = forecast.get("playbook_executions", [])
+            for execution in executions:
+                playbook_id = execution.get("playbook_id", "")
+                status = execution.get("status", "")
+                executed_at = execution.get("executed_at", execution.get("scheduled_at", ""))
+                actions = execution.get("actions_taken", execution.get("actions_pending", []))
+                actions_str = ", ".join(actions) if actions else "-"
+                lines.append(f"| {thread_id} | {playbook_id} | {status} | {executed_at} | {actions_str} |")
+        lines.append("")
+    else:
+        lines.append("ℹ️ No playbook executions recorded.")
+        lines.append("")
+    
+    return lines
+
+
+def generate_actions_section(forecasts: dict[str, dict[str, Any]]) -> list[str]:
+    """Generate Ações Executadas e Pendentes section."""
+    lines = ["## Ações Executadas e Pendentes", ""]
+    
+    has_actions = False
+    for forecast in forecasts.values():
+        if forecast.get("executed_actions") or forecast.get("pending_actions"):
+            has_actions = True
+            break
+    
+    if has_actions:
+        for thread_id, forecast in forecasts.items():
+            executed = forecast.get("executed_actions", [])
+            pending = forecast.get("pending_actions", [])
+            
+            if executed or pending:
+                lines.append(f"### {thread_id}")
+                lines.append("")
+                
+                if executed:
+                    lines.append("**✅ Executadas:**")
+                    for action in executed:
+                        lines.append(f"- {action}")
+                    lines.append("")
+                
+                if pending:
+                    lines.append("**⏳ Pendentes:**")
+                    for action in pending:
+                        lines.append(f"- {action}")
+                    lines.append("")
+                
+                has_actions = True
+    else:
+        lines.append("ℹ️ No actions recorded.")
+        lines.append("")
+    
+    return lines
+
+
+def generate_skipped_notice(has_staging_url: bool, has_real_data: bool) -> list[str]:
+    """Generate SKIPPED notice when appropriate."""
+    lines = []
+    
+    if not has_staging_url:
+        lines.extend([
+            "",
+            "## ⚠️ SKIPPED",
+            "",
+            "**Status:** SKIPPED - No staging URL available",
+            "",
+            "This report was generated without a staging URL. "
+            "Operational data could not be collected.",
+            "",
+            "**Ações recomendadas:**",
+            "- Verificar configuração de staging URL",
+            "- Executar workflow com staging URL configurado",
+            "",
+        ])
+    elif not has_real_data:
+        lines.extend([
+            "",
+            "## ℹ️ PASS Estrutural",
+            "",
+            "**Status:** PASS (Structural) - Running with sample/demo data",
+            "",
+            "Este relatório foi gerado com dados de demonstração. "
+            "Para dados reais, configure uma staging URL.",
+            "",
+        ])
+    
+    return lines
+
+
 def generate_markdown_report(
     metrics: dict[str, Any],
     forecasts: dict[str, dict[str, Any]],
@@ -259,12 +407,23 @@ def generate_markdown_report(
     deltas: dict[str, str],
     top_risks: list[tuple[str, int, str, str]],
     generated_at: datetime,
+    has_staging_url: bool = True,
 ) -> str:
     """Generate markdown report from aggregated metrics."""
+    has_real_data = metrics["total_threads"] > 0 and not all(
+        t.get("thread_id") == "sample" for t in [{}]  # Placeholder check
+    )
+    
     lines = [
         "# Editorial Operations Report",
         "",
         f"**Generated:** {generated_at.isoformat()}",
+    ]
+    
+    # Add SKIPPED or PASS Estrutural notice if applicable
+    lines.extend(generate_skipped_notice(has_staging_url, has_staging_url and metrics["total_threads"] > 0))
+    
+    lines.extend([
         "",
         "## Summary",
         "",
@@ -285,7 +444,7 @@ def generate_markdown_report(
         f"| Suppressed Actions Rate | {signal_quality['suppressed_actions_rate']:.1f}% |",
         f"| Threads with Forecast | {signal_quality['total_threads_with_forecast']} |",
         "",
-    ]
+    ])
     
     quality_alerts = []
     if signal_quality['avg_confidence'] < 0.5:
@@ -352,6 +511,15 @@ def generate_markdown_report(
         
         lines.append("")
     
+    # Add SLO Alerts Evidence section
+    lines.extend(generate_slo_alerts_section(forecasts))
+    
+    # Add Playbook Execution Status section
+    lines.extend(generate_playbook_execution_section(forecasts))
+    
+    # Add Ações Executadas e Pendentes section
+    lines.extend(generate_actions_section(forecasts))
+    
     if top_risks:
         lines.extend([
             "## Top 3 Threads by Risk",
@@ -359,7 +527,7 @@ def generate_markdown_report(
         ])
         
         for i, (thread_id, risk_score, trend, focus) in enumerate(top_risks, 1):
-            trend_indicator = {"improving": "+", "stable": "=", "degrading": "-"}.get(trend, "=")
+            trend_indicator = {"improving": "📈", "stable": "➡️", "degrading": "📉"}.get(trend, "➡️")
             lines.extend([
                 f"### {i}. {thread_id}",
                 "",
@@ -410,18 +578,33 @@ def generate_markdown_report(
     return "\n".join(lines)
 
 
-def generate_github_step_summary(signal_quality: dict[str, Any]) -> str:
+def generate_github_step_summary(
+    signal_quality: dict[str, Any],
+    metrics: dict[str, Any],
+    top_risks: list[tuple[str, int, str, str]],
+    has_staging_url: bool = True,
+) -> str:
     """Generate a concise summary for GITHUB_STEP_SUMMARY."""
     lines = [
         "## Editorial Operations Summary",
         "",
+    ]
+    
+    if not has_staging_url:
+        lines.extend([
+            "⚠️ **SKIPPED** - No staging URL available",
+            "",
+        ])
+    
+    lines.extend([
         "### Signal Quality",
         "",
         f"- **Average Confidence:** {signal_quality['avg_confidence']:.0%}",
         f"- **Average Volatility:** {signal_quality['avg_volatility']}/100",
         f"- **Suppressed Actions:** {signal_quality['suppressed_actions_rate']:.1f}%",
+        f"- **Total Threads:** {metrics['total_threads']}",
         "",
-    ]
+    ])
     
     noisy_threads = signal_quality.get('low_confidence_high_volatility_threads', [])
     if noisy_threads:
@@ -437,11 +620,24 @@ def generate_github_step_summary(signal_quality: dict[str, Any]) -> str:
             )
         lines.append("")
     
+    if top_risks:
+        lines.extend([
+            "### Top 3 Risks",
+            "",
+        ])
+        for i, (thread_id, risk_score, trend, focus) in enumerate(top_risks, 1):
+            lines.append(f"{i}. `{thread_id}`: **{risk_score}/100** ({trend})")
+        lines.append("")
+    
     return "\n".join(lines)
 
 
 def main() -> int:
     args = parse_args()
+    
+    # Check if we have a staging URL
+    has_staging_url = bool(args.staging_url) or bool(os.environ.get("STAGING_URL"))
+    staging_url = args.staging_url or os.environ.get("STAGING_URL", "")
     
     try:
         insights = load_insights(args.insights_file)
@@ -470,12 +666,14 @@ def main() -> int:
                     {"thread_id": t[0], "risk_score": t[1], "trend": t[2], "focus": t[3]}
                     for t in top_risks
                 ],
+                "staging_url": staging_url,
+                "has_staging_url": has_staging_url,
             },
             indent=2,
         )
     else:
         output = generate_markdown_report(
-            metrics, forecasts, signal_quality, deltas, top_risks, generated_at
+            metrics, forecasts, signal_quality, deltas, top_risks, generated_at, has_staging_url
         )
     
     if args.output:
@@ -487,13 +685,15 @@ def main() -> int:
     if args.github_step_summary:
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
-            summary = generate_github_step_summary(signal_quality)
+            summary = generate_github_step_summary(signal_quality, metrics, top_risks, has_staging_url)
             with open(summary_path, "a") as f:
                 f.write("\n" + summary + "\n")
             print("Summary written to GITHUB_STEP_SUMMARY", file=sys.stderr)
         else:
             print("Warning: GITHUB_STEP_SUMMARY not set", file=sys.stderr)
     
+    # Always return 0 (PASS) for structural pass - this is a reporting tool
+    # The actual status (SKIPPED/SUCCESS) is indicated in the report content
     return 0
 
 

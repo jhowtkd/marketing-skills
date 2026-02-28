@@ -36,6 +36,8 @@ import {
   type AuditScopeFilter,
 } from "./presentation";
 import { useWorkspace } from "./useWorkspace";
+import { useAlerts } from "./hooks/useAlerts";
+import { AlertPanel } from "./components/AlertPanel";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
 
 type MaybeId = string | null;
@@ -108,6 +110,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     refreshAutoRemediationHistory = () => undefined,
     triggerAutoRemediation = async () => undefined,
   } = useWorkspace(activeThreadId, activeRunId);
+
+  // Alerts hook for Control Center
+  const {
+    alerts,
+    loading: loadingAlerts,
+    error: alertsError,
+    refreshAlerts,
+    executePlaybookChain,
+  } = useAlerts(activeThreadId);
 
   // Use effective run id for all UI rendering (falls back to first run if activeRunId is null)
   const currentRunId = effectiveActiveRunId;
@@ -1067,14 +1078,15 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           onClick={() => {
             refreshEditorialDrift();
             refreshAutoRemediationHistory();
+            refreshAlerts();
             if (runDetail?.brand_id) {
               refreshEditorialSLO(runDetail.brand_id);
             }
           }}
-          disabled={loadingDrift || loadingAutoHistory || !hasActiveThread}
+          disabled={loadingDrift || loadingAutoHistory || loadingAlerts || !hasActiveThread}
           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50"
         >
-          {loadingDrift || loadingAutoHistory ? "Atualizando..." : "Recarregar"}
+          {loadingDrift || loadingAutoHistory || loadingAlerts ? "Atualizando..." : "Recarregar"}
         </button>
       </div>
 
@@ -1084,6 +1096,31 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         </div>
       ) : (
         <div className="mt-4 space-y-4">
+          {/* Active Alerts Panel */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-slate-800">Alertas Ativos</h4>
+              {alerts.length > 0 && (
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                  alerts.some(a => a.severity === "critical")
+                    ? "bg-red-100 text-red-700"
+                    : alerts.some(a => a.severity === "warning")
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-blue-100 text-blue-700"
+                }`}>
+                  {alerts.length} alerta{alerts.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <AlertPanel
+              alerts={alerts}
+              loading={loadingAlerts}
+              error={alertsError}
+              onRefresh={refreshAlerts}
+              onExecutePlaybook={executePlaybookChain}
+            />
+          </div>
+
           {/* Drift Detection Panel */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <div className="flex items-center justify-between mb-3">
