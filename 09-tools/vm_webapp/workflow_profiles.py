@@ -12,7 +12,7 @@ FOUNDATION_MODE_DEFAULT = "foundation_stack"
 PROFILES_VERSION_DEFAULT = "v1"
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class WorkflowStageProfile:
     key: str
     skills: list[str]
@@ -22,7 +22,7 @@ class WorkflowStageProfile:
     fallback_providers: list[str]
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class WorkflowModeProfile:
     mode: str
     description: str

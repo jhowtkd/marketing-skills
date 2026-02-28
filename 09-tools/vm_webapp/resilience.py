@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class ResilienceDecision:
     action: Literal["retry", "fallback", "fail"]
     delay_seconds: int = 0

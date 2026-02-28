@@ -6,7 +6,7 @@ and audit logging.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 # Actions considered "safe" for automatic execution
 SAFE_AUTO_ACTIONS = {
@@ -26,7 +26,7 @@ AutoRemediationResult = Literal["executed", "skipped", "blocked", "rate_limited"
 class AutoRemediationDecision:
     """Result of auto-remediation decision."""
     result: AutoRemediationResult
-    action_id: str | None
+    action_id: Optional[str]
     reason: str
     should_audit: bool
 
@@ -145,7 +145,7 @@ def build_auto_remediation_event_payload(
     action_id: str,
     decision: AutoRemediationDecision,
     drift_score: int,
-    run_id: str | None = None,
+    run_id: Optional[str] = None,
 ) -> dict:
     """Build event payload for auto-remediation execution.
     

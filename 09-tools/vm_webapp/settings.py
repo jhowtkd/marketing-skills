@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     kimi_api_key: str = ""
     vm_workspace_root: Path = Path("runtime/vm")
     vm_db_path: Path = Path("runtime/vm/workspace.sqlite3")
-    vm_db_url: str | None = None
-    vm_redis_url: str | None = None
+    vm_db_url: Optional[str] = None
+    vm_redis_url: Optional[str] = None
     vm_enable_managed_mode: bool = False
-    vm_workflow_profiles_path: Path | None = None
+    vm_workflow_profiles_path: Optional[Path] = None
     vm_workflow_force_foundation_fallback: bool = True
     vm_workflow_foundation_mode: str = "foundation_stack"
 

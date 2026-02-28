@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 import json
 import logging
 import time
@@ -218,7 +219,7 @@ def _require_editorial_role(request: Request) -> str:
     return role
 
 
-def _parse_bearer_token(auth_header: str | None) -> dict[str, str] | None:
+def _parse_bearer_token(auth_header: Optional[str]) -> Optional[dict[str, str]]:
     """Parse Bearer token and extract actor_id and role.
     
     Expected format: "Bearer <actor_id>:<role>"
@@ -388,36 +389,36 @@ def pump_event_worker(request: Request, *, max_events: int = 30) -> int:
 
 
 class BrandCreateRequest(BaseModel):
-    brand_id: str | None = None
+    brand_id: Optional[str] = None
     name: str
 
 
 class ProjectCreateRequest(BaseModel):
-    project_id: str | None = None
+    project_id: Optional[str] = None
     brand_id: str
     name: str
     objective: str = ""
     channels: list[str] = Field(default_factory=list)
-    due_date: str | None = None
+    due_date: Optional[str] = None
 
 
 class CampaignCreateRequest(BaseModel):
-    campaign_id: str | None = None
+    campaign_id: Optional[str] = None
     brand_id: str
     project_id: str
     title: str
 
 
 class TaskCreateRequest(BaseModel):
-    task_id: str | None = None
+    task_id: Optional[str] = None
     thread_id: str
-    campaign_id: str | None = None
-    brand_id: str | None = None
+    campaign_id: Optional[str] = None
+    brand_id: Optional[str] = None
     title: str
 
 
 class ThreadCreateV2Request(BaseModel):
-    thread_id: str | None = None
+    thread_id: Optional[str] = None
     project_id: str
     brand_id: str
     title: str
@@ -431,7 +432,7 @@ class ProjectUpdateRequest(BaseModel):
     name: str
     objective: str = ""
     channels: list[str] = Field(default_factory=list)
-    due_date: str | None = None
+    due_date: Optional[str] = None
 
 
 class ThreadUpdateRequest(BaseModel):
@@ -464,13 +465,13 @@ class ForceConflictRequest(BaseModel):
 class EditorialGoldenMarkRequest(BaseModel):
     run_id: str
     scope: str
-    objective_key: str | None = None
+    objective_key: Optional[str] = None
     justification: str
-    reason_code: str | None = None
+    reason_code: Optional[str] = None
 
     @field_validator("reason_code")
     @classmethod
-    def validate_reason_code(cls, v: str | None) -> str | None:
+    def validate_reason_code(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
         allowed = {"clarity", "structure", "cta", "persuasion", "accuracy", "tone", "other"}
@@ -1319,7 +1320,7 @@ class ChatRequest(BaseModel):
 class ThreadCreateRequest(BaseModel):
     brand_id: str
     product_id: str
-    title: str | None = None
+    title: Optional[str] = None
 
 
 class FoundationRunRequest(BaseModel):
@@ -1716,7 +1717,7 @@ def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, o
 def get_editorial_audit_v2(
     thread_id: str, 
     request: Request,
-    scope: str | None = None,
+    scope: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
@@ -1990,8 +1991,8 @@ def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, obj
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
         by_reason_code: dict[str, int] = {}
-        last_marked_at: str | None = None
-        last_actor_id: str | None = None
+        last_marked_at: Optional[str] = None
+        last_actor_id: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -2091,8 +2092,8 @@ def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[s
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
         by_reason_code: dict[str, int] = {}
-        last_marked_at: str | None = None
-        last_actor_id: str | None = None
+        last_marked_at: Optional[str] = None
+        last_actor_id: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -2208,8 +2209,8 @@ def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, obj
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
         by_reason_code: dict[str, int] = {}
-        last_marked_at: str | None = None
-        last_actor_id: str | None = None
+        last_marked_at: Optional[str] = None
+        last_actor_id: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -2336,8 +2337,8 @@ def get_editorial_drift_v2(thread_id: str, request: Request) -> dict[str, object
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
         by_reason_code: dict[str, int] = {}
-        last_marked_at: str | None = None
-        last_actor_id: str | None = None
+        last_marked_at: Optional[str] = None
+        last_actor_id: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -2423,8 +2424,8 @@ def get_editorial_drift_v2(thread_id: str, request: Request) -> dict[str, object
 
 class EditorialPlaybookExecuteRequest(BaseModel):
     action_id: str
-    run_id: str | None = None
-    note: str | None = None
+    run_id: Optional[str] = None
+    note: Optional[str] = None
     
     @field_validator("action_id")
     @classmethod
@@ -2437,7 +2438,7 @@ class EditorialPlaybookExecuteRequest(BaseModel):
 
 class AutoRemediationRequest(BaseModel):
     action_id: str
-    run_id: str | None = None
+    run_id: Optional[str] = None
     auto_execute: bool = False
     
     @field_validator("action_id")
@@ -2451,7 +2452,7 @@ class AutoRemediationRequest(BaseModel):
 
 class PlaybookChainStep(BaseModel):
     action: str
-    suppress_when: dict[str, object] | None = None
+    suppress_when: Optional[dict[str, object]] = None
     
     @field_validator("action")
     @classmethod
@@ -2820,7 +2821,7 @@ def auto_remediate_editorial_v2(
         
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
-        last_marked_at: str | None = None
+        last_marked_at: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -2952,7 +2953,7 @@ def auto_remediate_editorial_v2(
 def get_thread_alerts_v2(
     thread_id: str,
     request: Request,
-    severity: str | None = None,
+    severity: Optional[str] = None,
 ) -> dict[str, object]:
     """Get aggregated editorial alerts for a thread.
     
@@ -3012,8 +3013,8 @@ def get_thread_alerts_v2(
         marked_total = len(rows)
         by_scope: dict[str, int] = {"global": 0, "objective": 0}
         by_reason_code: dict[str, int] = {}
-        last_marked_at: str | None = None
-        last_actor_id: str | None = None
+        last_marked_at: Optional[str] = None
+        last_actor_id: Optional[str] = None
         
         for row in rows:
             payload = json.loads(row.payload_json)
@@ -3312,7 +3313,7 @@ class CopilotFeedbackRequest(BaseModel):
     suggestion_id: str
     phase: str
     action: str
-    edited_content: str | None = None
+    edited_content: Optional[str] = None
     
     @field_validator("phase")
     @classmethod
@@ -3334,7 +3335,7 @@ class CopilotFeedbackRequest(BaseModel):
 def _get_or_create_segment(
     session,
     brand_id: str,
-    objective_key: str | None,
+    objective_key: Optional[str],
 ) -> CopilotSegmentView:
     """Get or create a segment view for the given brand + objective.
     
