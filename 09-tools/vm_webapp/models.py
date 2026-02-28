@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -90,14 +89,14 @@ class EventLog(Base):
     stream_version: Mapped[int] = mapped_column(Integer, nullable=False)
     actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
     actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    brand_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    causation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    brand_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    thread_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    correlation_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    causation_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     occurred_at: Mapped[str] = mapped_column(String(64), nullable=False)
-    processed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    processed_at: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
 
 class CommandDedup(Base):
@@ -126,7 +125,7 @@ class ProjectView(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     objective: Mapped[str] = mapped_column(Text, nullable=False, default="")
     channels_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    due_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    due_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
 
 
@@ -170,8 +169,8 @@ class TaskView(Base):
 
     task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    campaign_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
-    brand_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    campaign_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
+    brand_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
@@ -195,7 +194,7 @@ class ToolPermission(Base):
     tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     max_calls_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     current_day_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_call_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_call_at: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     updated_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
 
 
@@ -224,7 +223,7 @@ class EditorialDecisionView(Base):
     decision_key: Mapped[str] = mapped_column(String(256), primary_key=True)
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False)
-    objective_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    objective_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     run_id: Mapped[str] = mapped_column(String(64), nullable=False)
     justification: Mapped[str] = mapped_column(Text, nullable=False, default="")
     event_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -334,6 +333,6 @@ class CopilotFeedbackView(Base):
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     phase: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)  # accepted, edited, ignored
-    edited_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(String(64), nullable=False, default=_now_iso)
