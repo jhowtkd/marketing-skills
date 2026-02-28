@@ -67,6 +67,23 @@ export type ResolvedBaseline = {
   objective_key: string;
 };
 
+// v14: Segment Status Types
+export type CopilotSegmentStatus = {
+  thread_id: string;
+  brand_id: string;
+  project_id?: string;
+  segment_key: string;
+  segment_status: "eligible" | "insufficient_volume" | "frozen" | "fallback";
+  is_eligible: boolean;
+  segment_runs_total: number;
+  segment_success_24h_rate: number;
+  segment_v1_score_avg: number;
+  segment_regen_rate: number;
+  adjustment_factor: number;
+  minimum_runs_threshold: number;
+  explanation: string;
+};
+
 export type EditorialAuditEvent = {
   event_id: string;
   event_type: string;
@@ -820,10 +837,16 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     edited_content?: string;
   };
 
+  // v14: Segment Status Types (defined at module level below)
+
   const [copilotSuggestions, setCopilotSuggestions] = useState<CopilotSuggestion[]>([]);
   const [copilotPhase, setCopilotPhase] = useState<"initial" | "refine" | "strategy">("initial");
   const [copilotGuardrailApplied, setCopilotGuardrailApplied] = useState(false);
   const [loadingCopilot, setLoadingCopilot] = useState(false);
+
+  // v14: Segment Status State
+  const [copilotSegmentStatus, setCopilotSegmentStatus] = useState<CopilotSegmentStatus | null>(null);
+  const [loadingCopilotSegmentStatus, setLoadingCopilotSegmentStatus] = useState(false);
 
   const refreshCopilotSuggestions = async (
     phase: "initial" | "refine" | "strategy" = "initial"
@@ -856,6 +879,37 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     );
     return response;
   };
+
+  // v14: Segment Status Methods
+  const refreshCopilotSegmentStatus = async () => {
+    if (!activeThreadId) return;
+    setLoadingCopilotSegmentStatus(true);
+    try {
+      const response = await fetchJson(
+        `/api/v2/threads/${activeThreadId}/copilot/segment-status`,
+        { onError: () => {} }
+      );
+      if (response && response.segment_key) {
+        setCopilotSegmentStatus(response as CopilotSegmentStatus);
+      } else {
+        setCopilotSegmentStatus(null);
+      }
+    } catch {
+      // Silently fail - segment status is optional enhancement
+      setCopilotSegmentStatus(null);
+    } finally {
+      setLoadingCopilotSegmentStatus(false);
+    }
+  };
+
+  // v14: Auto-load segment status when thread changes
+  useEffect(() => {
+    if (activeThreadId) {
+      refreshCopilotSegmentStatus();
+    } else {
+      setCopilotSegmentStatus(null);
+    }
+  }, [activeThreadId]);
 
   useEffect(() => {
     const targetRunId = effectiveActiveRunId || runs[0]?.run_id || null;
@@ -950,5 +1004,9 @@ export function useWorkspace(activeThreadId: string | null, activeRunId: string 
     loadingCopilot,
     refreshCopilotSuggestions,
     submitCopilotFeedback,
+    // v14 Segmented Copilot
+    copilotSegmentStatus,
+    loadingCopilotSegmentStatus,
+    refreshCopilotSegmentStatus,
   };
 }
