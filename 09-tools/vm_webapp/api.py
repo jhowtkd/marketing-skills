@@ -40,6 +40,10 @@ from vm_webapp.first_run_recommendation import (
     RecommendationRanker,
     get_fallback_recommendation,
 )
+from vm_webapp.editorial_copilot import (
+    generate_suggestions,
+    record_feedback,
+)
 from vm_webapp.repo import (
     append_event,
     close_thread,
@@ -3288,3 +3292,185 @@ def get_first_run_outcomes(thread_id: str, request: Request) -> FirstRunOutcomes
             thread_id=thread_id,
             aggregates=aggregates,
         )
+
+
+# ============================================================================
+# Editorial Copilot v13 - Suggestions and Feedback Endpoints
+# ============================================================================
+
+class CopilotFeedbackRequest(BaseModel):
+    """Request model for copilot feedback submission."""
+    
+    suggestion_id: str
+    phase: str
+    action: str
+    edited_content: str | None = None
+    
+    @field_validator("phase")
+    @classmethod
+    def validate_phase(cls, v: str) -> str:
+        valid_phases = {"initial", "refine", "strategy"}
+        if v not in valid_phases:
+            raise ValueError(f"phase must be one of: {valid_phases}")
+        return v
+    
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        valid_actions = {"accepted", "edited", "ignored"}
+        if v not in valid_actions:
+            raise ValueError(f"action must be one of: {valid_actions}")
+        return v
+
+
+@router.get("/v2/threads/{thread_id}/copilot/suggestions")
+def get_copilot_suggestions(
+    thread_id: str,
+    request: Request,
+    phase: str = "initial",
+) -> dict[str, object]:
+    """Get editorial copilot suggestions for a specific phase.
+    
+    Args:
+        thread_id: The thread ID
+        phase: One of 'initial', 'refine', 'strategy' (default: 'initial')
+    
+    Returns:
+        Suggestions with confidence, reason_codes, why, and expected_impact
+    """
+    valid_phases = {"initial", "refine", "strategy"}
+    
+    # Validate phase
+    if phase not in valid_phases:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid phase: {phase}. Must be one of: {valid_phases}"
+        )
+    
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        context = {
+            "thread_id": thread_id,
+            "brand_id": thread.brand_id,
+            "project_id": thread.project_id,
+        }
+        
+        # Generate suggestions based on phase
+        if phase == "initial":
+            # Get first-run outcomes for ranking
+            outcomes = list_first_run_outcomes(session, thread_id=thread_id)
+            outcomes_data = [
+                {
+                    "profile": o.profile,
+                    "mode": o.mode,
+                    "total_runs": o.total_runs,
+                    "success_24h_count": o.success_24h_count,
+                    "success_rate": o.success_24h_count / o.total_runs if o.total_runs > 0 else 0.0,
+                    "avg_quality_score": o.quality_score,
+                    "avg_duration_ms": o.duration_ms,
+                }
+                for o in outcomes
+            ] if outcomes else None
+            suggestion = generate_suggestions("initial", context, outcomes=outcomes_data)
+        elif phase == "refine":
+            suggestion = generate_suggestions("refine", context, scorecard_gaps=[])
+        else:  # strategy
+            suggestion = generate_suggestions("strategy", context, risk_signals=[])
+        
+        # Persist suggestion to read model
+        from vm_webapp.repo import insert_copilot_suggestion
+        insert_copilot_suggestion(
+            session,
+            suggestion_id=suggestion.suggestion_id,
+            thread_id=thread_id,
+            phase=phase,
+            content=suggestion.content,
+            confidence=suggestion.confidence,
+            reason_codes=suggestion.reason_codes,
+            why=suggestion.why,
+            expected_impact=suggestion.expected_impact,
+        )
+        
+        # Record metrics
+        request.app.state.workflow_runtime.metrics.record_count("copilot_suggestion_generated_total")
+        request.app.state.workflow_runtime.metrics.record_count(f"copilot_suggestion_phase:{phase}")
+        
+        return {
+            "thread_id": thread_id,
+            "phase": phase,
+            "suggestions": [
+                {
+                    "suggestion_id": suggestion.suggestion_id,
+                    "content": suggestion.content,
+                    "confidence": suggestion.confidence,
+                    "reason_codes": suggestion.reason_codes,
+                    "why": suggestion.why,
+                    "expected_impact": suggestion.expected_impact,
+                    "created_at": suggestion.created_at,
+                }
+            ] if suggestion.content else [],
+            "guardrail_applied": suggestion.confidence < 0.4,
+        }
+
+
+@router.post("/v2/threads/{thread_id}/copilot/feedback")
+def submit_copilot_feedback(
+    thread_id: str,
+    request: Request,
+    body: CopilotFeedbackRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, object]:
+    """Submit feedback on a copilot suggestion.
+    
+    Args:
+        thread_id: The thread ID
+        body: Feedback request with suggestion_id, phase, action, and optional edited_content
+    
+    Returns:
+        Feedback record confirmation
+    """
+    with session_scope(request.app.state.engine) as session:
+        # Verify thread exists
+        thread = get_thread_view(session, thread_id)
+        if thread is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        
+        # Create feedback record
+        feedback = record_feedback(
+            suggestion_id=body.suggestion_id,
+            thread_id=thread_id,
+            phase=body.phase,  # type: ignore
+            action=body.action,  # type: ignore
+            edited_content=body.edited_content,
+            metadata={"idempotency_key": idempotency_key},
+        )
+        
+        # Persist to read model
+        from vm_webapp.repo import insert_copilot_feedback
+        insert_copilot_feedback(
+            session,
+            feedback_id=feedback.feedback_id,
+            suggestion_id=feedback.suggestion_id,
+            thread_id=thread_id,
+            phase=feedback.phase,
+            action=feedback.action,
+            edited_content=feedback.edited_content,
+            metadata={"idempotency_key": idempotency_key},
+        )
+        
+        # Record metrics
+        request.app.state.workflow_runtime.metrics.record_count("copilot_feedback_submitted_total")
+        request.app.state.workflow_runtime.metrics.record_count(f"copilot_feedback_action:{body.action}")
+        
+        return {
+            "feedback_id": feedback.feedback_id,
+            "suggestion_id": body.suggestion_id,
+            "thread_id": thread_id,
+            "phase": body.phase,
+            "action": body.action,
+            "created_at": feedback.created_at,
+        }
