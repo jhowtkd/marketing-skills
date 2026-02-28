@@ -38,6 +38,7 @@ import {
 import { useWorkspace } from "./useWorkspace";
 import { useAlerts } from "./hooks/useAlerts";
 import { AlertPanel } from "./components/AlertPanel";
+import { RoiOptimizerPanel } from "./components/RoiOptimizerPanel";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
 
 type MaybeId = string | null;
@@ -1522,6 +1523,9 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         onClose={() => setGoldenModalOpen(false)}
         onSubmit={handleGoldenSubmit}
       />
+
+      {/* v19: ROI Optimizer Panel */}
+      <RoiOptimizerPanel />
 
       {currentRunId && runDetail && devMode ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
