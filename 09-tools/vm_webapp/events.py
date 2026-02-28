@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,7 +12,11 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@dataclass(slots=True)
+# Python 3.9 compatibility: slots is only available in Python 3.10+
+_dataclass_kwargs = {"slots": True} if sys.version_info >= (3, 10) else {}
+
+
+@dataclass(**_dataclass_kwargs)
 class EventEnvelope:
     event_id: str
     event_type: str
