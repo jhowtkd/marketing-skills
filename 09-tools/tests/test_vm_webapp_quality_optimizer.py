@@ -9,6 +9,7 @@ from vm_webapp.quality_optimizer import (
     OptimizationProposal,
     QualityScore,
     ConstraintBounds,
+    ProposalState,
 )
 
 
@@ -45,6 +46,16 @@ def constraint_bounds():
         max_cost_increase_pct=10.0,
         max_mttc_increase_pct=10.0,
         max_incident_rate=0.05,
+    )
+
+
+@pytest.fixture
+def sample_proposal(optimizer, sample_run_data, constraint_bounds):
+    """Generate a sample proposal."""
+    return optimizer.generate_proposal(
+        current_run=sample_run_data,
+        historical_runs=[sample_run_data],
+        constraints=constraint_bounds,
     )
 
 
@@ -209,3 +220,180 @@ class TestOptimizerCore:
         
         comparison = optimizer.compare_proposals([proposal1, proposal2])
         assert isinstance(comparison, dict)
+
+
+class TestProposalState:
+    """Test proposal state management."""
+
+    def test_proposal_starts_pending(self, sample_proposal):
+        """Proposals should start in PENDING state."""
+        assert sample_proposal.state == ProposalState.PENDING
+
+    def test_apply_transition(self, optimizer, sample_proposal):
+        """Should transition to APPLIED on apply."""
+        result = optimizer.apply_proposal(sample_proposal.proposal_id)
+        
+        assert result is True
+        assert optimizer.get_proposal_state(sample_proposal.proposal_id) == ProposalState.APPLIED
+
+    def test_reject_transition(self, optimizer, sample_proposal):
+        """Should transition to REJECTED on reject."""
+        result = optimizer.reject_proposal(sample_proposal.proposal_id)
+        
+        assert result is True
+        assert optimizer.get_proposal_state(sample_proposal.proposal_id) == ProposalState.REJECTED
+
+    def test_freeze_prevents_apply(self, optimizer, sample_proposal):
+        """Frozen proposals should not be applicable."""
+        optimizer.freeze_proposal(sample_proposal.proposal_id)
+        
+        result = optimizer.apply_proposal(sample_proposal.proposal_id)
+        
+        assert result is False
+        assert optimizer.get_proposal_state(sample_proposal.proposal_id) == ProposalState.FROZEN
+
+    def test_rollback_restores_previous(self, optimizer, sample_proposal, sample_run_data):
+        """Rollback should restore previous params."""
+        original_params = dict(sample_run_data["params"])
+        
+        # Apply the proposal first
+        optimizer.apply_proposal(sample_proposal.proposal_id)
+        
+        # Rollback
+        result = optimizer.rollback_proposal(sample_proposal.proposal_id)
+        
+        assert result is True
+        assert optimizer.get_proposal_state(sample_proposal.proposal_id) == ProposalState.ROLLED_BACK
+
+    def test_cannot_apply_rolled_back(self, optimizer, sample_proposal):
+        """Cannot apply a rolled back proposal."""
+        optimizer.apply_proposal(sample_proposal.proposal_id)
+        optimizer.rollback_proposal(sample_proposal.proposal_id)
+        
+        result = optimizer.apply_proposal(sample_proposal.proposal_id)
+        
+        assert result is False
+
+
+class TestFeasibilityGuardrails:
+    """Test feasibility checking and guardrails."""
+
+    def test_feasibility_check_passes_within_bounds(self, optimizer, sample_run_data):
+        """Proposal within bounds should be feasible."""
+        constraints = ConstraintBounds(
+            max_cost_increase_pct=50.0,  # Very high
+            max_mttc_increase_pct=50.0,
+            max_incident_rate=0.20,
+        )
+        
+        proposal = optimizer.generate_proposal(
+            current_run=sample_run_data,
+            historical_runs=[sample_run_data],
+            constraints=constraints,
+        )
+        
+        assert proposal.feasibility_check_passed is True
+
+    def test_feasibility_check_fails_exceeds_cost(self, optimizer, sample_run_data):
+        """Proposal exceeding cost should fail feasibility."""
+        # Create run data with high token count that would exceed constraints
+        high_cost_run = {
+            **sample_run_data,
+            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
+        }
+        
+        constraints = ConstraintBounds(max_cost_increase_pct=5.0)  # Very strict
+        
+        proposal = optimizer.generate_proposal(
+            current_run=high_cost_run,
+            historical_runs=[sample_run_data],
+            constraints=constraints,
+        )
+        
+        assert proposal.feasibility_check_passed is False
+
+    def test_apply_blocked_if_not_feasible(self, optimizer, sample_run_data):
+        """Apply should be blocked for infeasible proposals."""
+        high_cost_run = {
+            **sample_run_data,
+            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
+        }
+        
+        constraints = ConstraintBounds(max_cost_increase_pct=5.0)
+        
+        proposal = optimizer.generate_proposal(
+            current_run=high_cost_run,
+            historical_runs=[sample_run_data],
+            constraints=constraints,
+        )
+        
+        # Try to apply - should fail because not feasible
+        result = optimizer.apply_proposal(proposal.proposal_id, enforce_feasibility=True)
+        
+        assert result is False
+
+    def test_apply_allowed_if_override(self, optimizer, sample_run_data):
+        """Apply can be forced with override flag."""
+        high_cost_run = {
+            **sample_run_data,
+            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
+        }
+        
+        constraints = ConstraintBounds(max_cost_increase_pct=5.0)
+        
+        proposal = optimizer.generate_proposal(
+            current_run=high_cost_run,
+            historical_runs=[sample_run_data],
+            constraints=constraints,
+        )
+        
+        # Apply with override
+        result = optimizer.apply_proposal(proposal.proposal_id, enforce_feasibility=False)
+        
+        assert result is True
+
+
+class TestApplyFreezeRollback:
+    """Test apply/freeze/rollback flow."""
+
+    def test_apply_creates_snapshot(self, optimizer, sample_proposal):
+        """Apply should create snapshot of previous state."""
+        optimizer.apply_proposal(sample_proposal.proposal_id)
+        
+        snapshot = optimizer.get_proposal_snapshot(sample_proposal.proposal_id)
+        assert snapshot is not None
+        assert "previous_params" in snapshot
+
+    def test_rollback_restores_from_snapshot(self, optimizer, sample_proposal, sample_run_data):
+        """Rollback should restore from snapshot."""
+        original_params = dict(sample_run_data["params"])
+        
+        optimizer.apply_proposal(sample_proposal.proposal_id)
+        optimizer.rollback_proposal(sample_proposal.proposal_id)
+        
+        snapshot = optimizer.get_proposal_snapshot(sample_proposal.proposal_id)
+        assert snapshot["previous_params"] == original_params
+
+    def test_cannot_rollback_without_apply(self, optimizer, sample_proposal):
+        """Cannot rollback without prior apply."""
+        result = optimizer.rollback_proposal(sample_proposal.proposal_id)
+        
+        assert result is False
+
+    def test_freeze_prevents_all_transitions(self, optimizer, sample_proposal):
+        """Frozen proposal prevents apply, reject, rollback."""
+        optimizer.freeze_proposal(sample_proposal.proposal_id)
+        
+        assert optimizer.apply_proposal(sample_proposal.proposal_id) is False
+        assert optimizer.reject_proposal(sample_proposal.proposal_id) is False
+        assert optimizer.rollback_proposal(sample_proposal.proposal_id) is False
+
+    def test_get_proposal_status(self, optimizer, sample_proposal):
+        """Should get full proposal status."""
+        status = optimizer.get_proposal_status(sample_proposal.proposal_id)
+        
+        assert status is not None
+        assert status["proposal_id"] == sample_proposal.proposal_id
+        assert status["state"] == ProposalState.PENDING.value
+        assert "feasibility_check_passed" in status
+        assert "estimated_v1_improvement" in status

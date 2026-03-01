@@ -8,8 +8,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
+
+
+class ProposalState(Enum):
+    """Estados possíveis de uma proposta."""
+    
+    PENDING = "pending"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    FROZEN = "frozen"
+    ROLLED_BACK = "rolled_back"
 
 
 @dataclass
@@ -45,7 +56,21 @@ class OptimizationProposal:
     estimated_incident_rate: float
     quality_score: QualityScore
     feasibility_check_passed: bool = False
+    state: ProposalState = field(default=ProposalState.PENDING)
+    original_params: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    applied_at: Optional[str] = None
+    rolled_back_at: Optional[str] = None
+
+
+@dataclass
+class ProposalSnapshot:
+    """Snapshot do estado anterior à aplicação."""
+    
+    proposal_id: str
+    previous_params: dict[str, Any]
+    applied_params: dict[str, Any]
+    applied_at: str
 
 
 class QualityOptimizer:
@@ -55,6 +80,8 @@ class QualityOptimizer:
     
     def __init__(self):
         self._proposal_history: dict[str, list[OptimizationProposal]] = {}
+        self._proposal_states: dict[str, ProposalState] = {}
+        self._proposal_snapshots: dict[str, ProposalSnapshot] = {}
         self._quality_weights = {
             "v1_score": 0.40,
             "approval_rate": 0.35,
@@ -170,8 +197,9 @@ class QualityOptimizer:
             constraints=constraints,
         )
         
+        proposal_id = str(uuid4())
         proposal = OptimizationProposal(
-            proposal_id=str(uuid4()),
+            proposal_id=proposal_id,
             run_id=run_id,
             recommended_params=recommended_params,
             estimated_v1_improvement=estimated_v1_improvement,
@@ -180,12 +208,17 @@ class QualityOptimizer:
             estimated_incident_rate=estimated_incident_rate,
             quality_score=quality_score,
             feasibility_check_passed=feasibility_check_passed,
+            state=ProposalState.PENDING,
+            original_params=dict(current_params),
         )
         
         # Registrar no histórico
         if run_id not in self._proposal_history:
             self._proposal_history[run_id] = []
         self._proposal_history[run_id].append(proposal)
+        
+        # Registrar estado inicial
+        self._proposal_states[proposal_id] = ProposalState.PENDING
         
         return proposal
     
@@ -320,3 +353,183 @@ class QualityOptimizer:
                 for p in proposals
             ],
         }
+    
+    # =========================================================================
+    # Proposal State Management (Task 2)
+    # =========================================================================
+    
+    def get_proposal_state(self, proposal_id: str) -> Optional[ProposalState]:
+        """Retorna o estado atual de uma proposta."""
+        return self._proposal_states.get(proposal_id)
+    
+    def apply_proposal(
+        self,
+        proposal_id: str,
+        enforce_feasibility: bool = True,
+    ) -> bool:
+        """Aplica uma proposta.
+        
+        Args:
+            proposal_id: ID da proposta
+            enforce_feasibility: Se True, bloqueia aplicação de propostas não viáveis
+        
+        Returns:
+            True se aplicada com sucesso, False caso contrário
+        """
+        # Encontrar a proposta
+        proposal = self._find_proposal_by_id(proposal_id)
+        if proposal is None:
+            return False
+        
+        # Verificar estado atual
+        current_state = self._proposal_states.get(proposal_id)
+        if current_state != ProposalState.PENDING:
+            return False
+        
+        # Verificar feasibilidade se necessário
+        if enforce_feasibility and not proposal.feasibility_check_passed:
+            return False
+        
+        # Criar snapshot antes de aplicar
+        self._create_snapshot(proposal)
+        
+        # Atualizar estado
+        self._proposal_states[proposal_id] = ProposalState.APPLIED
+        proposal.state = ProposalState.APPLIED
+        proposal.applied_at = datetime.now(timezone.utc).isoformat()
+        
+        return True
+    
+    def reject_proposal(self, proposal_id: str) -> bool:
+        """Rejeita uma proposta.
+        
+        Args:
+            proposal_id: ID da proposta
+        
+        Returns:
+            True se rejeitada com sucesso, False caso contrário
+        """
+        current_state = self._proposal_states.get(proposal_id)
+        if current_state != ProposalState.PENDING:
+            return False
+        
+        self._proposal_states[proposal_id] = ProposalState.REJECTED
+        
+        # Atualizar também no objeto proposta
+        proposal = self._find_proposal_by_id(proposal_id)
+        if proposal:
+            proposal.state = ProposalState.REJECTED
+        
+        return True
+    
+    def freeze_proposal(self, proposal_id: str) -> bool:
+        """Congela uma proposta (impede qualquer transição).
+        
+        Args:
+            proposal_id: ID da proposta
+        
+        Returns:
+            True se congelada com sucesso, False caso contrário
+        """
+        current_state = self._proposal_states.get(proposal_id)
+        if current_state is None:
+            return False
+        
+        # Só pode congelar se estiver PENDING
+        if current_state != ProposalState.PENDING:
+            return False
+        
+        self._proposal_states[proposal_id] = ProposalState.FROZEN
+        
+        proposal = self._find_proposal_by_id(proposal_id)
+        if proposal:
+            proposal.state = ProposalState.FROZEN
+        
+        return True
+    
+    def rollback_proposal(self, proposal_id: str) -> bool:
+        """Faz rollback de uma proposta aplicada.
+        
+        Args:
+            proposal_id: ID da proposta
+        
+        Returns:
+            True se rollback realizado com sucesso, False caso contrário
+        """
+        current_state = self._proposal_states.get(proposal_id)
+        if current_state != ProposalState.APPLIED:
+            return False
+        
+        # Verificar se existe snapshot
+        if proposal_id not in self._proposal_snapshots:
+            return False
+        
+        # Atualizar estado
+        self._proposal_states[proposal_id] = ProposalState.ROLLED_BACK
+        
+        proposal = self._find_proposal_by_id(proposal_id)
+        if proposal:
+            proposal.state = ProposalState.ROLLED_BACK
+            proposal.rolled_back_at = datetime.now(timezone.utc).isoformat()
+        
+        return True
+    
+    def get_proposal_snapshot(self, proposal_id: str) -> Optional[dict[str, Any]]:
+        """Retorna o snapshot de uma proposta aplicada.
+        
+        Returns:
+            Dict com snapshot ou None se não existir
+        """
+        snapshot = self._proposal_snapshots.get(proposal_id)
+        if snapshot is None:
+            return None
+        
+        return {
+            "proposal_id": snapshot.proposal_id,
+            "previous_params": snapshot.previous_params,
+            "applied_params": snapshot.applied_params,
+            "applied_at": snapshot.applied_at,
+        }
+    
+    def get_proposal_status(self, proposal_id: str) -> Optional[dict[str, Any]]:
+        """Retorna o status completo de uma proposta.
+        
+        Returns:
+            Dict com status ou None se não encontrada
+        """
+        proposal = self._find_proposal_by_id(proposal_id)
+        if proposal is None:
+            return None
+        
+        return {
+            "proposal_id": proposal_id,
+            "run_id": proposal.run_id,
+            "state": proposal.state.value,
+            "feasibility_check_passed": proposal.feasibility_check_passed,
+            "estimated_v1_improvement": proposal.estimated_v1_improvement,
+            "estimated_cost_delta_pct": proposal.estimated_cost_delta_pct,
+            "estimated_mttc_delta_pct": proposal.estimated_mttc_delta_pct,
+            "estimated_incident_rate": proposal.estimated_incident_rate,
+            "quality_score": proposal.quality_score.overall,
+            "created_at": proposal.created_at,
+            "applied_at": proposal.applied_at,
+            "rolled_back_at": proposal.rolled_back_at,
+        }
+    
+    def _find_proposal_by_id(self, proposal_id: str) -> Optional[OptimizationProposal]:
+        """Busca uma proposta por ID em todo o histórico."""
+        for proposals in self._proposal_history.values():
+            for proposal in proposals:
+                if proposal.proposal_id == proposal_id:
+                    return proposal
+        return None
+    
+    def _create_snapshot(self, proposal: OptimizationProposal) -> None:
+        """Cria um snapshot do estado antes da aplicação."""
+        snapshot = ProposalSnapshot(
+            proposal_id=proposal.proposal_id,
+            previous_params=proposal.original_params,
+            applied_params=proposal.recommended_params,
+            applied_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._proposal_snapshots[proposal.proposal_id] = snapshot
