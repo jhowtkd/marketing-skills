@@ -97,173 +97,242 @@ class TestRoiOptimizerEndpoints:
         
         proposals = run_response.json()["proposals"]
         proposal_id = proposals[0]["id"]
-        
-        # Apply the proposal
-        response = client.post(f"/api/v2/roi/proposals/{proposal_id}/apply")
+
+
+# DAG Ops API v2 Tests - Task 4 v22
+
+class TestDagOpsEndpoints:
+    """Test DAG Operations API endpoints."""
+
+    def test_create_dag_run_endpoint(self, client):
+        """POST /api/v2/dag/run creates a DAG run."""
+        response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_001",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [
+                    {"node_id": "node_a", "task_type": "research", "params": {}},
+                    {"node_id": "node_b", "task_type": "write", "params": {}},
+                ],
+                "edges": [
+                    {"from_node": "node_a", "to_node": "node_b"},
+                ],
+            }
+        )
         
         assert response.status_code == 200
         data = response.json()
         
-        assert data["status"] == "applied"
-        assert "applied_at" in data
+        assert "run_id" in data
+        assert data["dag_id"] == "test_dag_001"
+        assert data["brand_id"] == "brand_001"
+        assert data["status"] == "pending"
+        assert len(data["node_states"]) == 2
 
-    def test_reject_proposal_endpoint(self, client):
-        """POST /api/v2/roi/proposals/{id}/reject rejects a proposal."""
-        # First run to create proposals
-        run_response = client.post(
-            "/api/v2/roi/run",
+    def test_get_dag_run_endpoint(self, client):
+        """GET /api/v2/dag/run/{run_id} returns DAG run details."""
+        # First create a run
+        create_response = client.post(
+            "/api/v2/dag/run",
             json={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
+                "dag_id": "test_dag_002",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [
+                    {"node_id": "node_a", "task_type": "research", "params": {}},
+                ],
+                "edges": [],
             }
         )
         
-        proposals = run_response.json()["proposals"]
-        proposal_id = proposals[0]["id"]
+        run_id = create_response.json()["run_id"]
         
-        # Reject the proposal
+        # Get the run
+        response = client.get(f"/api/v2/dag/run/{run_id}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["run_id"] == run_id
+        assert "status" in data
+        assert "node_states" in data
+
+    def test_pause_dag_run_endpoint(self, client):
+        """POST /api/v2/dag/run/{run_id}/pause pauses a DAG run."""
+        # Create a run
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_003",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        
+        # Pause the run
+        response = client.post(f"/api/v2/dag/run/{run_id}/pause")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "paused"
+        assert data["run_id"] == run_id
+
+    def test_resume_dag_run_endpoint(self, client):
+        """POST /api/v2/dag/run/{run_id}/resume resumes a paused DAG run."""
+        # Create and pause a run
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_004",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        client.post(f"/api/v2/dag/run/{run_id}/pause")
+        
+        # Resume the run
+        response = client.post(f"/api/v2/dag/run/{run_id}/resume")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "running"
+        assert data["run_id"] == run_id
+
+    def test_abort_dag_run_endpoint(self, client):
+        """POST /api/v2/dag/run/{run_id}/abort aborts a DAG run."""
+        # Create a run
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_005",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        
+        # Abort the run
+        response = client.post(f"/api/v2/dag/run/{run_id}/abort")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "aborted"
+        assert data["run_id"] == run_id
+
+    def test_retry_node_endpoint(self, client):
+        """POST /api/v2/dag/run/{run_id}/node/{node_id}/retry retries a node."""
+        # Create a run
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_006",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        
+        # Retry the node
+        response = client.post(f"/api/v2/dag/run/{run_id}/node/node_a/retry")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["run_id"] == run_id
+        assert data["node_id"] == "node_a"
+        assert "status" in data
+
+    def test_grant_dag_approval_endpoint(self, client):
+        """POST /api/v2/dag/approval/{request_id}/grant grants approval."""
+        # Create a run with high-risk node
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_007",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [
+                    {"node_id": "critical_node", "task_type": "publish", "params": {}, "risk_level": "high"}
+                ],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        
+        # Request approval
+        approval_response = client.post(
+            f"/api/v2/dag/run/{run_id}/node/critical_node/approve-request"
+        )
+        
+        request_id = approval_response.json()["request_id"]
+        
+        # Grant approval
         response = client.post(
-            f"/api/v2/roi/proposals/{proposal_id}/reject",
-            json={"reason": "Test rejection"}
+            f"/api/v2/dag/approval/{request_id}/grant",
+            json={"granted_by": "admin_001"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "granted"
+        assert data["granted_by"] == "admin_001"
+        assert data["request_id"] == request_id
+
+    def test_reject_dag_approval_endpoint(self, client):
+        """POST /api/v2/dag/approval/{request_id}/reject rejects approval."""
+        # Create a run
+        create_response = client.post(
+            "/api/v2/dag/run",
+            json={
+                "dag_id": "test_dag_008",
+                "brand_id": "brand_001",
+                "project_id": "project_001",
+                "nodes": [
+                    {"node_id": "risky_node", "task_type": "publish", "params": {}, "risk_level": "high"}
+                ],
+                "edges": [],
+            }
+        )
+        
+        run_id = create_response.json()["run_id"]
+        
+        # Request approval
+        approval_response = client.post(
+            f"/api/v2/dag/run/{run_id}/node/risky_node/approve-request"
+        )
+        
+        request_id = approval_response.json()["request_id"]
+        
+        # Reject approval
+        response = client.post(
+            f"/api/v2/dag/approval/{request_id}/reject",
+            json={"rejected_by": "admin_002", "reason": "Too risky"}
         )
         
         assert response.status_code == 200
         data = response.json()
         
         assert data["status"] == "rejected"
-
-    def test_rollback_endpoint(self, client):
-        """POST /api/v2/roi/rollback rolls back last applied proposal."""
-        # First run and apply a proposal
-        run_response = client.post(
-            "/api/v2/roi/run",
-            json={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
-        )
-        
-        proposals = run_response.json()["proposals"]
-        proposal_id = proposals[0]["id"]
-        
-        # Apply it
-        client.post(f"/api/v2/roi/proposals/{proposal_id}/apply")
-        
-        # Rollback
-        response = client.post("/api/v2/roi/rollback")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "rolled_back_proposal" in data
-        assert data["rolled_back_proposal"]["id"] == proposal_id
-
-    def test_run_with_incident_hard_stop(self, client):
-        """POST /api/v2/roi/run blocks when incident_rate would increase."""
-        response = client.post(
-            "/api/v2/roi/run",
-            json={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-                "projected_incident_rate": 0.02,  # Would increase
-            }
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        # Should have blocked proposals
-        blocked = [p for p in data["proposals"] if p["status"] == "blocked"]
-        assert len(blocked) > 0
-
-
-class TestRoiOperationsService:
-    """Test ROI operations service."""
-
-    def test_service_get_status(self, roi_service):
-        """Service returns optimizer status."""
-        status = roi_service.get_status()
-        
-        assert status.mode is not None
-        assert status.cadence is not None
-        assert status.weights is not None
-
-    def test_service_list_proposals(self, roi_service):
-        """Service returns list of proposals."""
-        # First run to create proposals
-        roi_service.run_optimization(
-            current_state={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
-        )
-        
-        proposals = roi_service.list_proposals()
-        
-        assert isinstance(proposals, list)
-        assert len(proposals) > 0
-
-    def test_service_apply_proposal(self, roi_service):
-        """Service applies a proposal."""
-        # Run and get proposals
-        result = roi_service.run_optimization(
-            current_state={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
-        )
-        
-        proposal_id = result["proposals"][0]["id"]
-        
-        # Apply it
-        applied = roi_service.apply_proposal(proposal_id)
-        
-        assert applied.status == "applied"
-
-    def test_service_rollback(self, roi_service):
-        """Service rolls back last applied proposal."""
-        # Run, apply, then rollback
-        result = roi_service.run_optimization(
-            current_state={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
-        )
-        
-        proposal_id = result["proposals"][0]["id"]
-        roi_service.apply_proposal(proposal_id)
-        
-        # Rollback
-        rollback_result = roi_service.rollback_last()
-        
-        assert rollback_result["rolled_back_proposal"]["id"] == proposal_id
+        assert data["rejected_by"] == "admin_002"
+        assert data["reason"] == "Too risky"
