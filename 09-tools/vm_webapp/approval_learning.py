@@ -256,3 +256,216 @@ class LearningCore:
         )
         
         return correct / len(brand_outcomes)
+
+    def apply_suggestion(
+        self, 
+        suggestion_id: str, 
+        guardrails: LearningGuardrails,
+        force: bool = False
+    ) -> dict[str, Any]:
+        """
+        Aplica uma sugestão de ajuste.
+        
+        Args:
+            suggestion_id: ID da sugestão
+            guardrails: Guardrails de segurança
+            force: Se True, aplica mesmo se for medium/high risk
+            
+        Returns:
+            Resultado da aplicação
+        """
+        with self._lock:
+            suggestion = self._suggestions.get(suggestion_id)
+            if not suggestion:
+                return {"applied": False, "error": "suggestion_not_found"}
+            
+            # Check if brand is frozen
+            if hasattr(self, '_frozen_brands') and suggestion.brand_id in self._frozen_brands:
+                return {"applied": False, "error": "brand_frozen"}
+            
+            # Apply guardrails - clamp adjustment
+            clamped_value = guardrails.clamp_adjustment(
+                suggestion.current_value,
+                suggestion.proposed_value
+            )
+            
+            # Determine application mode based on risk
+            if suggestion.risk_score < guardrails.auto_apply_risk_threshold:
+                mode = "auto"
+            elif force:
+                mode = "approval"
+            else:
+                # Medium/high risk - requires explicit approval
+                return {
+                    "applied": False,
+                    "mode": "pending_approval",
+                    "reason": "high_risk",
+                    "risk_score": suggestion.risk_score,
+                }
+            
+            # Apply the suggestion
+            suggestion.status = "applied"
+            suggestion.proposed_value = clamped_value
+            
+            # Track applied suggestion
+            if not hasattr(self, '_applied_history'):
+                self._applied_history = []
+            
+            self._applied_history.append({
+                "suggestion_id": suggestion_id,
+                "brand_id": suggestion.brand_id,
+                "adjustment_type": suggestion.adjustment_type,
+                "previous_value": suggestion.current_value,
+                "applied_value": clamped_value,
+                "mode": mode,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            })
+            
+            return {
+                "applied": True,
+                "mode": mode,
+                "suggestion_id": suggestion_id,
+                "previous_value": suggestion.current_value,
+                "applied_value": clamped_value,
+            }
+    
+    def freeze_brand(self, brand_id: str, reason: str = "manual") -> dict[str, Any]:
+        """
+        Congela aprendizado para uma brand.
+        
+        Args:
+            brand_id: ID da brand
+            reason: Motivo do congelamento
+            
+        Returns:
+            Confirmação do congelamento
+        """
+        if not hasattr(self, '_frozen_brands'):
+            self._frozen_brands = {}
+        
+        self._frozen_brands[brand_id] = {
+            "frozen_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+        
+        return {
+            "frozen": True,
+            "brand_id": brand_id,
+            "reason": reason,
+        }
+    
+    def unfreeze_brand(self, brand_id: str) -> dict[str, Any]:
+        """
+        Descongela aprendizado para uma brand.
+        
+        Args:
+            brand_id: ID da brand
+            
+        Returns:
+            Confirmação do descongelamento
+        """
+        if hasattr(self, '_frozen_brands') and brand_id in self._frozen_brands:
+            del self._frozen_brands[brand_id]
+        
+        return {
+            "unfrozen": True,
+            "brand_id": brand_id,
+        }
+    
+    def rollback_suggestion(self, suggestion_id: str) -> dict[str, Any]:
+        """
+        Reverte uma sugestão aplicada.
+        
+        Args:
+            suggestion_id: ID da sugestão
+            
+        Returns:
+            Resultado do rollback
+        """
+        with self._lock:
+            suggestion = self._suggestions.get(suggestion_id)
+            if not suggestion:
+                return {"rolled_back": False, "error": "suggestion_not_found"}
+            
+            if suggestion.status != "applied":
+                return {"rolled_back": False, "error": "not_applied"}
+            
+            # Find the applied record
+            if not hasattr(self, '_applied_history'):
+                return {"rolled_back": False, "error": "no_history"}
+            
+            applied_record = None
+            for record in self._applied_history:
+                if record["suggestion_id"] == suggestion_id:
+                    applied_record = record
+                    break
+            
+            if not applied_record:
+                return {"rolled_back": False, "error": "no_applied_record"}
+            
+            # Update suggestion status
+            suggestion.status = "rolled_back"
+            
+            return {
+                "rolled_back": True,
+                "suggestion_id": suggestion_id,
+                "previous_value": applied_record["previous_value"],
+                "rolled_back_at": datetime.now(timezone.utc).isoformat(),
+            }
+    
+    def get_applied_history(self, brand_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """
+        Retorna histórico de sugestões aplicadas.
+        
+        Args:
+            brand_id: Filtrar por brand (opcional)
+            
+        Returns:
+            Lista de registros aplicados
+        """
+        if not hasattr(self, '_applied_history'):
+            return []
+        
+        history = self._applied_history
+        
+        if brand_id:
+            history = [h for h in history if h["brand_id"] == brand_id]
+        
+        return history
+
+
+class LearningGuardrails:
+    """Guardrails de segurança para o learning loop."""
+    
+    def __init__(
+        self,
+        max_adjustment_percent: float = 10.0,
+        auto_apply_risk_threshold: float = 0.3,
+    ):
+        self.max_adjustment_percent = max_adjustment_percent
+        self.auto_apply_risk_threshold = auto_apply_risk_threshold
+    
+    def clamp_adjustment(self, current_value: float, proposed_value: float) -> float:
+        """
+        Limita o ajuste a ±max_adjustment_percent.
+        
+        Args:
+            current_value: Valor atual
+            proposed_value: Valor proposto
+            
+        Returns:
+            Valor limitado
+        """
+        if current_value == 0:
+            return proposed_value
+        
+        percent_change = (proposed_value - current_value) / current_value * 100
+        
+        if percent_change > self.max_adjustment_percent:
+            # Limit increase
+            return current_value * (1 + self.max_adjustment_percent / 100)
+        elif percent_change < -self.max_adjustment_percent:
+            # Limit decrease
+            return current_value * (1 - self.max_adjustment_percent / 100)
+        
+        return proposed_value
