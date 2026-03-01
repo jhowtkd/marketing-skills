@@ -3726,3 +3726,9 @@ from vm_webapp.api_adaptive_escalation import router as adaptive_escalation_rout
 
 # Include adaptive escalation routes
 router.include_router(adaptive_escalation_router)
+
+# Import approval learning routes
+from vm_webapp.api_approval_learning import router as approval_learning_router
+
+# Include approval learning routes
+router.include_router(approval_learning_router)
