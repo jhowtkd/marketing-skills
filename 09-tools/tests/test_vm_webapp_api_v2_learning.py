@@ -135,30 +135,71 @@ def test_learning_freeze_endpoint():
 
 def test_learning_rollback_endpoint():
     """Test POST /api/v2/approval-learning/proposals/{id}/rollback."""
-    from vm_webapp.api_approval_learning import router
+    from vm_webapp.api_approval_learning import router, _learning_core
     from fastapi import FastAPI
     
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
     
-    # Run, apply, then rollback
-    client.post("/api/v2/approval-learning/run", json={"brand_id": "brand-001"})
-    proposals_response = client.get("/api/v2/approval-learning/proposals?brand_id=brand-001")
-    proposals = proposals_response.json()["proposals"]
+    # Pre-populate learning core with outcomes to ensure proposals are generated
+    for i in range(15):
+        _learning_core.record_outcome({
+            "request_id": f"req-test-{i:03d}",
+            "batch_id": f"batch-test-{i:03d}",
+            "brand_id": "brand-rollback-test",
+            "approved": True,
+            "risk_level": "medium",
+            "predicted_risk": 0.6,
+            "actual_time_minutes": 8.0,  # High time to trigger suggestions
+            "batch_size": 3,
+        })
     
+    # Generate proposals
+    proposals = _learning_core.generate_suggestions("brand-rollback-test")
+    
+    # If proposals were generated, apply and rollback the first one
     if proposals:
         proposal_id = proposals[0]["suggestion_id"]
+        
         # Apply first
         apply_response = client.post(f"/api/v2/approval-learning/proposals/{proposal_id}/apply")
+        assert apply_response.status_code == 200, f"Apply failed: {apply_response.json()}"
         
-        # Only rollback if apply succeeded
-        if apply_response.status_code == 200:
-            response = client.post(f"/api/v2/approval-learning/proposals/{proposal_id}/rollback")
-            assert response.status_code == 200
-            
-            data = response.json()
-            assert data["rolled_back"] is True
-        else:
-            # Skip test if no proposals to rollback
-            pytest.skip("No applicable proposals to test rollback")
+        # Then rollback
+        response = client.post(f"/api/v2/approval-learning/proposals/{proposal_id}/rollback")
+        assert response.status_code == 200, f"Rollback failed: {response.json()}"
+        
+        data = response.json()
+        assert data["rolled_back"] is True
+    else:
+        # If no proposals, create a mock suggestion and apply/rollback it directly
+        from vm_webapp.approval_learning import AdjustmentSuggestion
+        from uuid import uuid4
+        from datetime import datetime, timezone
+        
+        mock_id = uuid4().hex[:16]
+        suggestion = AdjustmentSuggestion(
+            suggestion_id=mock_id,
+            brand_id="brand-rollback-test",
+            adjustment_type="batch_size",
+            current_value=5.0,
+            proposed_value=6.0,
+            confidence=0.8,
+            expected_savings_percent=-10.0,
+            risk_score=0.2,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            status="pending",
+        )
+        _learning_core._suggestions[mock_id] = suggestion
+        
+        # Apply
+        apply_response = client.post(f"/api/v2/approval-learning/proposals/{mock_id}/apply")
+        assert apply_response.status_code == 200
+        
+        # Rollback
+        response = client.post(f"/api/v2/approval-learning/proposals/{mock_id}/rollback")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["rolled_back"] is True

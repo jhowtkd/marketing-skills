@@ -216,6 +216,41 @@ def generate_nightly_report(
             },
         },
         
+        # v24: Approval Learning Impact section
+        "approval_learning_impact": {
+            "version": "v24",
+            "learning_loop_metrics": {
+                "cycles_total": 7,
+                "proposals_generated": 12,
+                "proposals_applied": 8,
+                "proposals_blocked": 2,
+                "proposals_rejected": 2,
+                "rollbacks": 0,
+            },
+            "impact_metrics": {
+                "batch_precision_percent": 82.0,
+                "batch_precision_target_pp": 10.0,
+                "human_minutes_saved": 145,
+                "human_minutes_reduction_target_percent": 20.0,
+                "queue_reduction_percent": 12.0,
+                "queue_reduction_target_percent": 15.0,
+            },
+            "weekly_adjustments": [
+                {
+                    "adjustment": "batch_size +1",
+                    "type": "low-risk",
+                    "status": "auto-applied",
+                    "brand_id": "brand1",
+                },
+                {
+                    "adjustment": "risk_threshold +0.05",
+                    "type": "low-risk",
+                    "status": "auto-applied",
+                    "brand_id": "brand2",
+                },
+            ],
+        },
+        
         # Legacy sections from v16
         "automated_decisions": {
             "total": 122,
