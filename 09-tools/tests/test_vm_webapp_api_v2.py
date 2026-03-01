@@ -336,3 +336,192 @@ class TestDagOpsEndpoints:
         assert data["status"] == "rejected"
         assert data["rejected_by"] == "admin_002"
         assert data["reason"] == "Too risky"
+
+
+# v23 Approval Optimizer API Tests
+
+class TestApprovalOptimizerEndpoints:
+    """Test v23 Approval Optimizer API endpoints."""
+
+    def test_optimizer_queue_endpoint(self, client):
+        """GET /api/v2/optimizer/queue returns prioritized queue."""
+        # Add a request to the optimizer
+        client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_001",
+                "run_id": "run_001",
+                "node_id": "node_a",
+                "node_type": "publish",
+                "risk_level": "high",
+                "brand_id": "brand_001",
+                "urgency": "critical",
+            }
+        )
+        
+        # Get queue
+        response = client.get("/api/v2/optimizer/queue")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_optimizer_add_request_endpoint(self, client):
+        """POST /api/v2/optimizer/request adds request to optimizer."""
+        response = client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_002",
+                "run_id": "run_002",
+                "node_id": "node_b",
+                "node_type": "research",
+                "risk_level": "medium",
+                "brand_id": "brand_001",
+                "params": {"impact": "medium", "revenue_at_risk": 5000},
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["request_id"] == "req_opt_002"
+        assert "refined_risk_score" in data
+        assert "priority_score" in data
+        assert "priority_level" in data
+
+    def test_optimizer_batches_endpoint(self, client):
+        """GET /api/v2/optimizer/batches returns batches."""
+        # Add request first
+        client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_003",
+                "run_id": "run_003",
+                "node_id": "node_c",
+                "node_type": "publish",
+                "risk_level": "medium",
+                "brand_id": "brand_002",
+            }
+        )
+        
+        # Get batches
+        response = client.get("/api/v2/optimizer/batches")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "batches" in data
+        assert isinstance(data["batches"], list)
+
+    def test_optimizer_approve_batch_endpoint(self, client):
+        """POST /api/v2/optimizer/batch/{batch_id}/approve approves batch."""
+        # Add request and create batch
+        client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_004",
+                "run_id": "run_004",
+                "node_id": "node_d",
+                "node_type": "publish",
+                "risk_level": "low",
+                "brand_id": "brand_batch_test",
+            }
+        )
+        
+        # Create batch for specific brand
+        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test")
+        assert batch_response.status_code == 200
+        batch_id = batch_response.json()["batch_id"]
+        
+        # Approve batch
+        response = client.post(
+            f"/api/v2/optimizer/batch/{batch_id}/approve",
+            json={"approved_by": "admin_001"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["batch_id"] == batch_id
+        assert data["status"] == "approved"
+        assert data["approved_by"] == "admin_001"
+
+    def test_optimizer_reject_batch_endpoint(self, client):
+        """POST /api/v2/optimizer/batch/{batch_id}/reject rejects batch."""
+        # Add request
+        client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_005",
+                "run_id": "run_005",
+                "node_id": "node_e",
+                "node_type": "research",
+                "risk_level": "medium",
+                "brand_id": "brand_batch_test_2",
+            }
+        )
+        
+        # Create batch for specific brand
+        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test_2")
+        batch_id = batch_response.json()["batch_id"]
+        
+        # Reject batch
+        response = client.post(
+            f"/api/v2/optimizer/batch/{batch_id}/reject",
+            json={"rejected_by": "admin_002", "reason": "Batch rejected"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "rejected"
+        assert data["rejected_by"] == "admin_002"
+
+    def test_optimizer_expand_batch_endpoint(self, client):
+        """POST /api/v2/optimizer/batch/{batch_id}/expand expands batch."""
+        # Add request
+        client.post(
+            "/api/v2/optimizer/request",
+            json={
+                "request_id": "req_opt_006",
+                "run_id": "run_006",
+                "node_id": "node_f",
+                "node_type": "publish",
+                "risk_level": "high",
+                "brand_id": "brand_batch_test_3",
+            }
+        )
+        
+        # Create batch for specific brand
+        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test_3")
+        batch_id = batch_response.json()["batch_id"]
+        
+        # Expand batch (individual approvals)
+        response = client.post(f"/api/v2/optimizer/batch/{batch_id}/expand")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["batch_id"] == batch_id
+        assert data["status"] == "expanded"
+
+    def test_optimizer_freeze_unfreeze_endpoint(self, client):
+        """POST /api/v2/optimizer/brand/{brand_id}/freeze freezes optimizer for brand."""
+        # Freeze
+        response = client.post("/api/v2/optimizer/brand/brand_test/freeze")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["brand_id"] == "brand_test"
+        assert data["status"] == "frozen"
+        
+        # Unfreeze
+        response = client.post("/api/v2/optimizer/brand/brand_test/unfreeze")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "active"
