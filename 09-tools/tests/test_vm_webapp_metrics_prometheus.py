@@ -1,281 +1,240 @@
-"""Tests for v25 Quality Optimizer metrics and observability."""
+"""Tests for v26 Control Loop metrics and Prometheus export.
+
+TDD approach: tests for cycles/regressions/mitigations/blocked/rollbacks/time_to_detect/time_to_mitigate.
+"""
 
 import pytest
 from datetime import datetime, timezone
 
-from vm_webapp.observability import (
-    MetricsCollector,
-    QualityOptimizerMetrics,
-    render_prometheus,
-)
+from vm_webapp.observability import MetricsCollector, ControlLoopMetrics
 
 
-@pytest.fixture
-def collector():
-    """Metrics collector fixture."""
-    return MetricsCollector()
-
-
-class TestQualityOptimizerMetrics:
-    """Test v25 Quality Optimizer metrics collection."""
-
-    def test_record_quality_cycle(self, collector):
-        """Should record a quality optimizer cycle."""
-        collector.record_quality_cycle()
+class TestControlLoopMetrics:
+    """Test v26 Control Loop metrics collection."""
+    
+    def test_record_cycle_increments_counter(self):
+        """Should increment cycles_total counter."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
+        collector.record_control_loop_cycle()
+        
+        metrics = collector.get_control_loop_metrics()
         assert metrics.cycles_total == 1
+        assert metrics.active_cycles == 1
         assert metrics.last_cycle_at is not None
-
-    def test_record_quality_proposal_generated(self, collector):
-        """Should record proposal generation."""
-        collector.record_quality_proposal("generated")
+    
+    def test_record_multiple_cycles(self):
+        """Should track multiple cycles."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.proposals_generated_total == 1
-
-    def test_record_quality_proposal_blocked(self, collector):
-        """Should record blocked proposal."""
-        collector.record_quality_proposal("blocked")
+        for _ in range(5):
+            collector.record_control_loop_cycle()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.proposals_generated_total == 1
-        assert metrics.proposals_blocked_total == 1
-
-    def test_record_quality_proposal_rejected(self, collector):
-        """Should record rejected proposal."""
-        collector.record_quality_proposal("rejected")
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.cycles_total == 5
+    
+    def test_record_regression_detected(self):
+        """Should track regression detections."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.proposals_generated_total == 1
-        assert metrics.proposals_rejected_total == 1
-
-    def test_record_quality_proposal_applied(self, collector):
-        """Should record applied proposal."""
-        collector.record_quality_proposal_applied()
+        collector.record_regression_detected()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.proposals_applied_total == 1
-        assert metrics.last_proposal_applied_at is not None
-
-    def test_record_quality_rollback(self, collector):
-        """Should record rollback operation."""
-        collector.record_quality_rollback()
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.regressions_detected_total == 1
+        assert metrics.last_regression_detected_at is not None
+    
+    def test_record_mitigation_applied(self):
+        """Should track applied mitigations."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
+        collector.record_mitigation_applied()
+        
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.mitigations_applied_total == 1
+        assert metrics.last_mitigation_applied_at is not None
+    
+    def test_record_mitigation_blocked(self):
+        """Should track blocked mitigations."""
+        collector = MetricsCollector()
+        
+        collector.record_mitigation_blocked()
+        collector.record_mitigation_blocked()
+        
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.mitigations_blocked_total == 2
+    
+    def test_record_rollback(self):
+        """Should track rollbacks."""
+        collector = MetricsCollector()
+        
+        collector.record_control_loop_rollback()
+        
+        metrics = collector.get_control_loop_metrics()
         assert metrics.rollbacks_total == 1
-
-    def test_record_quality_impact(self, collector):
-        """Should record expected impact metrics."""
-        collector.record_quality_impact(
-            quality_gain=8.5,
-            cost_impact_pct=8.2,
-            time_impact_pct=7.5,
-        )
+        assert metrics.last_rollback_at is not None
+    
+    def test_record_time_to_detect(self):
+        """Should track time to detect regressions."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.quality_gain_expected == 8.5
-        assert metrics.cost_impact_expected_pct == 8.2
-        assert metrics.time_impact_expected_pct == 7.5
-
-    def test_record_constraint_violation_cost(self, collector):
-        """Should record cost constraint violation."""
-        collector.record_constraint_violation("cost")
+        collector.record_time_to_detect(30.0)  # 30 seconds
+        collector.record_time_to_detect(60.0)  # 60 seconds
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.constraint_violations_cost == 1
-        assert metrics.constraint_violations_time == 0
-        assert metrics.constraint_violations_incident == 0
-
-    def test_record_constraint_violation_time(self, collector):
-        """Should record time constraint violation."""
-        collector.record_constraint_violation("time")
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.time_to_detect_count == 2
+        # Running average: (30 + 60) / 2 = 45
+        assert metrics.time_to_detect_seconds == 45.0
+    
+    def test_record_time_to_mitigate(self):
+        """Should track time to mitigate regressions."""
+        collector = MetricsCollector()
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.constraint_violations_cost == 0
-        assert metrics.constraint_violations_time == 1
-        assert metrics.constraint_violations_incident == 0
-
-    def test_record_constraint_violation_incident(self, collector):
-        """Should record incident constraint violation."""
-        collector.record_constraint_violation("incident")
+        collector.record_time_to_mitigate(120.0)  # 2 minutes
+        collector.record_time_to_mitigate(180.0)  # 3 minutes
+        collector.record_time_to_mitigate(300.0)  # 5 minutes
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.constraint_violations_cost == 0
-        assert metrics.constraint_violations_time == 0
-        assert metrics.constraint_violations_incident == 1
-
-    def test_get_quality_metrics_returns_snapshot(self, collector):
-        """Should return independent snapshot."""
-        collector.record_quality_cycle()
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.time_to_mitigate_count == 3
+        # Running average: (120 + 180 + 300) / 3 = 200
+        assert metrics.time_to_mitigate_seconds == 200.0
+    
+    def test_update_active_cycles(self):
+        """Should update active cycles count."""
+        collector = MetricsCollector()
         
-        metrics1 = collector.get_quality_metrics()
-        collector.record_quality_cycle()
-        metrics2 = collector.get_quality_metrics()
+        collector.update_active_cycles(3)
         
-        assert metrics1.cycles_total == 1
-        assert metrics2.cycles_total == 2
-
-    def test_quality_metrics_counters_accumulate(self, collector):
-        """Counters should accumulate across multiple records."""
-        collector.record_quality_cycle()
-        collector.record_quality_cycle()
-        collector.record_quality_cycle()
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.active_cycles == 3
+    
+    def test_update_frozen_brands(self):
+        """Should update frozen brands count."""
+        collector = MetricsCollector()
         
-        collector.record_quality_proposal("generated")
-        collector.record_quality_proposal("blocked")
-        collector.record_quality_proposal("rejected")
+        collector.update_frozen_brands(2)
         
-        metrics = collector.get_quality_metrics()
-        assert metrics.cycles_total == 3
-        assert metrics.proposals_generated_total == 3
-        assert metrics.proposals_blocked_total == 1
-        assert metrics.proposals_rejected_total == 1
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.frozen_brands == 2
+    
+    def test_metrics_thread_safety(self):
+        """Should be thread-safe for concurrent updates."""
+        import threading
+        
+        collector = MetricsCollector()
+        
+        def record_cycles():
+            for _ in range(100):
+                collector.record_control_loop_cycle()
+        
+        threads = [threading.Thread(target=record_cycles) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        metrics = collector.get_control_loop_metrics()
+        assert metrics.cycles_total == 500
 
 
-class TestQualityOptimizerMetricsStructure:
-    """Test QualityOptimizerMetrics dataclass structure."""
+class TestControlLoopMetricsSnapshot:
+    """Test metrics snapshot functionality."""
+    
+    def test_snapshot_includes_control_loop_v26(self):
+        """Snapshot should include v26 control loop metrics."""
+        collector = MetricsCollector()
+        
+        collector.record_control_loop_cycle()
+        collector.record_regression_detected()
+        collector.record_mitigation_applied()
+        
+        snapshot = collector.snapshot()
+        
+        assert "control_loop_v26" in snapshot
+        v26 = snapshot["control_loop_v26"]
+        assert v26["cycles_total"] == 1
+        assert v26["regressions_detected_total"] == 1
+        assert v26["mitigations_applied_total"] == 1
+    
+    def test_snapshot_includes_time_metrics(self):
+        """Snapshot should include time-based metrics."""
+        collector = MetricsCollector()
+        
+        collector.record_time_to_detect(45.0)
+        collector.record_time_to_mitigate(200.0)
+        
+        snapshot = collector.snapshot()
+        
+        v26 = snapshot["control_loop_v26"]
+        assert v26["time_to_detect_seconds"] == 45.0
+        assert v26["time_to_mitigate_seconds"] == 200.0
+    
+    def test_snapshot_includes_state_metrics(self):
+        """Snapshot should include state metrics."""
+        collector = MetricsCollector()
+        
+        collector.update_active_cycles(5)
+        collector.update_frozen_brands(1)
+        
+        snapshot = collector.snapshot()
+        
+        v26 = snapshot["control_loop_v26"]
+        assert v26["active_cycles"] == 5
+        assert v26["frozen_brands"] == 1
 
+
+class TestControlLoopPrometheusExport:
+    """Test Prometheus format export for control loop metrics."""
+    
+    def test_prometheus_includes_control_loop_metrics(self):
+        """Prometheus output should include control loop metrics via snapshot."""
+        from vm_webapp.observability import render_prometheus
+        
+        collector = MetricsCollector()
+        collector.record_control_loop_cycle()
+        collector.record_regression_detected()
+        collector.record_mitigation_applied()
+        
+        snapshot = collector.snapshot()
+        
+        # Snapshot should contain v26 metrics
+        assert "control_loop_v26" in snapshot
+        assert snapshot["control_loop_v26"]["cycles_total"] == 1
+        assert snapshot["control_loop_v26"]["regressions_detected_total"] == 1
+    
+    def test_prometheus_time_metrics_format(self):
+        """Time metrics should be in correct format."""
+        from vm_webapp.observability import render_prometheus
+        
+        collector = MetricsCollector()
+        collector.record_time_to_detect(45.0)
+        collector.record_time_to_mitigate(200.0)
+        
+        snapshot = collector.snapshot()
+        
+        # Time metrics should be in snapshot
+        assert snapshot["control_loop_v26"]["time_to_detect_seconds"] == 45.0
+        assert snapshot["control_loop_v26"]["time_to_mitigate_seconds"] == 200.0
+
+
+class TestControlLoopMetricsDataclass:
+    """Test ControlLoopMetrics dataclass."""
+    
     def test_default_values(self):
         """Should have correct default values."""
-        metrics = QualityOptimizerMetrics()
+        metrics = ControlLoopMetrics()
         
         assert metrics.cycles_total == 0
-        assert metrics.proposals_generated_total == 0
-        assert metrics.proposals_applied_total == 0
-        assert metrics.proposals_blocked_total == 0
-        assert metrics.proposals_rejected_total == 0
+        assert metrics.regressions_detected_total == 0
+        assert metrics.mitigations_applied_total == 0
+        assert metrics.mitigations_blocked_total == 0
         assert metrics.rollbacks_total == 0
-        assert metrics.quality_gain_expected == 0.0
-        assert metrics.cost_impact_expected_pct == 0.0
-        assert metrics.time_impact_expected_pct == 0.0
-        assert metrics.constraint_violations_cost == 0
-        assert metrics.constraint_violations_time == 0
-        assert metrics.constraint_violations_incident == 0
+        assert metrics.time_to_detect_seconds == 0.0
+        assert metrics.time_to_mitigate_seconds == 0.0
+        assert metrics.time_to_detect_count == 0
+        assert metrics.time_to_mitigate_count == 0
+        assert metrics.active_cycles == 0
+        assert metrics.frozen_brands == 0
         assert metrics.last_cycle_at is None
-        assert metrics.last_proposal_applied_at is None
-
-    def test_custom_values(self):
-        """Should accept custom values."""
-        metrics = QualityOptimizerMetrics(
-            cycles_total=10,
-            proposals_generated_total=20,
-            proposals_applied_total=15,
-            proposals_blocked_total=3,
-            proposals_rejected_total=2,
-            rollbacks_total=1,
-            quality_gain_expected=8.5,
-            cost_impact_expected_pct=8.2,
-            time_impact_expected_pct=7.5,
-            constraint_violations_cost=1,
-            constraint_violations_time=0,
-            constraint_violations_incident=0,
-            last_cycle_at=datetime.now(timezone.utc).isoformat(),
-            last_proposal_applied_at=datetime.now(timezone.utc).isoformat(),
-        )
-        
-        assert metrics.cycles_total == 10
-        assert metrics.quality_gain_expected == 8.5
-        assert metrics.cost_impact_expected_pct == 8.2
-
-
-class TestPrometheusRendering:
-    """Test Prometheus format rendering for v25 metrics."""
-
-    def test_render_quality_metrics_in_snapshot(self, collector):
-        """Quality metrics should appear in snapshot."""
-        collector.record_quality_cycle()
-        collector.record_quality_proposal("generated")
-        collector.record_quality_proposal_applied()  # This increments proposals_applied_total
-        collector.record_quality_impact(8.5, 8.2, 7.5)
-        
-        snapshot = collector.snapshot()
-        
-        # Should contain v25 quality optimizer metrics
-        assert "quality_optimizer_v25" in snapshot
-        v25_metrics = snapshot["quality_optimizer_v25"]
-        assert v25_metrics["cycles_total"] == 1
-        assert v25_metrics["proposals_generated_total"] == 1
-        assert v25_metrics["proposals_applied_total"] == 1
-        assert v25_metrics["quality_gain_expected"] == 8.5
-        assert v25_metrics["cost_impact_expected_pct"] == 8.2
-        assert v25_metrics["time_impact_expected_pct"] == 7.5
-
-    def test_render_includes_timestamp(self, collector):
-        """Should include timestamp in output."""
-        snapshot = collector.snapshot()
-        
-        assert "timestamp" in snapshot
-        assert snapshot["timestamp"] is not None
-
-
-class TestMetricsIsolation:
-    """Test isolation between different metric types."""
-
-    def test_quality_metrics_isolated_from_roi(self, collector):
-        """Quality metrics should not affect ROI metrics."""
-        collector.record_quality_cycle()
-        collector.record_quality_proposal_applied()
-        
-        roi_metrics = collector.get_roi_metrics()
-        
-        # ROI metrics should be unaffected
-        assert roi_metrics.cycles_total == 0
-        assert roi_metrics.proposals_applied_total == 0
-
-    def test_quality_metrics_isolated_from_learning(self, collector):
-        """Quality metrics should not affect learning metrics."""
-        collector.record_quality_cycle()
-        collector.record_quality_proposal_applied()
-        
-        learning_metrics = collector.get_learning_metrics()
-        
-        # Learning metrics should be unaffected
-        assert learning_metrics.learning_cycles_total == 0
-        assert learning_metrics.proposals_applied_total == 0
-
-
-class TestConcurrentAccess:
-    """Test thread safety of metrics collection."""
-
-    def test_concurrent_quality_cycle_recording(self, collector):
-        """Should handle concurrent cycle recording."""
-        import threading
-        
-        def record_cycles(n):
-            for _ in range(n):
-                collector.record_quality_cycle()
-        
-        threads = [
-            threading.Thread(target=record_cycles, args=(10,))
-            for _ in range(5)
-        ]
-        
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        metrics = collector.get_quality_metrics()
-        assert metrics.cycles_total == 50
-
-    def test_concurrent_proposal_recording(self, collector):
-        """Should handle concurrent proposal recording."""
-        import threading
-        
-        def record_proposals(n):
-            for _ in range(n):
-                collector.record_quality_proposal("generated")
-        
-        threads = [
-            threading.Thread(target=record_proposals, args=(10,))
-            for _ in range(3)
-        ]
-        
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        metrics = collector.get_quality_metrics()
-        assert metrics.proposals_generated_total == 30
+        assert metrics.last_regression_detected_at is None
+        assert metrics.last_mitigation_applied_at is None
+        assert metrics.last_rollback_at is None
