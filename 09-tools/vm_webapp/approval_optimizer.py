@@ -476,16 +476,24 @@ class BatchingEngine:
         try:
             # Try to create single-item batch
             batch = self.create_batch([request])
-            return {
-                "mode": "batch",
-                "batch_id": batch["batch_id"],
-                "status": "created",
-            }
+            if batch:
+                return {
+                    "mode": "batch",
+                    "batch_id": batch["batch_id"],
+                    "status": "created",
+                }
+            else:
+                # Fallback to individual queue
+                return {
+                    "mode": "individual",
+                    "request_id": self._get_value(request, "request_id"),
+                    "status": "queued",
+                }
         except ValueError:
             # Fallback to individual queue
             return {
                 "mode": "individual",
-                "request_id": request.get("request_id"),
+                "request_id": self._get_value(request, "request_id"),
                 "status": "queued",
             }
 
