@@ -99,7 +99,7 @@ jobs:
       
       - name: Validate metrics schema
         run: |
-          pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py::test_metrics_include_expected_keys -v
+          pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py::TestMetrics::test_metrics_include_expected_keys -v
         env:
           PYTHONPATH: 09-tools
 
