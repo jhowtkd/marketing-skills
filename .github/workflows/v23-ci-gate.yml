@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r 09-tools/requirements.txt
-          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
       
       - name: Run approval optimizer tests
         run: |
