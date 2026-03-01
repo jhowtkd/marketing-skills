@@ -1,7 +1,15 @@
 """
 API v2 Approval Optimizer Endpoints - v23
 
-Endpoints para otimização de custo de aprovação.
+Endpoints for approval cost optimization.
+
+CHANGELOG v23:
+- Added /optimizer/queue - Get prioritized approval queue
+- Added /optimizer/request - Submit request to optimizer  
+- Added /optimizer/batch/create - Create compatible batch
+- Added /optimizer/batch/{id}/approve|reject|expand - Batch actions
+- Added /optimizer/freeze|unfreeze - Emergency controls
+- Metrics: approval_batches_created_total, approval_human_minutes_saved_total
 """
 
 from __future__ import annotations

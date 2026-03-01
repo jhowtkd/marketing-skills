@@ -1,0 +1,103 @@
+name: v23 Approval Optimizer CI Gate
+
+on:
+  push:
+    branches: [feature/governance-v23-approval-cost-optimizer]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/**'
+      - '.github/workflows/v23-ci-gate.yml'
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx
+      
+      - name: Run approval optimizer tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py -v
+      
+      - name: Run API v2 tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_api_v2.py -v
+      
+      - name: Run UI tests
+        run: |
+          pytest 09-tools/tests/test_ui_approval_optimizer.py -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install lint tools
+        run: pip install ruff black
+      
+      - name: Run ruff
+        run: ruff check 09-tools/vm_webapp/approval_optimizer.py 09-tools/vm_webapp/api_approval_optimizer.py
+      
+      - name: Run black check
+        run: black --check 09-tools/vm_webapp/approval_optimizer.py 09-tools/vm_webapp/api_approval_optimizer.py
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install mypy
+        run: pip install mypy
+      
+      - name: Run type check
+        run: mypy 09-tools/vm_webapp/approval_optimizer.py --ignore-missing-imports
+
+  metrics-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest
+      
+      - name: Validate metrics schema
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py::test_metrics_include_expected_keys -v
+
+  changelog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CHANGELOG.md updated
+        run: |
+          if ! git diff --name-only HEAD~1 | grep -q "CHANGELOG.md"; then
+            echo "⚠️ WARNING: CHANGELOG.md not updated in this PR"
+          fi
