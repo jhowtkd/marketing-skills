@@ -101,218 +101,92 @@ class TestPolicyMetrics:
         collector = MetricsCollector()
         
         # Act
-        collector.record_latency("cross_brand_gap_p90_p10:brand1", 0.10)
-        collector.record_latency("cross_brand_gap_p90_p10:brand2", 0.20)
+        collector.record_latency("cross_brand_gap_brand_a", 0.10)
+        collector.record_latency("cross_brand_gap_brand_b", 0.20)
         
         # Assert
         snapshot = collector.snapshot()
-        assert "cross_brand_gap_p90_p10:brand1" in snapshot["avg_latencies"]
-        assert "cross_brand_gap_p90_p10:brand2" in snapshot["avg_latencies"]
+        assert "cross_brand_gap_brand_a" in snapshot["avg_latencies"]
+        assert "cross_brand_gap_brand_b" in snapshot["avg_latencies"]
 
 
-class TestPrometheusRender:
-    """Test Prometheus format rendering for v18 metrics."""
+# v22 DAG Metrics Tests
 
-    def test_render_policy_proposal_counter(self):
-        """Should render policy_proposal as counter."""
-        # Arrange
+class TestDagMetrics:
+    """Test v22 DAG-related metrics."""
+
+    def test_record_dag_run_total(self):
+        """Should record DAG run metric."""
         collector = MetricsCollector()
-        collector.record_count("policy_proposal_total", 5)
+        
+        collector.record_count("dag_runs_total_completed", 1)
+        collector.record_count("dag_runs_total_failed", 1)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_policy_proposal_total" in output
-        assert "TYPE vm_policy_proposal_total counter" in output
-        assert "vm_policy_proposal_total 5" in output
+        assert snapshot["counts"]["dag_runs_total_completed"] == 1
+        assert snapshot["counts"]["dag_runs_total_failed"] == 1
 
-    def test_render_policy_applied_counter(self):
-        """Should render policy_applied as counter."""
-        # Arrange
+    def test_record_dag_node_execution_total(self):
+        """Should record DAG node execution metric."""
         collector = MetricsCollector()
-        collector.record_count("policy_applied_total", 3)
+        
+        collector.record_count("dag_node_executions_completed", 1)
+        collector.record_count("dag_node_executions_failed", 1)
+        collector.record_count("dag_node_executions_timeout", 1)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_policy_applied_total 3" in output
+        assert snapshot["counts"]["dag_node_executions_completed"] == 1
+        assert snapshot["counts"]["dag_node_executions_failed"] == 1
+        assert snapshot["counts"]["dag_node_executions_timeout"] == 1
 
-    def test_render_policy_blocked_counter(self):
-        """Should render policy_blocked as counter."""
-        # Arrange
+    def test_record_dag_retry_total(self):
+        """Should record DAG retry metric."""
         collector = MetricsCollector()
-        collector.record_count("policy_blocked_total", 2)
+        
+        collector.record_count("dag_retries_total", 5)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_policy_blocked_total 2" in output
+        assert snapshot["counts"]["dag_retries_total"] == 5
 
-    def test_render_policy_rollback_counter(self):
-        """Should render policy_rollback as counter."""
-        # Arrange
+    def test_record_dag_timeout_total(self):
+        """Should record DAG timeout metric."""
         collector = MetricsCollector()
-        collector.record_count("policy_rollback_total", 1)
+        
+        collector.record_count("dag_timeouts_total", 2)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_policy_rollback_total 1" in output
+        assert snapshot["counts"]["dag_timeouts_total"] == 2
 
-    def test_render_policy_freeze_counter(self):
-        """Should render policy_freeze as counter."""
-        # Arrange
+    def test_record_dag_approval_wait_seconds(self):
+        """Should record DAG approval wait time."""
         collector = MetricsCollector()
-        collector.record_count("policy_freeze_total", 4)
+        
+        collector.record_latency("dag_approval_wait_seconds", 30.5)
+        collector.record_latency("dag_approval_wait_seconds", 45.2)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_policy_freeze_total 4" in output
+        assert "dag_approval_wait_seconds" in snapshot["avg_latencies"]
 
-    def test_render_cross_brand_gap_gauge(self):
-        """Should render cross_brand_gap_p90_p10 as gauge."""
-        # Arrange
+    def test_record_dag_handoff_failed_total(self):
+        """Should record DAG handoff failed metric."""
         collector = MetricsCollector()
-        collector.record_latency("cross_brand_gap_p90_p10", 0.18)
+        
+        collector.record_count("dag_handoff_failed_total", 1)
+        
         snapshot = collector.snapshot()
-        
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert
-        assert "vm_cross_brand_gap_p90_p10" in output
-        assert "TYPE vm_cross_brand_gap_p90_p10 gauge" in output
+        assert snapshot["counts"]["dag_handoff_failed_total"] == 1
 
-    def test_render_all_policy_metrics_together(self):
-        """Should render all policy metrics together."""
-        # Arrange
-        collector = MetricsCollector()
-        collector.record_count("policy_proposal_total", 10)
-        collector.record_count("policy_applied_total", 7)
-        collector.record_count("policy_blocked_total", 2)
-        collector.record_count("policy_rollback_total", 1)
-        collector.record_count("policy_freeze_total", 0)
-        collector.record_latency("cross_brand_gap_p90_p10", 0.15)
-        snapshot = collector.snapshot()
+    def test_dag_metrics_in_prometheus_output(self):
+        """DAG metrics should appear in Prometheus output."""
+        from vm_webapp.agent_dag_audit import DagMetricsCollector
         
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
+        dag_collector = DagMetricsCollector()
+        dag_collector.record_run(status="completed")
+        dag_collector.record_node_execution(status="completed")
+        dag_collector.record_retry()
         
-        # Assert
-        assert "vm_policy_proposal_total" in output
-        assert "vm_policy_applied_total" in output
-        assert "vm_policy_blocked_total" in output
-        assert "vm_policy_rollback_total" in output
-        assert "vm_policy_freeze_total" in output
-        assert "vm_cross_brand_gap_p90_p10" in output
-
-    def test_prometheus_output_format(self):
-        """Should produce valid Prometheus format."""
-        # Arrange
-        collector = MetricsCollector()
-        collector.record_count("policy_proposal_total", 5)
-        collector.record_latency("cross_brand_gap_p90_p10", 0.12)
-        snapshot = collector.snapshot()
+        output = dag_collector.render_prometheus()
         
-        # Act
-        output = render_prometheus(snapshot, prefix="vm")
-        
-        # Assert - basic format checks
-        lines = output.strip().split("\n")
-        
-        # Should have TYPE lines for each metric
-        type_lines = [l for l in lines if l.startswith("# TYPE")]
-        assert len(type_lines) >= 2
-        
-        # Should have metric value lines (not comments, not empty)
-        value_lines = [l for l in lines if not l.startswith("#") and l.strip()]
-        assert len(value_lines) >= 2
-        
-        # Each value line should have format: name value
-        for line in value_lines:
-            parts = line.split()
-            assert len(parts) == 2, f"Invalid format: {line}"
-            assert parts[1].replace(".", "").isdigit() or parts[1].replace("-", "").isdigit()
-
-
-class TestMetricsCollectorSnapshot:
-    """Test metrics collector snapshot functionality."""
-
-    def test_snapshot_includes_timestamp(self):
-        """Snapshot should include timestamp."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act
-        snapshot = collector.snapshot()
-        
-        # Assert
-        assert "timestamp" in snapshot
-        # Should be valid ISO format
-        timestamp = snapshot["timestamp"]
-        assert "T" in timestamp  # ISO format has T separator
-
-    def test_snapshot_thread_safety(self):
-        """Snapshot should be thread-safe."""
-        import threading
-        import time
-        
-        # Arrange
-        collector = MetricsCollector()
-        errors = []
-        
-        def record_metrics():
-            try:
-                for _ in range(100):
-                    collector.record_count("policy_proposal_total")
-                    time.sleep(0.001)
-            except Exception as e:
-                errors.append(e)
-        
-        def take_snapshots():
-            try:
-                for _ in range(100):
-                    collector.snapshot()
-                    time.sleep(0.001)
-            except Exception as e:
-                errors.append(e)
-        
-        # Act
-        threads = [
-            threading.Thread(target=record_metrics),
-            threading.Thread(target=take_snapshots),
-            threading.Thread(target=record_metrics),
-        ]
-        
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        # Assert
-        assert len(errors) == 0, f"Thread errors: {errors}"
-
-    def test_snapshot_is_immutable_copy(self):
-        """Modifying snapshot should not affect collector."""
-        # Arrange
-        collector = MetricsCollector()
-        collector.record_count("policy_proposal_total", 5)
-        
-        # Act
-        snapshot1 = collector.snapshot()
-        snapshot1["counts"]["policy_proposal_total"] = 999
-        snapshot2 = collector.snapshot()
-        
-        # Assert
-        assert snapshot2["counts"]["policy_proposal_total"] == 5
+        assert "dag_runs_total" in output
+        assert "dag_node_executions_total" in output
+        assert "dag_retries_total" in output

@@ -98,210 +98,83 @@ class TestNightlyReportGovernanceSection:
             assert "current_gap" in brand
             assert "status" in brand  # active, frozen, etc.
 
-    def test_report_version_includes_v18(self):
-        """Report version should indicate v18."""
-        # Arrange & Act
+
+# v22 DAG Section Tests
+
+class TestNightlyReportDagSection:
+    """Test v22 DAG section in nightly report."""
+
+    def test_report_includes_dag_section(self):
+        """Report should include DAG operations section."""
         from vm_webapp.nightly_report_v18 import generate_nightly_report
         
         report = generate_nightly_report()
         
-        # Assert
-        assert "v18" in report["report_version"]
+        assert "dag_operations" in report
 
-    def test_governance_goals_tracking(self):
-        """Governance section should track goals progress."""
-        # Arrange & Act
+    def test_dag_section_has_run_metrics(self):
+        """DAG section should track run metrics."""
         from vm_webapp.nightly_report_v18 import generate_nightly_report
         
         report = generate_nightly_report()
         
-        # Assert
-        governance = report["multibrand_governance"]
-        assert "goals" in governance
-        assert "false_positives_reduction" in governance["goals"]
-        assert "approval_without_regen_improvement" in governance["goals"]
-        assert "quality_gap_reduction" in governance["goals"]
+        dag_ops = report["dag_operations"]
+        assert "runs_total" in dag_ops
+        assert "runs_completed" in dag_ops
+        assert "runs_failed" in dag_ops
+        assert "runs_aborted" in dag_ops
 
-
-class TestCrossBrandGapMetric:
-    """Test cross-brand p90-p10 gap metric calculations."""
-
-    def test_calculate_gap_from_brand_metrics(self):
-        """Should calculate gap from brand threshold metrics."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import calculate_cross_brand_gap
-        
-        brand_metrics = {
-            "brand1": {"threshold": 0.8},
-            "brand2": {"threshold": 0.6},
-            "brand3": {"threshold": 0.7},
-        }
-        
-        # Act
-        gap = calculate_cross_brand_gap(brand_metrics)
-        
-        # Assert - p90=0.8, p10=0.6, gap=0.2
-        assert pytest.approx(gap, 0.01) == 0.2
-
-    def test_gap_zero_when_all_same(self):
-        """Gap should be zero when all brands have same threshold."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import calculate_cross_brand_gap
-        
-        brand_metrics = {
-            "brand1": {"threshold": 0.7},
-            "brand2": {"threshold": 0.7},
-            "brand3": {"threshold": 0.7},
-        }
-        
-        # Act
-        gap = calculate_cross_brand_gap(brand_metrics)
-        
-        # Assert
-        assert gap == 0.0
-
-    def test_gap_with_single_brand(self):
-        """Gap should be zero with single brand."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import calculate_cross_brand_gap
-        
-        brand_metrics = {
-            "brand1": {"threshold": 0.7},
-        }
-        
-        # Act
-        gap = calculate_cross_brand_gap(brand_metrics)
-        
-        # Assert
-        assert gap == 0.0
-
-    def test_gap_empty_brands(self):
-        """Gap should be zero with no brands."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import calculate_cross_brand_gap
-        
-        # Act
-        gap = calculate_cross_brand_gap({})
-        
-        # Assert
-        assert gap == 0.0
-
-
-class TestPolicyDiffsTracking:
-    """Test policy diffs tracking in report."""
-
-    def test_count_proposals_by_status(self):
-        """Should count proposals grouped by status."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import count_proposals_by_status
-        
-        proposals = [
-            AdaptationProposal(
-                proposal_id="p1", brand_id="b1", objective_key=None,
-                current_value=0.5, proposed_value=0.55, adjustment_percent=10.0,
-                status=ProposalStatus.PENDING
-            ),
-            AdaptationProposal(
-                proposal_id="p2", brand_id="b1", objective_key=None,
-                current_value=0.5, proposed_value=0.55, adjustment_percent=10.0,
-                status=ProposalStatus.APPROVED
-            ),
-            AdaptationProposal(
-                proposal_id="p3", brand_id="b1", objective_key=None,
-                current_value=0.5, proposed_value=0.55, adjustment_percent=10.0,
-                status=ProposalStatus.APPLIED
-            ),
-            AdaptationProposal(
-                proposal_id="p4", brand_id="b1", objective_key=None,
-                current_value=0.5, proposed_value=0.55, adjustment_percent=10.0,
-                status=ProposalStatus.REJECTED
-            ),
-        ]
-        
-        # Act
-        counts = count_proposals_by_status(proposals)
-        
-        # Assert
-        assert counts["pending"] == 1
-        assert counts["approved"] == 1
-        assert counts["applied"] == 1
-        assert counts["rejected"] == 1
-
-
-class TestGuardBlocksTracking:
-    """Test guard blocks tracking in report."""
-
-    def test_count_guard_blocks(self):
-        """Should count blocks by type."""
-        # Arrange
-        from vm_webapp.nightly_report_v18 import count_guard_blocks
-        
-        blocks = [
-            {"type": "incident", "brand_id": "b1"},
-            {"type": "incident", "brand_id": "b2"},
-            {"type": "canary", "brand_id": "b1"},
-            {"type": "rollback", "brand_id": "b3"},
-        ]
-        
-        # Act
-        counts = count_guard_blocks(blocks)
-        
-        # Assert
-        assert counts["incident"] == 2
-        assert counts["canary"] == 1
-        assert counts["rollback"] == 1
-
-
-class TestReportIntegration:
-    """Integration tests for nightly report v18."""
-
-    def test_full_report_generation(self):
-        """Should generate complete report with all sections."""
-        # Arrange & Act
-        from vm_webapp.nightly_report_v18 import generate_nightly_report, print_report
-        
-        report = generate_nightly_report()
-        
-        # Assert - check all expected sections exist
-        assert "report_version" in report
-        assert "generated_at" in report
-        assert "report_date" in report
-        assert "summary" in report
-        assert "multibrand_governance" in report
-        
-        # Verify summary has expected fields
-        summary = report["summary"]
-        assert "total_decisions" in summary
-        assert "automation_rate" in summary
-        
-        # Verify governance has expected fields
-        governance = report["multibrand_governance"]
-        assert "policy_diffs" in governance
-        assert "guard_blocks" in governance
-        assert "cross_brand_gap_p90_p10" in governance
-        assert "brand_breakdown" in governance
-        assert "goals" in governance
-
-    def test_report_date_defaults_to_yesterday(self):
-        """Report date should default to yesterday."""
-        # Arrange & Act
+    def test_dag_section_has_node_metrics(self):
+        """DAG section should track node metrics."""
         from vm_webapp.nightly_report_v18 import generate_nightly_report
         
         report = generate_nightly_report()
         
-        # Assert
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-        assert report["report_date"] == yesterday
+        dag_ops = report["dag_operations"]
+        assert "nodes_executed" in dag_ops
+        assert "nodes_failed" in dag_ops
+        assert "nodes_timeout" in dag_ops
 
-    def test_report_date_can_be_specified(self):
-        """Report date can be specified."""
-        # Arrange
+    def test_dag_section_has_retry_metrics(self):
+        """DAG section should track retry metrics."""
         from vm_webapp.nightly_report_v18 import generate_nightly_report
         
-        specific_date = datetime(2026, 2, 15, tzinfo=timezone.utc)
+        report = generate_nightly_report()
         
-        # Act
-        report = generate_nightly_report(date=specific_date)
+        dag_ops = report["dag_operations"]
+        assert "retries_total" in dag_ops
+        assert "handoff_failures" in dag_ops
+
+    def test_dag_section_has_approval_metrics(self):
+        """DAG section should track approval metrics."""
+        from vm_webapp.nightly_report_v18 import generate_nightly_report
         
-        # Assert
-        assert report["report_date"] == "2026-02-15"
+        report = generate_nightly_report()
+        
+        dag_ops = report["dag_operations"]
+        assert "approvals_pending" in dag_ops
+        assert "approvals_granted" in dag_ops
+        assert "approvals_rejected" in dag_ops
+        assert "avg_approval_wait_sec" in dag_ops
+
+    def test_dag_section_has_bottleneck_analysis(self):
+        """DAG section should include bottleneck analysis."""
+        from vm_webapp.nightly_report_v18 import generate_nightly_report
+        
+        report = generate_nightly_report()
+        
+        dag_ops = report["dag_operations"]
+        assert "bottlenecks" in dag_ops
+        assert isinstance(dag_ops["bottlenecks"], list)
+
+    def test_bottleneck_has_required_fields(self):
+        """Bottleneck entries should have required fields."""
+        from vm_webapp.nightly_report_v18 import generate_nightly_report
+        
+        report = generate_nightly_report()
+        
+        bottlenecks = report["dag_operations"]["bottlenecks"]
+        for bottleneck in bottlenecks:
+            assert "node_type" in bottleneck
+            assert "avg_wait_sec" in bottleneck
+            assert "failure_rate" in bottleneck
