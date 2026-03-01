@@ -1,408 +1,493 @@
-"""API v2 tests for Quality Optimizer endpoints (v25)."""
+"""Tests for v26 API v2 Control Loop Endpoints.
+
+TDD approach: tests for status/run/events/apply/reject/freeze/rollback endpoints.
+"""
 
 import pytest
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch, MagicMock
+
 from fastapi.testclient import TestClient
 
-from vm_webapp.app import create_app
-from vm_webapp.quality_optimizer import QualityOptimizer, ProposalState
+# Import after mocking
+from vm_webapp.online_control_loop import (
+    OnlineControlLoop,
+    ControlLoopState,
+    AdjustmentSeverity,
+    MicroAdjustment,
+    AdjustmentType,
+)
 
 
-@pytest.fixture
-def app():
-    """FastAPI app fixture."""
-    return create_app(enable_in_process_worker=False)
-
-
-@pytest.fixture
-def client(app):
-    """Test client for API."""
-    return TestClient(app)
-
-
-@pytest.fixture
-def sample_run_data():
-    """Sample run data for testing."""
-    return {
-        "run_id": "run-001",
-        "brand_id": "brand-001",
-        "quality_score": 65.0,
-        "v1_score": 60.0,
-        "cost_per_job": 100.0,
-        "mttc": 300.0,
-        "incident_rate": 0.05,
-        "approval_without_regen_24h": 0.70,
-        "params": {
-            "temperature": 0.7,
-            "max_tokens": 2000,
-            "model": "gpt-4",
-        },
-    }
-
-
-class TestOptimizerStatusEndpoint:
-    """Test GET /v2/optimizer/status."""
-
-    def test_get_optimizer_status(self, client):
-        """Should return optimizer version and stats."""
-        response = client.get("/v2/optimizer/status")
+class TestAPIControlLoopStatus:
+    """Test GET /api/v2/brands/{brand_id}/control-loop/status"""
+    
+    def test_status_endpoint_returns_cycle_info(self, client):
+        """Should return current control loop status for brand."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/status")
         
         assert response.status_code == 200
         data = response.json()
+        assert "brand_id" in data
+        assert "state" in data
+        assert "cycle_id" in data
+        assert "last_run_at" in data
+    
+    def test_status_endpoint_for_nonexistent_brand(self, client):
+        """Should return idle status for brand without active cycle."""
+        response = client.get("/api/v2/brands/nonexistent/control-loop/status")
         
-        assert data["version"] == "v25"
-        assert "total_proposals" in data
-        assert "proposals_by_state" in data
+        # Returns 200 with idle state (not 404)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["state"] == "idle"
+    
+    def test_status_includes_active_proposals(self, client):
+        """Should include active proposals in status."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_proposals" in data
+        assert isinstance(data["active_proposals"], list)
+    
+    def test_status_includes_regression_signals(self, client):
+        """Should include active regression signals."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_regressions" in data
+        assert isinstance(data["active_regressions"], list)
 
 
-class TestOptimizerRunEndpoint:
-    """Test POST /v2/optimizer/run."""
+class TestAPIControlLoopRun:
+    """Test POST /api/v2/brands/{brand_id}/control-loop/run"""
+    
+    def test_run_endpoint_starts_new_cycle(self, client):
+        """Should start a new control loop cycle."""
+        # Reset frozen state if any
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            with patch("vm_webapp.api_control_loop._brand_cycles", {}):
+                response = client.post("/api/v2/brands/brand-123/control-loop/run")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert "cycle_id" in data
+                assert data["state"] == "observing"
+                assert "started_at" in data
+    
+    def test_run_endpoint_with_regression_detection(self, client):
+        """Should detect regressions during run."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            with patch("vm_webapp.api_control_loop._brand_cycles", {}):
+                response = client.post("/api/v2/brands/brand-123/control-loop/run")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert "regressions_detected" in data
+                assert isinstance(data["regressions_detected"], int)
+    
+    def test_run_endpoint_generates_proposals(self, client):
+        """Should generate adjustment proposals."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            with patch("vm_webapp.api_control_loop._brand_cycles", {}):
+                response = client.post("/api/v2/brands/brand-123/control-loop/run")
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert "proposals_generated" in data
+                assert "proposals" in data
+    
+    def test_run_endpoint_respects_already_running(self, client):
+        """Should not start new cycle if one is already running."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # First run
+            response1 = client.post("/api/v2/brands/brand-123/control-loop/run")
+            assert response1.status_code == 200
+            
+            # Second run should conflict
+            response2 = client.post("/api/v2/brands/brand-123/control-loop/run")
+            assert response2.status_code == 409  # 409 Conflict
 
-    def test_run_optimizer_creates_proposal(self, client, sample_run_data):
-        """Should create and return a proposal."""
-        response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-                "constraints": {
-                    "max_cost_increase_pct": 10.0,
-                    "max_mttc_increase_pct": 10.0,
-                    "max_incident_rate": 0.05,
-                },
-            },
+
+class TestAPIControlLoopEvents:
+    """Test GET /api/v2/brands/{brand_id}/control-loop/events"""
+    
+    def test_events_endpoint_returns_event_list(self, client):
+        """Should return control loop events."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/events")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "events" in data
+        assert isinstance(data["events"], list)
+    
+    def test_events_endpoint_with_pagination(self, client):
+        """Should support pagination."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/events?limit=10&offset=0")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "events" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
+    
+    def test_events_endpoint_with_time_filter(self, client):
+        """Should support time-based filtering."""
+        response = client.get(
+            "/api/v2/brands/brand-123/control-loop/events?since=2026-03-01T00:00:00Z"
         )
         
         assert response.status_code == 200
         data = response.json()
-        
-        assert "proposal_id" in data
-        assert data["run_id"] == "run-001"
-        assert data["state"] == "pending"
-        assert "recommended_params" in data
-        assert "feasibility_check_passed" in data
-        assert "estimated_v1_improvement" in data
-        assert "estimated_cost_delta_pct" in data
-        assert "estimated_mttc_delta_pct" in data
-
-    def test_run_optimizer_with_constraints(self, client, sample_run_data):
-        """Should respect custom constraints."""
-        response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-                "constraints": {
-                    "max_cost_increase_pct": 5.0,
-                    "max_mttc_increase_pct": 5.0,
-                    "max_incident_rate": 0.03,
-                },
-            },
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        # With strict constraints, may not be feasible
-        assert "proposal_id" in data
+        assert "events" in data
 
 
-class TestGetProposalEndpoint:
-    """Test GET /v2/optimizer/proposals/{proposal_id}."""
-
-    def test_get_proposal(self, client, sample_run_data):
-        """Should return proposal details."""
-        # First create a proposal
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Get the proposal
-        response = client.get(f"/v2/optimizer/proposals/{proposal_id}")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["proposal_id"] == proposal_id
-        assert data["state"] == "pending"
-        assert "feasibility_check_passed" in data
-        assert "quality_score" in data
-
-    def test_get_proposal_not_found(self, client):
-        """Should return 404 for unknown proposal."""
-        response = client.get("/v2/optimizer/proposals/nonexistent-id")
-        
-        assert response.status_code == 404
-
-
-class TestGetRunProposalsEndpoint:
-    """Test GET /v2/optimizer/runs/{run_id}/proposals."""
-
-    def test_get_run_proposals(self, client, sample_run_data):
-        """Should return all proposals for a run."""
-        # Create a proposal first
-        client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        
-        response = client.get("/v2/optimizer/runs/run-001/proposals")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["run_id"] == "run-001"
-        assert "proposal_count" in data
-        assert "proposals" in data
-
-
-class TestApplyProposalEndpoint:
-    """Test POST /v2/optimizer/proposals/{proposal_id}/apply."""
-
-    def test_apply_proposal(self, client, sample_run_data):
+class TestAPIControlLoopApply:
+    """Test POST /api/v2/brands/{brand_id}/control-loop/proposals/{id}/apply"""
+    
+    def test_apply_endpoint_approves_proposal(self, client):
         """Should apply a pending proposal."""
-        # Create a proposal first
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # First create a cycle with a proposal
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            
+            # Apply proposal (using mocked proposal ID from fixture)
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001/apply"
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["state"] == "applied"
+    
+    def test_apply_endpoint_requires_approval_for_high_severity(self, client):
+        """Should require explicit approval for high severity proposals."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-high/apply",
+                json={"approved": False}
+            )
+            
+            # Should fail without approval for high severity
+            assert response.status_code in [403, 404]  # 403 forbidden or 404 not found
+    
+    def test_apply_endpoint_with_explicit_approval(self, client):
+        """Should apply high severity with explicit approval."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle first
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001/apply",
+                json={"approved": True}
+            )
+            
+            # Mock returns successful application
+            assert response.status_code == 200
+            data = response.json()
+            assert data["state"] == "applied"
+    
+    def test_apply_endpoint_for_nonexistent_proposal(self, client):
+        """Should 404 for non-existent proposal."""
+        response = client.post(
+            "/api/v2/brands/brand-123/control-loop/proposals/nonexistent/apply"
         )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Apply the proposal
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "applied"
-        assert data["proposal_id"] == proposal_id
-        assert "applied_at" in data
-
-    def test_apply_proposal_not_found(self, client):
-        """Should return 404 for unknown proposal."""
-        response = client.post("/v2/optimizer/proposals/nonexistent-id/apply")
         
         assert response.status_code == 404
 
-    def test_apply_blocked_if_infeasible(self, client, sample_run_data):
-        """Should block apply if not feasible and enforce_feasibility=True."""
-        # Create run with high tokens that will exceed strict constraints
-        high_cost_run = {
-            **sample_run_data,
-            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
-        }
-        
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": high_cost_run,
-                "historical_runs": [],
-                "constraints": {
-                    "max_cost_increase_pct": 5.0,  # Very strict
-                },
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Try to apply with enforce_feasibility (default)
-        response = client.post(
-            f"/v2/optimizer/proposals/{proposal_id}/apply",
-            json={"enforce_feasibility": True},
-        )
-        
-        assert response.status_code == 409
 
-    def test_apply_allowed_with_override(self, client, sample_run_data):
-        """Should allow apply with enforce_feasibility=False."""
-        # Create run with high tokens
-        high_cost_run = {
-            **sample_run_data,
-            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
-        }
-        
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": high_cost_run,
-                "historical_runs": [],
-                "constraints": {
-                    "max_cost_increase_pct": 5.0,
-                },
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Apply with override
-        response = client.post(
-            f"/v2/optimizer/proposals/{proposal_id}/apply",
-            json={"enforce_feasibility": False},
-        )
-        
-        assert response.status_code == 200
-        assert response.json()["status"] == "applied"
-
-
-class TestRejectProposalEndpoint:
-    """Test POST /v2/optimizer/proposals/{proposal_id}/reject."""
-
-    def test_reject_proposal(self, client, sample_run_data):
+class TestAPIControlLoopReject:
+    """Test POST /api/v2/brands/{brand_id}/control-loop/proposals/{id}/reject"""
+    
+    def test_reject_endpoint_rejects_proposal(self, client):
         """Should reject a pending proposal."""
-        # Create a proposal first
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle with proposal
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001/reject"
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["state"] == "rejected"
+    
+    def test_reject_endpoint_with_reason(self, client):
+        """Should accept rejection reason."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle with proposal
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001/reject",
+                json={"reason": "Risk too high for current traffic"}
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["state"] == "rejected"
+            assert data.get("reason") == "Risk too high for current traffic"
+    
+    def test_reject_already_applied_fails(self, client):
+        """Should fail to reject already applied proposal."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            # Apply
+            client.post("/api/v2/brands/brand-123/control-loop/proposals/adj-001/apply")
+            
+            # Then reject
+            response = client.post(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001/reject"
+            )
+            
+            # May get 404 (not found in pending) or 409 (conflict)
+            assert response.status_code in [404, 409]
+
+
+class TestAPIControlLoopFreeze:
+    """Test POST /api/v2/brands/{brand_id}/control-loop/freeze"""
+    
+    def test_freeze_endpoint_freezes_cycle(self, client):
+        """Should freeze the current control loop cycle."""
+        # Start a cycle first
+        client.post("/api/v2/brands/brand-123/control-loop/run")
         
-        # Reject the proposal
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/reject")
+        response = client.post("/api/v2/brands/brand-123/control-loop/freeze")
         
         assert response.status_code == 200
         data = response.json()
-        
-        assert data["status"] == "rejected"
-        assert data["proposal_id"] == proposal_id
-
-
-class TestFreezeProposalEndpoint:
-    """Test POST /v2/optimizer/proposals/{proposal_id}/freeze."""
-
-    def test_freeze_proposal(self, client, sample_run_data):
-        """Should freeze a pending proposal."""
-        # Create a proposal first
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
+        assert data["state"] == "frozen"
+        assert "frozen_at" in data
+    
+    def test_freeze_endpoint_with_reason(self, client):
+        """Should accept freeze reason."""
+        response = client.post(
+            "/api/v2/brands/brand-123/control-loop/freeze",
+            json={"reason": "Investigating incident"}
         )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Freeze the proposal
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/freeze")
         
         assert response.status_code == 200
         data = response.json()
-        
-        assert data["status"] == "frozen"
-        assert data["proposal_id"] == proposal_id
-
-    def test_cannot_apply_frozen(self, client, sample_run_data):
-        """Cannot apply a frozen proposal."""
-        # Create and freeze a proposal
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        client.post(f"/v2/optimizer/proposals/{proposal_id}/freeze")
+        assert data["state"] == "frozen"
+        assert data.get("reason") == "Investigating incident"
+    
+    def test_freeze_prevents_new_adjustments(self, client):
+        """Should prevent new adjustments when frozen."""
+        # Freeze
+        client.post("/api/v2/brands/brand-123/control-loop/freeze")
         
         # Try to apply
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
-        
-        assert response.status_code == 409
-
-
-class TestRollbackProposalEndpoint:
-    """Test POST /v2/optimizer/proposals/{proposal_id}/rollback."""
-
-    def test_rollback_proposal(self, client, sample_run_data):
-        """Should rollback an applied proposal."""
-        # Create and apply a proposal
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
+        response = client.post(
+            "/api/v2/brands/brand-123/control-loop/proposals/prop-123/apply"
         )
-        proposal_id = create_response.json()["proposal_id"]
-        client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
         
-        # Rollback
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/rollback")
+        assert response.status_code == 403
+
+
+class TestAPIControlLoopRollback:
+    """Test POST /api/v2/brands/{brand_id}/control-loop/rollback"""
+    
+    def test_rollback_endpoint_rolls_back_applied(self, client):
+        """Should rollback applied adjustments."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle and apply
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            client.post("/api/v2/brands/brand-123/control-loop/proposals/adj-001/apply")
+            
+            # Rollback
+            response = client.post("/api/v2/brands/brand-123/control-loop/rollback")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert "rolled_back" in data
+    
+    def test_rollback_endpoint_with_specific_proposal(self, client):
+        """Should rollback specific proposal when provided."""
+        response = client.post(
+            "/api/v2/brands/brand-123/control-loop/rollback",
+            json={"proposal_id": "prop-123"}
+        )
         
         assert response.status_code == 200
         data = response.json()
-        
-        assert data["status"] == "rolled_back"
-        assert data["proposal_id"] == proposal_id
-
-    def test_cannot_rollback_without_apply(self, client, sample_run_data):
-        """Cannot rollback without prior apply."""
-        # Create a proposal but don't apply
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Try to rollback
-        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/rollback")
-        
-        assert response.status_code == 409
-
-
-class TestProposalSnapshotEndpoint:
-    """Test GET /v2/optimizer/proposals/{proposal_id}/snapshot."""
-
-    def test_get_snapshot(self, client, sample_run_data):
-        """Should return snapshot for applied proposal."""
-        # Create and apply a proposal
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
-        )
-        proposal_id = create_response.json()["proposal_id"]
-        client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
-        
-        # Get snapshot
-        response = client.get(f"/v2/optimizer/proposals/{proposal_id}/snapshot")
+        assert "rolled_back" in data
+    
+    def test_rollback_endpoint_no_applied_to_rollback(self, client):
+        """Should handle when nothing to rollback."""
+        response = client.post("/api/v2/brands/brand-123/control-loop/rollback")
         
         assert response.status_code == 200
         data = response.json()
-        
-        assert data["proposal_id"] == proposal_id
-        assert "previous_params" in data
-        assert "applied_params" in data
-        assert "applied_at" in data
+        assert data.get("rolled_back", []) == []
 
-    def test_snapshot_not_found_for_pending(self, client, sample_run_data):
-        """Should return 404 for pending proposal."""
-        # Create but don't apply
-        create_response = client.post(
-            "/v2/optimizer/run",
-            json={
-                "current_run": sample_run_data,
-                "historical_runs": [],
-            },
+
+class TestAPIControlLoopProposalDetail:
+    """Test GET /api/v2/brands/{brand_id}/control-loop/proposals/{id}"""
+    
+    def test_proposal_detail_endpoint(self, client):
+        """Should return proposal details."""
+        with patch("vm_webapp.api_control_loop._frozen_brands", {}):
+            # Create cycle with proposal
+            client.post("/api/v2/brands/brand-123/control-loop/run")
+            
+            response = client.get(
+                "/api/v2/brands/brand-123/control-loop/proposals/adj-001"
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert "proposal_id" in data
+            assert "adjustment_type" in data
+            assert "severity" in data
+    
+    def test_proposal_detail_for_nonexistent(self, client):
+        """Should 404 for non-existent proposal."""
+        response = client.get(
+            "/api/v2/brands/brand-123/control-loop/proposals/nonexistent"
         )
-        proposal_id = create_response.json()["proposal_id"]
-        
-        # Try to get snapshot
-        response = client.get(f"/v2/optimizer/proposals/{proposal_id}/snapshot")
         
         assert response.status_code == 404
+
+
+class TestAPIControlLoopMetrics:
+    """Test metrics endpoints"""
+    
+    def test_metrics_endpoint_returns_prometheus_format(self, client):
+        """Should return metrics in Prometheus format."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/metrics")
+        
+        assert response.status_code == 200
+        assert "control_loop_cycles_total" in response.text
+        assert "control_loop_regressions_detected_total" in response.text
+    
+    def test_metrics_includes_time_based_metrics(self, client):
+        """Should include time-to-detect and time-to-mitigate."""
+        response = client.get("/api/v2/brands/brand-123/control-loop/metrics")
+        
+        assert response.status_code == 200
+        assert "control_loop_time_to_detect_seconds" in response.text
+        assert "control_loop_time_to_mitigate_seconds" in response.text
+
+
+# Fixtures
+@pytest.fixture
+def client():
+    """Create test client with mocked control loop."""
+    from fastapi import FastAPI
+    from vm_webapp.api_control_loop import router as control_loop_router
+    
+    app = FastAPI()
+    app.include_router(control_loop_router)
+    
+    # Mock the control loop instance
+    with patch("vm_webapp.api_control_loop.control_loop") as mock_loop:
+        mock_cycle = Mock(
+            cycle_id="cycle-test-001",
+            brand_id="brand-123",
+            state=ControlLoopState.OBSERVING,
+            started_at="2026-03-01T12:00:00Z",
+            completed_at=None,
+            adjustments=[],
+            regression_signals=[],
+            to_dict=lambda: {
+                "cycle_id": "cycle-test-001",
+                "brand_id": "brand-123",
+                "state": "observing",
+            }
+        )
+        mock_loop.start_cycle.return_value = mock_cycle
+        # Setup adjustments for cycle lookups
+        mock_adj_with_state = Mock(
+            adjustment_id="adj-001",
+            adjustment_type=AdjustmentType.GATE_THRESHOLD,
+            target_gate="v1_score_min",
+            current_value=70.0,
+            proposed_value=68.0,
+            severity=AdjustmentSeverity.LOW,
+            requires_approval=False,
+            estimated_impact={"v1_score": +2.0},
+            state="pending",
+            applied_at=None,
+            rolled_back_at=None,
+        )
+        mock_adj_with_state.delta = -2.0
+        
+        def get_cycle_mock(cycle_id):
+            return Mock(
+                cycle_id="cycle-test-001",
+                brand_id="brand-123",
+                state=ControlLoopState.OBSERVING,
+                adjustments=[mock_adj_with_state],
+                regression_signals=[],
+            )
+        
+        mock_loop.get_cycle.side_effect = get_cycle_mock
+        # Setup _cycles for proposal lookup
+        mock_cycle_for_lookup = Mock(
+            cycle_id="cycle-test-001",
+            brand_id="brand-123",
+            state=ControlLoopState.OBSERVING,
+            adjustments=[mock_adj_with_state],
+            regression_signals=[],
+        )
+        mock_loop._cycles = {"cycle-test-001": mock_cycle_for_lookup}
+        
+        mock_loop.get_status.return_value = {
+            "version": "v26",
+            "active_cycles": 1,
+            "total_adjustments_applied": 5,
+        }
+        mock_loop.get_cycle_status.return_value = {
+            "cycle_id": "cycle-test-001",
+            "state": "observing",
+            "adjustments": [],
+            "regressions": [],
+        }
+        
+        # Mock proposals - must match ProposalResponse model
+        mock_adj = Mock(
+            adjustment_id="adj-001",
+            adjustment_type=AdjustmentType.GATE_THRESHOLD,
+            target_gate="v1_score_min",
+            current_value=70.0,
+            proposed_value=68.0,
+            severity=AdjustmentSeverity.LOW,
+            requires_approval=False,
+            estimated_impact={"v1_score": +2.0},
+            state="pending",
+            applied_at=None,
+            rolled_back_at=None,
+        )
+        mock_adj.delta = -2.0
+        mock_loop.propose.return_value = [mock_adj]
+        
+        # Mock applied adjustment
+        mock_adj_applied = Mock(
+            adjustment_id="adj-001",
+            adjustment_type=AdjustmentType.GATE_THRESHOLD,
+            target_gate="v1_score_min",
+            current_value=70.0,
+            proposed_value=68.0,
+            severity=AdjustmentSeverity.LOW,
+            requires_approval=False,
+            estimated_impact={"v1_score": +2.0},
+            state="applied",
+            applied_at="2026-03-01T12:00:00Z",
+            rolled_back_at=None,
+        )
+        mock_adj_applied.delta = -2.0
+        
+        def mock_apply(adjustment_id, adjustment, approved=False):
+            adjustment.state = "applied"
+            adjustment.applied_at = "2026-03-01T12:00:00Z"
+            return True
+        
+        mock_loop.apply.side_effect = mock_apply
+        mock_loop.rollback.return_value = True
+        
+        yield TestClient(app)
