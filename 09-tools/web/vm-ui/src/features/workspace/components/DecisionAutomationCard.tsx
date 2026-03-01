@@ -70,8 +70,8 @@ export const DecisionAutomationCard: React.FC<DecisionAutomationCardProps> = ({
 
       <div className="card-body">
         {/* Safety Gate Status */}
-        <div className="safety-status" data-testid="safety-status">
-          <div className={`status-indicator ${getSafetyStatusClass()}`}>
+        <div className={`safety-status ${getSafetyStatusClass()}`} data-testid="safety-status">
+          <div className="status-indicator">
             {getSafetyStatusText()}
           </div>
           {safetyStatus && !safetyStatus.allowed && (

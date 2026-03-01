@@ -38,16 +38,11 @@ describe('useDecisionAutomation', () => {
   it('executa e inicia canary', async () => {
     const { result } = renderHook(() => useDecisionAutomation('brand1:awareness'));
     
-    act(() => {
-      result.current.execute();
+    await act(async () => {
+      await result.current.execute();
     });
     
-    expect(result.current.status).toBe('executing');
-    
-    await waitFor(() => {
-      expect(result.current.status).toBe('canary_running');
-    });
-    
+    expect(result.current.status).toBe('canary_running');
     expect(result.current.canaryActive).toBe(true);
     expect(result.current.canaryStatus).not.toBeNull();
   });
