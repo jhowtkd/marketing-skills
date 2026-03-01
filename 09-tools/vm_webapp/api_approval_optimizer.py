@@ -5,7 +5,7 @@ Endpoints for approval cost optimization.
 
 CHANGELOG v23:
 - Added /optimizer/queue - Get prioritized approval queue
-- Added /optimizer/request - Submit request to optimizer  
+- Added /optimizer/request - Submit request to optimizer
 - Added /optimizer/batch/create - Create compatible batch
 - Added /optimizer/batch/{id}/approve|reject|expand - Batch actions
 - Added /optimizer/freeze|unfreeze - Emergency controls
@@ -30,6 +30,7 @@ _frozen_brands: set[str] = set()
 
 
 # Pydantic models
+
 
 class AddRequestInput(BaseModel):
     request_id: str
@@ -69,6 +70,7 @@ class BrandFreezeResponse(BaseModel):
 
 # API Endpoints
 
+
 @router.get("/api/v2/optimizer/queue")
 def get_optimizer_queue() -> list[dict[str, Any]]:
     """Retorna fila priorizada de aprovações."""
@@ -81,10 +83,9 @@ def add_optimizer_request(request: AddRequestInput) -> dict[str, Any]:
     # Check if brand is frozen
     if request.brand_id in _frozen_brands:
         raise HTTPException(
-            status_code=403,
-            detail=f"Optimizer is frozen for brand: {request.brand_id}"
+            status_code=403, detail=f"Optimizer is frozen for brand: {request.brand_id}"
         )
-    
+
     result = _optimizer.add_request(request.model_dump())
     return result
 
@@ -94,7 +95,7 @@ def get_optimizer_batches() -> dict[str, Any]:
     """Retorna lotes existentes."""
     # Get stats which includes queue info
     stats = _optimizer.get_stats()
-    
+
     return {
         "batches": [],  # Simplified - would return actual batches
         "stats": stats,
@@ -105,13 +106,12 @@ def get_optimizer_batches() -> dict[str, Any]:
 def create_batch(brand_id: Optional[str] = None) -> dict[str, Any]:
     """Cria um novo lote a partir da fila."""
     batch = _optimizer.create_batch_from_queue(brand_id=brand_id)
-    
+
     if not batch:
         raise HTTPException(
-            status_code=404,
-            detail="No requests available for batching"
+            status_code=404, detail="No requests available for batching"
         )
-    
+
     return {
         "batch_id": batch["batch_id"],
         "brand_id": batch["brand_id"],

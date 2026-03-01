@@ -9,6 +9,9 @@ on:
       - '09-tools/**'
       - '.github/workflows/v23-ci-gate.yml'
 
+env:
+  PYTHONPATH: 09-tools
+
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
@@ -28,14 +31,20 @@ jobs:
       - name: Run approval optimizer tests
         run: |
           pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py -v
+        env:
+          PYTHONPATH: 09-tools
       
       - name: Run API v2 tests
         run: |
           pytest 09-tools/tests/test_vm_webapp_api_v2.py -v
+        env:
+          PYTHONPATH: 09-tools
       
       - name: Run UI tests
         run: |
           pytest 09-tools/tests/test_ui_approval_optimizer.py -v
+        env:
+          PYTHONPATH: 09-tools
 
   lint:
     runs-on: ubuntu-latest
@@ -66,8 +75,9 @@ jobs:
         with:
           python-version: '3.9'
       
-      - name: Install mypy
-        run: pip install mypy
+      - name: Install mypy and stubs
+        run: |
+          pip install mypy types-PyYAML
       
       - name: Run type check
         run: mypy 09-tools/vm_webapp/approval_optimizer.py --ignore-missing-imports
@@ -85,11 +95,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r 09-tools/requirements.txt
-          pip install pytest
+          pip install pytest sqlalchemy pydantic-settings
       
       - name: Validate metrics schema
         run: |
           pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py::test_metrics_include_expected_keys -v
+        env:
+          PYTHONPATH: 09-tools
 
   changelog-check:
     runs-on: ubuntu-latest
