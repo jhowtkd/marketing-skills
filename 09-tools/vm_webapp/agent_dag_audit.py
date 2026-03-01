@@ -104,6 +104,14 @@ class DagMetricsCollector:
         self._handoff_failures_by_node_type: dict[str, int] = {}
         self._timeouts_by_node_type: dict[str, int] = {}
         self._retries_by_node_type: dict[str, int] = {}
+        
+        # v23: Métricas de otimização de aprovação
+        self._batches_created_total = 0
+        self._batches_approved_total = 0
+        self._batches_rejected_total = 0
+        self._batches_expanded_total = 0
+        self._human_minutes_saved = 0.0  # Minutos humanos economizados
+        self._approval_queue_lengths: list[int] = []  # Para calcular p95
     
     def record_run(self, status: str) -> None:
         """Registra conclusão de uma run."""
@@ -132,6 +140,38 @@ class DagMetricsCollector:
                 self._handoff_failures_by_node_type[node_type] = \
                     self._handoff_failures_by_node_type.get(node_type, 0) + 1
     
+    # v23: Métricas de otimização
+    def record_batch_created(self, request_count: int) -> None:
+        """Registra criação de lote."""
+        with self._lock:
+            self._batches_created_total += 1
+            # Estimativa: cada batch economiza (n-1) * 2 minutos de aprovação humana
+            minutes_saved = (request_count - 1) * 2.0 if request_count > 1 else 0
+            self._human_minutes_saved += minutes_saved
+    
+    def record_batch_approved(self) -> None:
+        """Registra aprovação de lote."""
+        with self._lock:
+            self._batches_approved_total += 1
+    
+    def record_batch_rejected(self) -> None:
+        """Registra rejeição de lote."""
+        with self._lock:
+            self._batches_rejected_total += 1
+    
+    def record_batch_expanded(self) -> None:
+        """Registra expansão de lote."""
+        with self._lock:
+            self._batches_expanded_total += 1
+    
+    def record_queue_length(self, length: int) -> None:
+        """Registra tamanho da fila para cálculo de p95."""
+        with self._lock:
+            self._approval_queue_lengths.append(length)
+            # Manter apenas últimas 1000 medições
+            if len(self._approval_queue_lengths) > 1000:
+                self._approval_queue_lengths = self._approval_queue_lengths[-1000:]
+    
     def record_approval(self, status: str, wait_sec: Optional[float] = None) -> None:
         """Registra uma aprovação."""
         with self._lock:
@@ -152,6 +192,13 @@ class DagMetricsCollector:
                 if self._node_execution_times else 0.0
             )
             
+            # v23: Calcular p95 da fila
+            queue_p95 = 0
+            if self._approval_queue_lengths:
+                sorted_lengths = sorted(self._approval_queue_lengths)
+                p95_idx = int(len(sorted_lengths) * 0.95)
+                queue_p95 = sorted_lengths[min(p95_idx, len(sorted_lengths) - 1)]
+            
             return {
                 "runs": self._runs_total.copy(),
                 "nodes": self._nodes_total.copy(),
@@ -162,6 +209,13 @@ class DagMetricsCollector:
                 "approvals": self._approvals_total.copy(),
                 "avg_approval_wait_sec": avg_approval_wait,
                 "avg_node_execution_sec": avg_node_execution,
+                # v23
+                "batches_created_total": self._batches_created_total,
+                "batches_approved_total": self._batches_approved_total,
+                "batches_rejected_total": self._batches_rejected_total,
+                "batches_expanded_total": self._batches_expanded_total,
+                "human_minutes_saved": self._human_minutes_saved,
+                "approval_queue_length_p95": queue_p95,
             }
     
     def render_prometheus(self) -> str:
@@ -216,6 +270,27 @@ class DagMetricsCollector:
         lines.append("# HELP dag_node_execution_seconds Average node execution time")
         lines.append("# TYPE dag_node_execution_seconds gauge")
         lines.append(f'dag_node_execution_seconds {snapshot["avg_node_execution_sec"]}')
+        
+        # v23: Batch metrics
+        lines.append("# HELP approval_batches_created_total Total batches created")
+        lines.append("# TYPE approval_batches_created_total counter")
+        lines.append(f'approval_batches_created_total {snapshot.get("batches_created_total", 0)}')
+        
+        lines.append("# HELP approval_batches_approved_total Total batches approved")
+        lines.append("# TYPE approval_batches_approved_total counter")
+        lines.append(f'approval_batches_approved_total {snapshot.get("batches_approved_total", 0)}')
+        
+        lines.append("# HELP approval_batches_rejected_total Total batches rejected")
+        lines.append("# TYPE approval_batches_rejected_total counter")
+        lines.append(f'approval_batches_rejected_total {snapshot.get("batches_rejected_total", 0)}')
+        
+        lines.append("# HELP approval_human_minutes_saved_total Human minutes saved via batching")
+        lines.append("# TYPE approval_human_minutes_saved_total counter")
+        lines.append(f'approval_human_minutes_saved_total {snapshot.get("human_minutes_saved", 0):.2f}')
+        
+        lines.append("# HELP approval_queue_length_p95 P95 approval queue length")
+        lines.append("# TYPE approval_queue_length_p95 gauge")
+        lines.append(f'approval_queue_length_p95 {snapshot.get("approval_queue_length_p95", 0)}')
         
         return "\n".join(lines) + "\n"
     
