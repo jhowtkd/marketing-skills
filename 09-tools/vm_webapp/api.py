@@ -3720,3 +3720,9 @@ from vm_webapp.api_safety_tuning import router as safety_tuning_router
 
 # Include safety tuning routes
 router.include_router(safety_tuning_router)
+
+# Import adaptive escalation routes
+from vm_webapp.api_adaptive_escalation import router as adaptive_escalation_router
+
+# Include adaptive escalation routes
+router.include_router(adaptive_escalation_router)
