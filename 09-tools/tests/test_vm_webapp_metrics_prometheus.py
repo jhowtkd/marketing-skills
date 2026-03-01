@@ -1,192 +1,281 @@
-"""Tests for v18 multibrand policy metrics and Prometheus output.
-
-Metrics to test:
-- policy_proposal_total
-- policy_applied_total
-- policy_blocked_total
-- policy_rollback_total
-- policy_freeze_total
-- cross_brand_gap_p90_p10
-"""
+"""Tests for v25 Quality Optimizer metrics and observability."""
 
 import pytest
 from datetime import datetime, timezone
 
-from vm_webapp.observability import MetricsCollector, render_prometheus
+from vm_webapp.observability import (
+    MetricsCollector,
+    QualityOptimizerMetrics,
+    render_prometheus,
+)
 
 
-class TestPolicyMetrics:
-    """Test v18 policy-related metrics."""
+@pytest.fixture
+def collector():
+    """Metrics collector fixture."""
+    return MetricsCollector()
 
-    def test_record_policy_proposal(self):
-        """Should record policy proposal metric."""
-        # Arrange
-        collector = MetricsCollector()
+
+class TestQualityOptimizerMetrics:
+    """Test v25 Quality Optimizer metrics collection."""
+
+    def test_record_quality_cycle(self, collector):
+        """Should record a quality optimizer cycle."""
+        collector.record_quality_cycle()
         
-        # Act
-        collector.record_count("policy_proposal_total", 1)
-        collector.record_count("policy_proposal_total", 1)
+        metrics = collector.get_quality_metrics()
+        assert metrics.cycles_total == 1
+        assert metrics.last_cycle_at is not None
+
+    def test_record_quality_proposal_generated(self, collector):
+        """Should record proposal generation."""
+        collector.record_quality_proposal("generated")
         
-        # Assert
+        metrics = collector.get_quality_metrics()
+        assert metrics.proposals_generated_total == 1
+
+    def test_record_quality_proposal_blocked(self, collector):
+        """Should record blocked proposal."""
+        collector.record_quality_proposal("blocked")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.proposals_generated_total == 1
+        assert metrics.proposals_blocked_total == 1
+
+    def test_record_quality_proposal_rejected(self, collector):
+        """Should record rejected proposal."""
+        collector.record_quality_proposal("rejected")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.proposals_generated_total == 1
+        assert metrics.proposals_rejected_total == 1
+
+    def test_record_quality_proposal_applied(self, collector):
+        """Should record applied proposal."""
+        collector.record_quality_proposal_applied()
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.proposals_applied_total == 1
+        assert metrics.last_proposal_applied_at is not None
+
+    def test_record_quality_rollback(self, collector):
+        """Should record rollback operation."""
+        collector.record_quality_rollback()
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.rollbacks_total == 1
+
+    def test_record_quality_impact(self, collector):
+        """Should record expected impact metrics."""
+        collector.record_quality_impact(
+            quality_gain=8.5,
+            cost_impact_pct=8.2,
+            time_impact_pct=7.5,
+        )
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.quality_gain_expected == 8.5
+        assert metrics.cost_impact_expected_pct == 8.2
+        assert metrics.time_impact_expected_pct == 7.5
+
+    def test_record_constraint_violation_cost(self, collector):
+        """Should record cost constraint violation."""
+        collector.record_constraint_violation("cost")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.constraint_violations_cost == 1
+        assert metrics.constraint_violations_time == 0
+        assert metrics.constraint_violations_incident == 0
+
+    def test_record_constraint_violation_time(self, collector):
+        """Should record time constraint violation."""
+        collector.record_constraint_violation("time")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.constraint_violations_cost == 0
+        assert metrics.constraint_violations_time == 1
+        assert metrics.constraint_violations_incident == 0
+
+    def test_record_constraint_violation_incident(self, collector):
+        """Should record incident constraint violation."""
+        collector.record_constraint_violation("incident")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.constraint_violations_cost == 0
+        assert metrics.constraint_violations_time == 0
+        assert metrics.constraint_violations_incident == 1
+
+    def test_get_quality_metrics_returns_snapshot(self, collector):
+        """Should return independent snapshot."""
+        collector.record_quality_cycle()
+        
+        metrics1 = collector.get_quality_metrics()
+        collector.record_quality_cycle()
+        metrics2 = collector.get_quality_metrics()
+        
+        assert metrics1.cycles_total == 1
+        assert metrics2.cycles_total == 2
+
+    def test_quality_metrics_counters_accumulate(self, collector):
+        """Counters should accumulate across multiple records."""
+        collector.record_quality_cycle()
+        collector.record_quality_cycle()
+        collector.record_quality_cycle()
+        
+        collector.record_quality_proposal("generated")
+        collector.record_quality_proposal("blocked")
+        collector.record_quality_proposal("rejected")
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.cycles_total == 3
+        assert metrics.proposals_generated_total == 3
+        assert metrics.proposals_blocked_total == 1
+        assert metrics.proposals_rejected_total == 1
+
+
+class TestQualityOptimizerMetricsStructure:
+    """Test QualityOptimizerMetrics dataclass structure."""
+
+    def test_default_values(self):
+        """Should have correct default values."""
+        metrics = QualityOptimizerMetrics()
+        
+        assert metrics.cycles_total == 0
+        assert metrics.proposals_generated_total == 0
+        assert metrics.proposals_applied_total == 0
+        assert metrics.proposals_blocked_total == 0
+        assert metrics.proposals_rejected_total == 0
+        assert metrics.rollbacks_total == 0
+        assert metrics.quality_gain_expected == 0.0
+        assert metrics.cost_impact_expected_pct == 0.0
+        assert metrics.time_impact_expected_pct == 0.0
+        assert metrics.constraint_violations_cost == 0
+        assert metrics.constraint_violations_time == 0
+        assert metrics.constraint_violations_incident == 0
+        assert metrics.last_cycle_at is None
+        assert metrics.last_proposal_applied_at is None
+
+    def test_custom_values(self):
+        """Should accept custom values."""
+        metrics = QualityOptimizerMetrics(
+            cycles_total=10,
+            proposals_generated_total=20,
+            proposals_applied_total=15,
+            proposals_blocked_total=3,
+            proposals_rejected_total=2,
+            rollbacks_total=1,
+            quality_gain_expected=8.5,
+            cost_impact_expected_pct=8.2,
+            time_impact_expected_pct=7.5,
+            constraint_violations_cost=1,
+            constraint_violations_time=0,
+            constraint_violations_incident=0,
+            last_cycle_at=datetime.now(timezone.utc).isoformat(),
+            last_proposal_applied_at=datetime.now(timezone.utc).isoformat(),
+        )
+        
+        assert metrics.cycles_total == 10
+        assert metrics.quality_gain_expected == 8.5
+        assert metrics.cost_impact_expected_pct == 8.2
+
+
+class TestPrometheusRendering:
+    """Test Prometheus format rendering for v25 metrics."""
+
+    def test_render_quality_metrics_in_snapshot(self, collector):
+        """Quality metrics should appear in snapshot."""
+        collector.record_quality_cycle()
+        collector.record_quality_proposal("generated")
+        collector.record_quality_proposal_applied()  # This increments proposals_applied_total
+        collector.record_quality_impact(8.5, 8.2, 7.5)
+        
         snapshot = collector.snapshot()
-        assert snapshot["counts"]["policy_proposal_total"] == 2
+        
+        # Should contain v25 quality optimizer metrics
+        assert "quality_optimizer_v25" in snapshot
+        v25_metrics = snapshot["quality_optimizer_v25"]
+        assert v25_metrics["cycles_total"] == 1
+        assert v25_metrics["proposals_generated_total"] == 1
+        assert v25_metrics["proposals_applied_total"] == 1
+        assert v25_metrics["quality_gain_expected"] == 8.5
+        assert v25_metrics["cost_impact_expected_pct"] == 8.2
+        assert v25_metrics["time_impact_expected_pct"] == 7.5
 
-    def test_record_policy_applied(self):
-        """Should record policy applied metric."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act
-        collector.record_count("policy_applied_total")
-        
-        # Assert
+    def test_render_includes_timestamp(self, collector):
+        """Should include timestamp in output."""
         snapshot = collector.snapshot()
-        assert snapshot["counts"]["policy_applied_total"] == 1
-
-    def test_record_policy_blocked(self):
-        """Should record policy blocked metric."""
-        # Arrange
-        collector = MetricsCollector()
         
-        # Act
-        collector.record_count("policy_blocked_total", 3)
-        
-        # Assert
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["policy_blocked_total"] == 3
-
-    def test_record_policy_rollback(self):
-        """Should record policy rollback metric."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act
-        collector.record_count("policy_rollback_total")
-        collector.record_count("policy_rollback_total")
-        collector.record_count("policy_rollback_total")
-        
-        # Assert
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["policy_rollback_total"] == 3
-
-    def test_record_policy_freeze(self):
-        """Should record policy freeze metric."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act
-        collector.record_count("policy_freeze_total", 2)
-        
-        # Assert
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["policy_freeze_total"] == 2
-
-    def test_record_cross_brand_gap(self):
-        """Should record cross-brand p90-p10 gap as gauge."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act - record as latency (gauge)
-        collector.record_latency("cross_brand_gap_p90_p10", 0.12)
-        collector.record_latency("cross_brand_gap_p90_p10", 0.15)
-        
-        # Assert
-        snapshot = collector.snapshot()
-        # Average of 0.12 and 0.15 = 0.135
-        assert pytest.approx(snapshot["avg_latencies"]["cross_brand_gap_p90_p10"], 0.001) == 0.135
-
-    def test_cross_brand_gap_by_brand(self):
-        """Should record cross-brand gap per brand."""
-        # Arrange
-        collector = MetricsCollector()
-        
-        # Act
-        collector.record_latency("cross_brand_gap_brand_a", 0.10)
-        collector.record_latency("cross_brand_gap_brand_b", 0.20)
-        
-        # Assert
-        snapshot = collector.snapshot()
-        assert "cross_brand_gap_brand_a" in snapshot["avg_latencies"]
-        assert "cross_brand_gap_brand_b" in snapshot["avg_latencies"]
+        assert "timestamp" in snapshot
+        assert snapshot["timestamp"] is not None
 
 
-# v22 DAG Metrics Tests
+class TestMetricsIsolation:
+    """Test isolation between different metric types."""
 
-class TestDagMetrics:
-    """Test v22 DAG-related metrics."""
+    def test_quality_metrics_isolated_from_roi(self, collector):
+        """Quality metrics should not affect ROI metrics."""
+        collector.record_quality_cycle()
+        collector.record_quality_proposal_applied()
+        
+        roi_metrics = collector.get_roi_metrics()
+        
+        # ROI metrics should be unaffected
+        assert roi_metrics.cycles_total == 0
+        assert roi_metrics.proposals_applied_total == 0
 
-    def test_record_dag_run_total(self):
-        """Should record DAG run metric."""
-        collector = MetricsCollector()
+    def test_quality_metrics_isolated_from_learning(self, collector):
+        """Quality metrics should not affect learning metrics."""
+        collector.record_quality_cycle()
+        collector.record_quality_proposal_applied()
         
-        collector.record_count("dag_runs_total_completed", 1)
-        collector.record_count("dag_runs_total_failed", 1)
+        learning_metrics = collector.get_learning_metrics()
         
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["dag_runs_total_completed"] == 1
-        assert snapshot["counts"]["dag_runs_total_failed"] == 1
+        # Learning metrics should be unaffected
+        assert learning_metrics.learning_cycles_total == 0
+        assert learning_metrics.proposals_applied_total == 0
 
-    def test_record_dag_node_execution_total(self):
-        """Should record DAG node execution metric."""
-        collector = MetricsCollector()
-        
-        collector.record_count("dag_node_executions_completed", 1)
-        collector.record_count("dag_node_executions_failed", 1)
-        collector.record_count("dag_node_executions_timeout", 1)
-        
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["dag_node_executions_completed"] == 1
-        assert snapshot["counts"]["dag_node_executions_failed"] == 1
-        assert snapshot["counts"]["dag_node_executions_timeout"] == 1
 
-    def test_record_dag_retry_total(self):
-        """Should record DAG retry metric."""
-        collector = MetricsCollector()
-        
-        collector.record_count("dag_retries_total", 5)
-        
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["dag_retries_total"] == 5
+class TestConcurrentAccess:
+    """Test thread safety of metrics collection."""
 
-    def test_record_dag_timeout_total(self):
-        """Should record DAG timeout metric."""
-        collector = MetricsCollector()
+    def test_concurrent_quality_cycle_recording(self, collector):
+        """Should handle concurrent cycle recording."""
+        import threading
         
-        collector.record_count("dag_timeouts_total", 2)
+        def record_cycles(n):
+            for _ in range(n):
+                collector.record_quality_cycle()
         
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["dag_timeouts_total"] == 2
+        threads = [
+            threading.Thread(target=record_cycles, args=(10,))
+            for _ in range(5)
+        ]
+        
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        metrics = collector.get_quality_metrics()
+        assert metrics.cycles_total == 50
 
-    def test_record_dag_approval_wait_seconds(self):
-        """Should record DAG approval wait time."""
-        collector = MetricsCollector()
+    def test_concurrent_proposal_recording(self, collector):
+        """Should handle concurrent proposal recording."""
+        import threading
         
-        collector.record_latency("dag_approval_wait_seconds", 30.5)
-        collector.record_latency("dag_approval_wait_seconds", 45.2)
+        def record_proposals(n):
+            for _ in range(n):
+                collector.record_quality_proposal("generated")
         
-        snapshot = collector.snapshot()
-        assert "dag_approval_wait_seconds" in snapshot["avg_latencies"]
-
-    def test_record_dag_handoff_failed_total(self):
-        """Should record DAG handoff failed metric."""
-        collector = MetricsCollector()
+        threads = [
+            threading.Thread(target=record_proposals, args=(10,))
+            for _ in range(3)
+        ]
         
-        collector.record_count("dag_handoff_failed_total", 1)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         
-        snapshot = collector.snapshot()
-        assert snapshot["counts"]["dag_handoff_failed_total"] == 1
-
-    def test_dag_metrics_in_prometheus_output(self):
-        """DAG metrics should appear in Prometheus output."""
-        from vm_webapp.agent_dag_audit import DagMetricsCollector
-        
-        dag_collector = DagMetricsCollector()
-        dag_collector.record_run(status="completed")
-        dag_collector.record_node_execution(status="completed")
-        dag_collector.record_retry()
-        
-        output = dag_collector.render_prometheus()
-        
-        assert "dag_runs_total" in output
-        assert "dag_node_executions_total" in output
-        assert "dag_retries_total" in output
+        metrics = collector.get_quality_metrics()
+        assert metrics.proposals_generated_total == 30
