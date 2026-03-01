@@ -346,3 +346,35 @@ jobs:
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
+
+  autonomous-playbook-agent-gate-v20:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Test autonomous playbook agent backend
+        run: |
+          uv run pytest 09-tools/tests/test_vm_webapp_planner.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_executor.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_supervisor.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "plan or approval or agent" -q
+          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      - name: Install frontend dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+      - name: Test Agent Ops panel UI
+        working-directory: ./09-tools/web/vm-ui
+        run: |
+          npm run test -- --run src/features/workspace/components/AgentOpsPanel.test.tsx
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
