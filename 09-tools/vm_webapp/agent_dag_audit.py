@@ -99,6 +99,11 @@ class DagMetricsCollector:
         # Gauges
         self._approval_wait_times: list[float] = []
         self._node_execution_times: list[float] = []
+        
+        # P0: Métricas de falha por node_type
+        self._handoff_failures_by_node_type: dict[str, int] = {}
+        self._timeouts_by_node_type: dict[str, int] = {}
+        self._retries_by_node_type: dict[str, int] = {}
     
     def record_run(self, status: str) -> None:
         """Registra conclusão de uma run."""
@@ -119,10 +124,13 @@ class DagMetricsCollector:
         with self._lock:
             self._retries_total += 1
     
-    def record_handoff_failure(self) -> None:
+    def record_handoff_failure(self, node_type: Optional[str] = None) -> None:
         """Registra uma falha de handoff."""
         with self._lock:
             self._handoff_failures_total += 1
+            if node_type:
+                self._handoff_failures_by_node_type[node_type] = \
+                    self._handoff_failures_by_node_type.get(node_type, 0) + 1
     
     def record_approval(self, status: str, wait_sec: Optional[float] = None) -> None:
         """Registra uma aprovação."""
@@ -149,6 +157,8 @@ class DagMetricsCollector:
                 "nodes": self._nodes_total.copy(),
                 "retries_total": self._retries_total,
                 "handoff_failures_total": self._handoff_failures_total,
+                "handoff_failures_by_node_type": self._handoff_failures_by_node_type.copy(),
+                "timeouts_by_node_type": self._timeouts_by_node_type.copy(),
                 "approvals": self._approvals_total.copy(),
                 "avg_approval_wait_sec": avg_approval_wait,
                 "avg_node_execution_sec": avg_node_execution,
@@ -185,6 +195,12 @@ class DagMetricsCollector:
         lines.append("# HELP dag_handoff_failed_total Total handoff failures")
         lines.append("# TYPE dag_handoff_failed_total counter")
         lines.append(f'dag_handoff_failed_total {snapshot["handoff_failures_total"]}')
+        
+        # P0: Handoff failures by node_type
+        lines.append("# HELP dag_handoff_failed_total_by_node_type Handoff failures by node type")
+        lines.append("# TYPE dag_handoff_failed_total_by_node_type counter")
+        for node_type, count in snapshot.get("handoff_failures_by_node_type", {}).items():
+            lines.append(f'dag_handoff_failed_total_by_node_type{{node_type="{node_type}"}} {count}')
         
         # Approvals
         lines.append("# HELP dag_approvals_total Total approval requests")
