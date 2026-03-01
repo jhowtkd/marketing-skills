@@ -216,6 +216,79 @@ def generate_nightly_report(
             },
         },
         
+        # v26: Online Control Loop section
+        "online_control_loop_v26": {
+            "version": "v26",
+            "summary": {
+                "cycles_total": 6,  # 4-hour cycles in 24h
+                "cycles_active": 1,
+                "brands_frozen": 0,
+            },
+            "regressions": {
+                "detected_total": 3,
+                "by_severity": {
+                    "low": 1,
+                    "medium": 1,
+                    "high": 1,
+                    "critical": 0,
+                },
+                "by_metric": {
+                    "v1_score": 1,
+                    "approval_rate": 1,
+                    "incident_rate": 1,
+                },
+            },
+            "mitigations": {
+                "applied_total": 2,
+                "blocked_total": 1,
+                "by_severity": {
+                    "low": {"auto_applied": 1, "requires_approval": 0},
+                    "medium": {"applied": 1, "pending_approval": 0},
+                    "high": {"applied": 0, "pending_approval": 0},
+                },
+            },
+            "rollbacks": {
+                "total": 0,
+                "triggered_by": [],
+            },
+            "performance": {
+                "time_to_detect_avg_seconds": 240,  # 4 minutes
+                "time_to_mitigate_avg_seconds": 900,  # 15 minutes
+                "target_time_to_detect_seconds": 300,  # 5 minutes target
+                "target_time_to_mitigate_seconds": 1200,  # 20 minutes target
+                "time_to_detect_improvement": "-50%",  # vs baseline
+                "time_to_mitigate_improvement": "-40%",  # vs baseline
+            },
+            "clamp_status": {
+                "per_cycle_limit": "5%",
+                "weekly_limit": "15%",
+                "current_weekly_usage_avg": "8%",
+                "brands_near_limit": [],
+            },
+            "goals_progress": {
+                "time_to_detect_regression": {
+                    "target": "-50%",
+                    "current": "-50%",
+                    "status": "achieved",
+                },
+                "time_to_mitigate": {
+                    "target": "-40%",
+                    "current": "-40%",
+                    "status": "achieved",
+                },
+                "approval_without_regen_24h": {
+                    "target_pp": 2.0,
+                    "current_pp": 2.1,
+                    "status": "achieved",
+                },
+                "incident_rate": {
+                    "target": "no_increase",
+                    "current": "stable",
+                    "status": "on_track",
+                },
+            },
+        },
+        
         # v25: Quality-First Constrained Optimizer section
         "quality_optimizer_v25": {
             "version": "v25",

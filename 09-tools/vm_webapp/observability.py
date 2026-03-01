@@ -55,6 +55,33 @@ class ApprovalLearningMetrics:
 
 
 @dataclass
+class ControlLoopMetrics:
+    """v26 Online Control Loop metrics."""
+    # Counters
+    cycles_total: int = 0
+    regressions_detected_total: int = 0
+    mitigations_applied_total: int = 0
+    mitigations_blocked_total: int = 0
+    rollbacks_total: int = 0
+    
+    # Time-based metrics (in seconds)
+    time_to_detect_seconds: float = 0.0
+    time_to_mitigate_seconds: float = 0.0
+    time_to_detect_count: int = 0  # Number of measurements
+    time_to_mitigate_count: int = 0
+    
+    # Active state
+    active_cycles: int = 0
+    frozen_brands: int = 0
+    
+    # Timestamps
+    last_cycle_at: Optional[str] = None
+    last_regression_detected_at: Optional[str] = None
+    last_mitigation_applied_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+
+
+@dataclass
 class RoiOptimizerMetrics:
     """v19 ROI Optimizer metrics snapshot."""
     # Counters
@@ -90,6 +117,7 @@ class MetricsCollector:
         self._roi_metrics = RoiOptimizerMetrics()
         self._learning_metrics = ApprovalLearningMetrics()
         self._quality_metrics = QualityOptimizerMetrics()
+        self._control_loop_metrics = ControlLoopMetrics()
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -216,6 +244,89 @@ class MetricsCollector:
                 last_proposal_applied_at=self._quality_metrics.last_proposal_applied_at,
             )
     
+    # v26: Online Control Loop metrics
+    def record_control_loop_cycle(self) -> None:
+        """v26: Record a control loop cycle run."""
+        with self._lock:
+            self._control_loop_metrics.cycles_total += 1
+            self._control_loop_metrics.active_cycles += 1
+            self._control_loop_metrics.last_cycle_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_regression_detected(self) -> None:
+        """v26: Record a regression detection."""
+        with self._lock:
+            self._control_loop_metrics.regressions_detected_total += 1
+            self._control_loop_metrics.last_regression_detected_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_mitigation_applied(self) -> None:
+        """v26: Record a mitigation being applied."""
+        with self._lock:
+            self._control_loop_metrics.mitigations_applied_total += 1
+            self._control_loop_metrics.last_mitigation_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_mitigation_blocked(self) -> None:
+        """v26: Record a mitigation being blocked."""
+        with self._lock:
+            self._control_loop_metrics.mitigations_blocked_total += 1
+    
+    def record_control_loop_rollback(self) -> None:
+        """v26: Record a rollback operation."""
+        with self._lock:
+            self._control_loop_metrics.rollbacks_total += 1
+            self._control_loop_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_time_to_detect(self, seconds: float) -> None:
+        """v26: Record time to detect regression (seconds)."""
+        with self._lock:
+            # Running average
+            current = self._control_loop_metrics.time_to_detect_seconds
+            count = self._control_loop_metrics.time_to_detect_count
+            new_count = count + 1
+            new_avg = (current * count + seconds) / new_count
+            self._control_loop_metrics.time_to_detect_seconds = new_avg
+            self._control_loop_metrics.time_to_detect_count = new_count
+    
+    def record_time_to_mitigate(self, seconds: float) -> None:
+        """v26: Record time to mitigate regression (seconds)."""
+        with self._lock:
+            current = self._control_loop_metrics.time_to_mitigate_seconds
+            count = self._control_loop_metrics.time_to_mitigate_count
+            new_count = count + 1
+            new_avg = (current * count + seconds) / new_count
+            self._control_loop_metrics.time_to_mitigate_seconds = new_avg
+            self._control_loop_metrics.time_to_mitigate_count = new_count
+    
+    def update_active_cycles(self, count: int) -> None:
+        """v26: Update active cycles count."""
+        with self._lock:
+            self._control_loop_metrics.active_cycles = count
+    
+    def update_frozen_brands(self, count: int) -> None:
+        """v26: Update frozen brands count."""
+        with self._lock:
+            self._control_loop_metrics.frozen_brands = count
+    
+    def get_control_loop_metrics(self) -> ControlLoopMetrics:
+        """v26: Get current control loop metrics snapshot."""
+        with self._lock:
+            return ControlLoopMetrics(
+                cycles_total=self._control_loop_metrics.cycles_total,
+                regressions_detected_total=self._control_loop_metrics.regressions_detected_total,
+                mitigations_applied_total=self._control_loop_metrics.mitigations_applied_total,
+                mitigations_blocked_total=self._control_loop_metrics.mitigations_blocked_total,
+                rollbacks_total=self._control_loop_metrics.rollbacks_total,
+                time_to_detect_seconds=self._control_loop_metrics.time_to_detect_seconds,
+                time_to_mitigate_seconds=self._control_loop_metrics.time_to_mitigate_seconds,
+                time_to_detect_count=self._control_loop_metrics.time_to_detect_count,
+                time_to_mitigate_count=self._control_loop_metrics.time_to_mitigate_count,
+                active_cycles=self._control_loop_metrics.active_cycles,
+                frozen_brands=self._control_loop_metrics.frozen_brands,
+                last_cycle_at=self._control_loop_metrics.last_cycle_at,
+                last_regression_detected_at=self._control_loop_metrics.last_regression_detected_at,
+                last_mitigation_applied_at=self._control_loop_metrics.last_mitigation_applied_at,
+                last_rollback_at=self._control_loop_metrics.last_rollback_at,
+            )
+    
     # v19: ROI Optimizer metrics
     def record_roi_cycle(self) -> None:
         """v19: Record an ROI optimizer cycle run."""
@@ -321,6 +432,20 @@ class MetricsCollector:
                     "constraint_violations_cost": self._quality_metrics.constraint_violations_cost,
                     "constraint_violations_time": self._quality_metrics.constraint_violations_time,
                     "constraint_violations_incident": self._quality_metrics.constraint_violations_incident,
+                },
+                # v26 Online Control Loop metrics
+                "control_loop_v26": {
+                    "cycles_total": self._control_loop_metrics.cycles_total,
+                    "regressions_detected_total": self._control_loop_metrics.regressions_detected_total,
+                    "mitigations_applied_total": self._control_loop_metrics.mitigations_applied_total,
+                    "mitigations_blocked_total": self._control_loop_metrics.mitigations_blocked_total,
+                    "rollbacks_total": self._control_loop_metrics.rollbacks_total,
+                    "time_to_detect_seconds": self._control_loop_metrics.time_to_detect_seconds,
+                    "time_to_mitigate_seconds": self._control_loop_metrics.time_to_mitigate_seconds,
+                    "active_cycles": self._control_loop_metrics.active_cycles,
+                    "frozen_brands": self._control_loop_metrics.frozen_brands,
+                    "last_cycle_at": self._control_loop_metrics.last_cycle_at,
+                    "last_regression_detected_at": self._control_loop_metrics.last_regression_detected_at,
                 },
             }
 
