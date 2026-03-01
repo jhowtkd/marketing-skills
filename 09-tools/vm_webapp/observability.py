@@ -8,6 +8,27 @@ from typing import Any, Optional
 
 
 @dataclass
+class ApprovalLearningMetrics:
+    """v24 Approval Learning Loop metrics."""
+    # Counters
+    learning_cycles_total: int = 0
+    proposals_generated_total: int = 0
+    proposals_applied_total: int = 0
+    proposals_blocked_total: int = 0
+    proposals_rejected_total: int = 0
+    rollbacks_total: int = 0
+    
+    # Learning impact
+    batch_precision_percent: float = 0.0
+    human_minutes_saved: float = 0.0
+    queue_reduction_percent: float = 0.0
+    
+    # Timestamps
+    last_cycle_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+
+
+@dataclass
 class RoiOptimizerMetrics:
     """v19 ROI Optimizer metrics snapshot."""
     # Counters
@@ -41,7 +62,65 @@ class MetricsCollector:
         self._latencies: dict[str, list[float]] = {}
         self._costs: dict[str, float] = {}
         self._roi_metrics = RoiOptimizerMetrics()
+        self._learning_metrics = ApprovalLearningMetrics()
     
+    # v24: Approval Learning Loop metrics
+    def record_learning_cycle(self) -> None:
+        """v24: Record a learning cycle run."""
+        with self._lock:
+            self._learning_metrics.learning_cycles_total += 1
+            self._learning_metrics.last_cycle_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_learning_proposal(self, status: str = "generated") -> None:
+        """v24: Record a learning proposal."""
+        with self._lock:
+            self._learning_metrics.proposals_generated_total += 1
+            if status == "blocked":
+                self._learning_metrics.proposals_blocked_total += 1
+            elif status == "rejected":
+                self._learning_metrics.proposals_rejected_total += 1
+    
+    def record_learning_proposal_applied(self) -> None:
+        """v24: Record a learning proposal being applied."""
+        with self._lock:
+            self._learning_metrics.proposals_applied_total += 1
+            self._learning_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_learning_rollback(self) -> None:
+        """v24: Record a learning rollback operation."""
+        with self._lock:
+            self._learning_metrics.rollbacks_total += 1
+    
+    def update_learning_impact(
+        self,
+        batch_precision: float,
+        minutes_saved: float,
+        queue_reduction: float,
+    ) -> None:
+        """v24: Update learning impact gauges."""
+        with self._lock:
+            self._learning_metrics.batch_precision_percent = batch_precision
+            self._learning_metrics.human_minutes_saved = minutes_saved
+            self._learning_metrics.queue_reduction_percent = queue_reduction
+    
+    def get_learning_metrics(self) -> ApprovalLearningMetrics:
+        """v24: Get current learning metrics snapshot."""
+        with self._lock:
+            return ApprovalLearningMetrics(
+                learning_cycles_total=self._learning_metrics.learning_cycles_total,
+                proposals_generated_total=self._learning_metrics.proposals_generated_total,
+                proposals_applied_total=self._learning_metrics.proposals_applied_total,
+                proposals_blocked_total=self._learning_metrics.proposals_blocked_total,
+                proposals_rejected_total=self._learning_metrics.proposals_rejected_total,
+                rollbacks_total=self._learning_metrics.rollbacks_total,
+                batch_precision_percent=self._learning_metrics.batch_precision_percent,
+                human_minutes_saved=self._learning_metrics.human_minutes_saved,
+                queue_reduction_percent=self._learning_metrics.queue_reduction_percent,
+                last_cycle_at=self._learning_metrics.last_cycle_at,
+                last_proposal_applied_at=self._learning_metrics.last_proposal_applied_at,
+            )
+    
+    # v19: ROI Optimizer metrics
     def record_roi_cycle(self) -> None:
         """v19: Record an ROI optimizer cycle run."""
         with self._lock:
