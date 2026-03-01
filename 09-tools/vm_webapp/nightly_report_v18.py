@@ -286,7 +286,36 @@ def generate_nightly_report(
             "critical": 2,
             "warning": 8,
             "info": 15
-        }
+        },
+        
+        # v22 DAG Operations section
+        "dag_operations": {
+            "runs_total": 45,
+            "runs_completed": 38,
+            "runs_failed": 4,
+            "runs_aborted": 3,
+            "nodes_executed": 156,
+            "nodes_failed": 8,
+            "nodes_timeout": 2,
+            "retries_total": 12,
+            "handoff_failures": 1,
+            "approvals_pending": 3,
+            "approvals_granted": 15,
+            "approvals_rejected": 2,
+            "avg_approval_wait_sec": 45.5,
+            "bottlenecks": [
+                {
+                    "node_type": "publish",
+                    "avg_wait_sec": 120.5,
+                    "failure_rate": 0.15,
+                },
+                {
+                    "node_type": "review",
+                    "avg_wait_sec": 45.0,
+                    "failure_rate": 0.08,
+                },
+            ],
+        },
     }
     
     return report
