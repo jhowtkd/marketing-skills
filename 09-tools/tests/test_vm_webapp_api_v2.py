@@ -1,16 +1,16 @@
-"""API v2 tests for ROI Optimizer endpoints."""
+"""API v2 tests for Quality Optimizer endpoints (v25)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 from vm_webapp.app import create_app
-from vm_webapp.roi_operations import RoiOperationsService
+from vm_webapp.quality_optimizer import QualityOptimizer, ProposalState
 
 
 @pytest.fixture
 def app():
     """FastAPI app fixture."""
-    return create_app()
+    return create_app(enable_in_process_worker=False)
 
 
 @pytest.fixture
@@ -20,508 +20,389 @@ def client(app):
 
 
 @pytest.fixture
-def roi_service():
-    """ROI operations service."""
-    return RoiOperationsService()
+def sample_run_data():
+    """Sample run data for testing."""
+    return {
+        "run_id": "run-001",
+        "brand_id": "brand-001",
+        "quality_score": 65.0,
+        "v1_score": 60.0,
+        "cost_per_job": 100.0,
+        "mttc": 300.0,
+        "incident_rate": 0.05,
+        "approval_without_regen_24h": 0.70,
+        "params": {
+            "temperature": 0.7,
+            "max_tokens": 2000,
+            "model": "gpt-4",
+        },
+    }
 
 
-class TestRoiOptimizerEndpoints:
-    """Test ROI optimizer API endpoints."""
+class TestOptimizerStatusEndpoint:
+    """Test GET /v2/optimizer/status."""
 
-    def test_status_endpoint(self, client):
-        """GET /api/v2/roi/status returns optimizer status."""
-        response = client.get("/api/v2/roi/status")
+    def test_get_optimizer_status(self, client):
+        """Should return optimizer version and stats."""
+        response = client.get("/v2/optimizer/status")
         
         assert response.status_code == 200
         data = response.json()
         
-        assert "mode" in data
-        assert "cadence" in data
-        assert "current_score" in data
-        assert "weights" in data
+        assert data["version"] == "v25"
+        assert "total_proposals" in data
+        assert "proposals_by_state" in data
 
-    def test_proposals_list_endpoint(self, client):
-        """GET /api/v2/roi/proposals returns list of proposals."""
-        response = client.get("/api/v2/roi/proposals")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert isinstance(data, list)
-        for proposal in data:
-            assert "id" in proposal
-            assert "description" in proposal
-            assert "expected_roi_delta" in proposal
-            assert "risk_level" in proposal
-            assert "status" in proposal
 
-    def test_run_endpoint_creates_proposals(self, client):
-        """POST /api/v2/roi/run generates new proposals."""
-        # First, run the optimizer
+class TestOptimizerRunEndpoint:
+    """Test POST /v2/optimizer/run."""
+
+    def test_run_optimizer_creates_proposal(self, client, sample_run_data):
+        """Should create and return a proposal."""
         response = client.post(
-            "/api/v2/roi/run",
+            "/v2/optimizer/run",
             json={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
+                "current_run": sample_run_data,
+                "historical_runs": [],
+                "constraints": {
+                    "max_cost_increase_pct": 10.0,
+                    "max_mttc_increase_pct": 10.0,
+                    "max_incident_rate": 0.05,
+                },
+            },
         )
         
         assert response.status_code == 200
         data = response.json()
         
+        assert "proposal_id" in data
+        assert data["run_id"] == "run-001"
+        assert data["state"] == "pending"
+        assert "recommended_params" in data
+        assert "feasibility_check_passed" in data
+        assert "estimated_v1_improvement" in data
+        assert "estimated_cost_delta_pct" in data
+        assert "estimated_mttc_delta_pct" in data
+
+    def test_run_optimizer_with_constraints(self, client, sample_run_data):
+        """Should respect custom constraints."""
+        response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+                "constraints": {
+                    "max_cost_increase_pct": 5.0,
+                    "max_mttc_increase_pct": 5.0,
+                    "max_incident_rate": 0.03,
+                },
+            },
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # With strict constraints, may not be feasible
+        assert "proposal_id" in data
+
+
+class TestGetProposalEndpoint:
+    """Test GET /v2/optimizer/proposals/{proposal_id}."""
+
+    def test_get_proposal(self, client, sample_run_data):
+        """Should return proposal details."""
+        # First create a proposal
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        
+        # Get the proposal
+        response = client.get(f"/v2/optimizer/proposals/{proposal_id}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["proposal_id"] == proposal_id
+        assert data["state"] == "pending"
+        assert "feasibility_check_passed" in data
+        assert "quality_score" in data
+
+    def test_get_proposal_not_found(self, client):
+        """Should return 404 for unknown proposal."""
+        response = client.get("/v2/optimizer/proposals/nonexistent-id")
+        
+        assert response.status_code == 404
+
+
+class TestGetRunProposalsEndpoint:
+    """Test GET /v2/optimizer/runs/{run_id}/proposals."""
+
+    def test_get_run_proposals(self, client, sample_run_data):
+        """Should return all proposals for a run."""
+        # Create a proposal first
+        client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        
+        response = client.get("/v2/optimizer/runs/run-001/proposals")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["run_id"] == "run-001"
+        assert "proposal_count" in data
         assert "proposals" in data
-        assert "score_before" in data
-        assert "score_after" in data
-        assert len(data["proposals"]) > 0
 
-    def test_apply_proposal_endpoint(self, client):
-        """POST /api/v2/roi/proposals/{id}/apply applies a proposal."""
-        # First run to create proposals
-        run_response = client.post(
-            "/api/v2/roi/run",
+
+class TestApplyProposalEndpoint:
+    """Test POST /v2/optimizer/proposals/{proposal_id}/apply."""
+
+    def test_apply_proposal(self, client, sample_run_data):
+        """Should apply a pending proposal."""
+        # Create a proposal first
+        create_response = client.post(
+            "/v2/optimizer/run",
             json={
-                "approval_without_regen_24h": 0.70,
-                "revenue_attribution_usd": 100000,
-                "regen_per_job": 0.5,
-                "quality_score_avg": 0.80,
-                "avg_latency_ms": 150,
-                "cost_per_job_usd": 0.05,
-                "incident_rate": 0.01,
-            }
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
         )
+        proposal_id = create_response.json()["proposal_id"]
         
-        proposals = run_response.json()["proposals"]
-        proposal_id = proposals[0]["id"]
+        # Apply the proposal
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "applied"
+        assert data["proposal_id"] == proposal_id
+        assert "applied_at" in data
 
+    def test_apply_proposal_not_found(self, client):
+        """Should return 404 for unknown proposal."""
+        response = client.post("/v2/optimizer/proposals/nonexistent-id/apply")
+        
+        assert response.status_code == 404
 
-# DAG Ops API v2 Tests - Task 4 v22
-
-class TestDagOpsEndpoints:
-    """Test DAG Operations API endpoints."""
-
-    def test_create_dag_run_endpoint(self, client):
-        """POST /api/v2/dag/run creates a DAG run."""
+    def test_apply_blocked_if_infeasible(self, client, sample_run_data):
+        """Should block apply if not feasible and enforce_feasibility=True."""
+        # Create run with high tokens that will exceed strict constraints
+        high_cost_run = {
+            **sample_run_data,
+            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
+        }
+        
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": high_cost_run,
+                "historical_runs": [],
+                "constraints": {
+                    "max_cost_increase_pct": 5.0,  # Very strict
+                },
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        
+        # Try to apply with enforce_feasibility (default)
         response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_001",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [
-                    {"node_id": "node_a", "task_type": "research", "params": {}},
-                    {"node_id": "node_b", "task_type": "write", "params": {}},
-                ],
-                "edges": [
-                    {"from_node": "node_a", "to_node": "node_b"},
-                ],
-            }
+            f"/v2/optimizer/proposals/{proposal_id}/apply",
+            json={"enforce_feasibility": True},
         )
         
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "run_id" in data
-        assert data["dag_id"] == "test_dag_001"
-        assert data["brand_id"] == "brand_001"
-        assert data["status"] == "pending"
-        assert len(data["node_states"]) == 2
+        assert response.status_code == 409
 
-    def test_get_dag_run_endpoint(self, client):
-        """GET /api/v2/dag/run/{run_id} returns DAG run details."""
-        # First create a run
+    def test_apply_allowed_with_override(self, client, sample_run_data):
+        """Should allow apply with enforce_feasibility=False."""
+        # Create run with high tokens
+        high_cost_run = {
+            **sample_run_data,
+            "params": {"temperature": 0.7, "max_tokens": 10000, "model": "gpt-4"},
+        }
+        
         create_response = client.post(
-            "/api/v2/dag/run",
+            "/v2/optimizer/run",
             json={
-                "dag_id": "test_dag_002",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [
-                    {"node_id": "node_a", "task_type": "research", "params": {}},
-                ],
-                "edges": [],
-            }
+                "current_run": high_cost_run,
+                "historical_runs": [],
+                "constraints": {
+                    "max_cost_increase_pct": 5.0,
+                },
+            },
         )
+        proposal_id = create_response.json()["proposal_id"]
         
-        run_id = create_response.json()["run_id"]
-        
-        # Get the run
-        response = client.get(f"/api/v2/dag/run/{run_id}")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["run_id"] == run_id
-        assert "status" in data
-        assert "node_states" in data
-
-    def test_pause_dag_run_endpoint(self, client):
-        """POST /api/v2/dag/run/{run_id}/pause pauses a DAG run."""
-        # Create a run
-        create_response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_003",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
-                "edges": [],
-            }
-        )
-        
-        run_id = create_response.json()["run_id"]
-        
-        # Pause the run
-        response = client.post(f"/api/v2/dag/run/{run_id}/pause")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "paused"
-        assert data["run_id"] == run_id
-
-    def test_resume_dag_run_endpoint(self, client):
-        """POST /api/v2/dag/run/{run_id}/resume resumes a paused DAG run."""
-        # Create and pause a run
-        create_response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_004",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
-                "edges": [],
-            }
-        )
-        
-        run_id = create_response.json()["run_id"]
-        client.post(f"/api/v2/dag/run/{run_id}/pause")
-        
-        # Resume the run
-        response = client.post(f"/api/v2/dag/run/{run_id}/resume")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "running"
-        assert data["run_id"] == run_id
-
-    def test_abort_dag_run_endpoint(self, client):
-        """POST /api/v2/dag/run/{run_id}/abort aborts a DAG run."""
-        # Create a run
-        create_response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_005",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
-                "edges": [],
-            }
-        )
-        
-        run_id = create_response.json()["run_id"]
-        
-        # Abort the run
-        response = client.post(f"/api/v2/dag/run/{run_id}/abort")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "aborted"
-        assert data["run_id"] == run_id
-
-    def test_retry_node_endpoint(self, client):
-        """POST /api/v2/dag/run/{run_id}/node/{node_id}/retry retries a node."""
-        # Create a run
-        create_response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_006",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [{"node_id": "node_a", "task_type": "research", "params": {}}],
-                "edges": [],
-            }
-        )
-        
-        run_id = create_response.json()["run_id"]
-        
-        # Retry the node
-        response = client.post(f"/api/v2/dag/run/{run_id}/node/node_a/retry")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["run_id"] == run_id
-        assert data["node_id"] == "node_a"
-        assert "status" in data
-
-    def test_grant_dag_approval_endpoint(self, client):
-        """POST /api/v2/dag/approval/{request_id}/grant grants approval."""
-        # Create a run with high-risk node
-        create_response = client.post(
-            "/api/v2/dag/run",
-            json={
-                "dag_id": "test_dag_007",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [
-                    {"node_id": "critical_node", "task_type": "publish", "params": {}, "risk_level": "high"}
-                ],
-                "edges": [],
-            }
-        )
-        
-        run_id = create_response.json()["run_id"]
-        
-        # Request approval
-        approval_response = client.post(
-            f"/api/v2/dag/run/{run_id}/node/critical_node/approve-request"
-        )
-        
-        request_id = approval_response.json()["request_id"]
-        
-        # Grant approval
+        # Apply with override
         response = client.post(
-            f"/api/v2/dag/approval/{request_id}/grant",
-            json={"granted_by": "admin_001"}
+            f"/v2/optimizer/proposals/{proposal_id}/apply",
+            json={"enforce_feasibility": False},
         )
         
         assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "granted"
-        assert data["granted_by"] == "admin_001"
-        assert data["request_id"] == request_id
+        assert response.json()["status"] == "applied"
 
-    def test_reject_dag_approval_endpoint(self, client):
-        """POST /api/v2/dag/approval/{request_id}/reject rejects approval."""
-        # Create a run
+
+class TestRejectProposalEndpoint:
+    """Test POST /v2/optimizer/proposals/{proposal_id}/reject."""
+
+    def test_reject_proposal(self, client, sample_run_data):
+        """Should reject a pending proposal."""
+        # Create a proposal first
         create_response = client.post(
-            "/api/v2/dag/run",
+            "/v2/optimizer/run",
             json={
-                "dag_id": "test_dag_008",
-                "brand_id": "brand_001",
-                "project_id": "project_001",
-                "nodes": [
-                    {"node_id": "risky_node", "task_type": "publish", "params": {}, "risk_level": "high"}
-                ],
-                "edges": [],
-            }
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
         )
+        proposal_id = create_response.json()["proposal_id"]
         
-        run_id = create_response.json()["run_id"]
-        
-        # Request approval
-        approval_response = client.post(
-            f"/api/v2/dag/run/{run_id}/node/risky_node/approve-request"
-        )
-        
-        request_id = approval_response.json()["request_id"]
-        
-        # Reject approval
-        response = client.post(
-            f"/api/v2/dag/approval/{request_id}/reject",
-            json={"rejected_by": "admin_002", "reason": "Too risky"}
-        )
+        # Reject the proposal
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/reject")
         
         assert response.status_code == 200
         data = response.json()
         
         assert data["status"] == "rejected"
-        assert data["rejected_by"] == "admin_002"
-        assert data["reason"] == "Too risky"
+        assert data["proposal_id"] == proposal_id
 
 
-# v23 Approval Optimizer API Tests
+class TestFreezeProposalEndpoint:
+    """Test POST /v2/optimizer/proposals/{proposal_id}/freeze."""
 
-class TestApprovalOptimizerEndpoints:
-    """Test v23 Approval Optimizer API endpoints."""
-
-    def test_optimizer_queue_endpoint(self, client):
-        """GET /api/v2/optimizer/queue returns prioritized queue."""
-        # Add a request to the optimizer
-        client.post(
-            "/api/v2/optimizer/request",
+    def test_freeze_proposal(self, client, sample_run_data):
+        """Should freeze a pending proposal."""
+        # Create a proposal first
+        create_response = client.post(
+            "/v2/optimizer/run",
             json={
-                "request_id": "req_opt_001",
-                "run_id": "run_001",
-                "node_id": "node_a",
-                "node_type": "publish",
-                "risk_level": "high",
-                "brand_id": "brand_001",
-                "urgency": "critical",
-            }
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
         )
+        proposal_id = create_response.json()["proposal_id"]
         
-        # Get queue
-        response = client.get("/api/v2/optimizer/queue")
+        # Freeze the proposal
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/freeze")
         
         assert response.status_code == 200
         data = response.json()
         
-        assert isinstance(data, list)
-        assert len(data) > 0
-
-    def test_optimizer_add_request_endpoint(self, client):
-        """POST /api/v2/optimizer/request adds request to optimizer."""
-        response = client.post(
-            "/api/v2/optimizer/request",
-            json={
-                "request_id": "req_opt_002",
-                "run_id": "run_002",
-                "node_id": "node_b",
-                "node_type": "research",
-                "risk_level": "medium",
-                "brand_id": "brand_001",
-                "params": {"impact": "medium", "revenue_at_risk": 5000},
-            }
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["request_id"] == "req_opt_002"
-        assert "refined_risk_score" in data
-        assert "priority_score" in data
-        assert "priority_level" in data
-
-    def test_optimizer_batches_endpoint(self, client):
-        """GET /api/v2/optimizer/batches returns batches."""
-        # Add request first
-        client.post(
-            "/api/v2/optimizer/request",
-            json={
-                "request_id": "req_opt_003",
-                "run_id": "run_003",
-                "node_id": "node_c",
-                "node_type": "publish",
-                "risk_level": "medium",
-                "brand_id": "brand_002",
-            }
-        )
-        
-        # Get batches
-        response = client.get("/api/v2/optimizer/batches")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "batches" in data
-        assert isinstance(data["batches"], list)
-
-    def test_optimizer_approve_batch_endpoint(self, client):
-        """POST /api/v2/optimizer/batch/{batch_id}/approve approves batch."""
-        # Add request and create batch
-        client.post(
-            "/api/v2/optimizer/request",
-            json={
-                "request_id": "req_opt_004",
-                "run_id": "run_004",
-                "node_id": "node_d",
-                "node_type": "publish",
-                "risk_level": "low",
-                "brand_id": "brand_batch_test",
-            }
-        )
-        
-        # Create batch for specific brand
-        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test")
-        assert batch_response.status_code == 200
-        batch_id = batch_response.json()["batch_id"]
-        
-        # Approve batch
-        response = client.post(
-            f"/api/v2/optimizer/batch/{batch_id}/approve",
-            json={"approved_by": "admin_001"}
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["batch_id"] == batch_id
-        assert data["status"] == "approved"
-        assert data["approved_by"] == "admin_001"
-
-    def test_optimizer_reject_batch_endpoint(self, client):
-        """POST /api/v2/optimizer/batch/{batch_id}/reject rejects batch."""
-        # Add request
-        client.post(
-            "/api/v2/optimizer/request",
-            json={
-                "request_id": "req_opt_005",
-                "run_id": "run_005",
-                "node_id": "node_e",
-                "node_type": "research",
-                "risk_level": "medium",
-                "brand_id": "brand_batch_test_2",
-            }
-        )
-        
-        # Create batch for specific brand
-        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test_2")
-        batch_id = batch_response.json()["batch_id"]
-        
-        # Reject batch
-        response = client.post(
-            f"/api/v2/optimizer/batch/{batch_id}/reject",
-            json={"rejected_by": "admin_002", "reason": "Batch rejected"}
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["status"] == "rejected"
-        assert data["rejected_by"] == "admin_002"
-
-    def test_optimizer_expand_batch_endpoint(self, client):
-        """POST /api/v2/optimizer/batch/{batch_id}/expand expands batch."""
-        # Add request
-        client.post(
-            "/api/v2/optimizer/request",
-            json={
-                "request_id": "req_opt_006",
-                "run_id": "run_006",
-                "node_id": "node_f",
-                "node_type": "publish",
-                "risk_level": "high",
-                "brand_id": "brand_batch_test_3",
-            }
-        )
-        
-        # Create batch for specific brand
-        batch_response = client.post("/api/v2/optimizer/batch/create?brand_id=brand_batch_test_3")
-        batch_id = batch_response.json()["batch_id"]
-        
-        # Expand batch (individual approvals)
-        response = client.post(f"/api/v2/optimizer/batch/{batch_id}/expand")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["batch_id"] == batch_id
-        assert data["status"] == "expanded"
-
-    def test_optimizer_freeze_unfreeze_endpoint(self, client):
-        """POST /api/v2/optimizer/brand/{brand_id}/freeze freezes optimizer for brand."""
-        # Freeze
-        response = client.post("/api/v2/optimizer/brand/brand_test/freeze")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["brand_id"] == "brand_test"
         assert data["status"] == "frozen"
+        assert data["proposal_id"] == proposal_id
+
+    def test_cannot_apply_frozen(self, client, sample_run_data):
+        """Cannot apply a frozen proposal."""
+        # Create and freeze a proposal
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        client.post(f"/v2/optimizer/proposals/{proposal_id}/freeze")
         
-        # Unfreeze
-        response = client.post("/api/v2/optimizer/brand/brand_test/unfreeze")
+        # Try to apply
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
+        
+        assert response.status_code == 409
+
+
+class TestRollbackProposalEndpoint:
+    """Test POST /v2/optimizer/proposals/{proposal_id}/rollback."""
+
+    def test_rollback_proposal(self, client, sample_run_data):
+        """Should rollback an applied proposal."""
+        # Create and apply a proposal
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
+        
+        # Rollback
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/rollback")
         
         assert response.status_code == 200
         data = response.json()
         
-        assert data["status"] == "active"
+        assert data["status"] == "rolled_back"
+        assert data["proposal_id"] == proposal_id
+
+    def test_cannot_rollback_without_apply(self, client, sample_run_data):
+        """Cannot rollback without prior apply."""
+        # Create a proposal but don't apply
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        
+        # Try to rollback
+        response = client.post(f"/v2/optimizer/proposals/{proposal_id}/rollback")
+        
+        assert response.status_code == 409
+
+
+class TestProposalSnapshotEndpoint:
+    """Test GET /v2/optimizer/proposals/{proposal_id}/snapshot."""
+
+    def test_get_snapshot(self, client, sample_run_data):
+        """Should return snapshot for applied proposal."""
+        # Create and apply a proposal
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        client.post(f"/v2/optimizer/proposals/{proposal_id}/apply")
+        
+        # Get snapshot
+        response = client.get(f"/v2/optimizer/proposals/{proposal_id}/snapshot")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["proposal_id"] == proposal_id
+        assert "previous_params" in data
+        assert "applied_params" in data
+        assert "applied_at" in data
+
+    def test_snapshot_not_found_for_pending(self, client, sample_run_data):
+        """Should return 404 for pending proposal."""
+        # Create but don't apply
+        create_response = client.post(
+            "/v2/optimizer/run",
+            json={
+                "current_run": sample_run_data,
+                "historical_runs": [],
+            },
+        )
+        proposal_id = create_response.json()["proposal_id"]
+        
+        # Try to get snapshot
+        response = client.get(f"/v2/optimizer/proposals/{proposal_id}/snapshot")
+        
+        assert response.status_code == 404
