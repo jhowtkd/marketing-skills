@@ -9,8 +9,6 @@ Otimização de custo de aprovação humana para medium/high risk via:
 
 from __future__ import annotations
 
-import hashlib
-import json
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone

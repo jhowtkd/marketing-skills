@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r 09-tools/requirements.txt
-          pip install pytest pytest-asyncio httpx
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings
       
       - name: Run approval optimizer tests
         run: |
