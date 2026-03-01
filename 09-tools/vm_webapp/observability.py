@@ -8,6 +8,32 @@ from typing import Any, Optional
 
 
 @dataclass
+class QualityOptimizerMetrics:
+    """v25 Quality-First Constrained Optimizer metrics."""
+    # Counters
+    cycles_total: int = 0
+    proposals_generated_total: int = 0
+    proposals_applied_total: int = 0
+    proposals_blocked_total: int = 0
+    proposals_rejected_total: int = 0
+    rollbacks_total: int = 0
+    
+    # Impact expectations
+    quality_gain_expected: float = 0.0  # Total expected V1 score improvement
+    cost_impact_expected_pct: float = 0.0  # Expected cost impact %
+    time_impact_expected_pct: float = 0.0  # Expected MTTC impact %
+    
+    # Constraint compliance
+    constraint_violations_cost: int = 0
+    constraint_violations_time: int = 0
+    constraint_violations_incident: int = 0
+    
+    # Timestamps
+    last_cycle_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+
+
+@dataclass
 class ApprovalLearningMetrics:
     """v24 Approval Learning Loop metrics."""
     # Counters
@@ -63,6 +89,7 @@ class MetricsCollector:
         self._costs: dict[str, float] = {}
         self._roi_metrics = RoiOptimizerMetrics()
         self._learning_metrics = ApprovalLearningMetrics()
+        self._quality_metrics = QualityOptimizerMetrics()
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -118,6 +145,75 @@ class MetricsCollector:
                 queue_reduction_percent=self._learning_metrics.queue_reduction_percent,
                 last_cycle_at=self._learning_metrics.last_cycle_at,
                 last_proposal_applied_at=self._learning_metrics.last_proposal_applied_at,
+            )
+    
+    # v25: Quality-First Optimizer metrics
+    def record_quality_cycle(self) -> None:
+        """v25: Record a quality optimizer cycle run."""
+        with self._lock:
+            self._quality_metrics.cycles_total += 1
+            self._quality_metrics.last_cycle_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_quality_proposal(self, status: str) -> None:
+        """v25: Record a proposal generated with given status."""
+        with self._lock:
+            self._quality_metrics.proposals_generated_total += 1
+            if status == "blocked":
+                self._quality_metrics.proposals_blocked_total += 1
+            elif status == "rejected":
+                self._quality_metrics.proposals_rejected_total += 1
+    
+    def record_quality_proposal_applied(self) -> None:
+        """v25: Record a proposal being applied."""
+        with self._lock:
+            self._quality_metrics.proposals_applied_total += 1
+            self._quality_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_quality_rollback(self) -> None:
+        """v25: Record a rollback operation."""
+        with self._lock:
+            self._quality_metrics.rollbacks_total += 1
+    
+    def record_quality_impact(
+        self,
+        quality_gain: float,
+        cost_impact_pct: float,
+        time_impact_pct: float,
+    ) -> None:
+        """v25: Record expected impact metrics."""
+        with self._lock:
+            self._quality_metrics.quality_gain_expected += quality_gain
+            self._quality_metrics.cost_impact_expected_pct = cost_impact_pct
+            self._quality_metrics.time_impact_expected_pct = time_impact_pct
+    
+    def record_constraint_violation(self, violation_type: str) -> None:
+        """v25: Record a constraint violation."""
+        with self._lock:
+            if violation_type == "cost":
+                self._quality_metrics.constraint_violations_cost += 1
+            elif violation_type == "time":
+                self._quality_metrics.constraint_violations_time += 1
+            elif violation_type == "incident":
+                self._quality_metrics.constraint_violations_incident += 1
+    
+    def get_quality_metrics(self) -> QualityOptimizerMetrics:
+        """v25: Get current quality optimizer metrics snapshot."""
+        with self._lock:
+            return QualityOptimizerMetrics(
+                cycles_total=self._quality_metrics.cycles_total,
+                proposals_generated_total=self._quality_metrics.proposals_generated_total,
+                proposals_applied_total=self._quality_metrics.proposals_applied_total,
+                proposals_blocked_total=self._quality_metrics.proposals_blocked_total,
+                proposals_rejected_total=self._quality_metrics.proposals_rejected_total,
+                rollbacks_total=self._quality_metrics.rollbacks_total,
+                quality_gain_expected=self._quality_metrics.quality_gain_expected,
+                cost_impact_expected_pct=self._quality_metrics.cost_impact_expected_pct,
+                time_impact_expected_pct=self._quality_metrics.time_impact_expected_pct,
+                constraint_violations_cost=self._quality_metrics.constraint_violations_cost,
+                constraint_violations_time=self._quality_metrics.constraint_violations_time,
+                constraint_violations_incident=self._quality_metrics.constraint_violations_incident,
+                last_cycle_at=self._quality_metrics.last_cycle_at,
+                last_proposal_applied_at=self._quality_metrics.last_proposal_applied_at,
             )
     
     # v19: ROI Optimizer metrics
@@ -211,6 +307,21 @@ class MetricsCollector:
                 "avg_latencies": avg_latencies,
                 "total_costs": dict(self._costs),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                # v25 Quality Optimizer metrics
+                "quality_optimizer_v25": {
+                    "cycles_total": self._quality_metrics.cycles_total,
+                    "proposals_generated_total": self._quality_metrics.proposals_generated_total,
+                    "proposals_applied_total": self._quality_metrics.proposals_applied_total,
+                    "proposals_blocked_total": self._quality_metrics.proposals_blocked_total,
+                    "proposals_rejected_total": self._quality_metrics.proposals_rejected_total,
+                    "rollbacks_total": self._quality_metrics.rollbacks_total,
+                    "quality_gain_expected": self._quality_metrics.quality_gain_expected,
+                    "cost_impact_expected_pct": self._quality_metrics.cost_impact_expected_pct,
+                    "time_impact_expected_pct": self._quality_metrics.time_impact_expected_pct,
+                    "constraint_violations_cost": self._quality_metrics.constraint_violations_cost,
+                    "constraint_violations_time": self._quality_metrics.constraint_violations_time,
+                    "constraint_violations_incident": self._quality_metrics.constraint_violations_incident,
+                },
             }
 
 

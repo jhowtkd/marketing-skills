@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from vm_webapp.api import router as api_router
 from vm_webapp.api_agent_dag import router as dag_api_router
 from vm_webapp.api_approval_optimizer import router as optimizer_api_router
+from vm_webapp.api_quality_optimizer import router as quality_optimizer_api_router
 from vm_webapp.db import build_engine, init_db
 from vm_webapp.event_worker import InProcessEventWorker
 from vm_webapp.llm import KimiClient
@@ -79,6 +80,7 @@ def create_app(
     app.include_router(api_router, prefix="/api")
     app.include_router(dag_api_router)
     app.include_router(optimizer_api_router)
+    app.include_router(quality_optimizer_api_router)
 
     studio_static_dir = Path(__file__).resolve().parents[1] / "web" / "vm-studio" / "dist"
     if studio_static_dir.exists():

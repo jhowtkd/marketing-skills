@@ -216,6 +216,55 @@ def generate_nightly_report(
             },
         },
         
+        # v25: Quality-First Constrained Optimizer section
+        "quality_optimizer_v25": {
+            "version": "v25",
+            "cycles": {
+                "total": 12,
+                "completed": 10,
+                "blocked": 2,
+            },
+            "proposals": {
+                "generated": 15,
+                "applied": 8,
+                "blocked": 4,
+                "rejected": 2,
+                "frozen": 1,
+            },
+            "rollbacks": {
+                "total": 1,
+                "reasons": ["quality_regression"],
+            },
+            "impact": {
+                "quality_gain_expected": 8.5,  # V1 score points
+                "cost_impact_expected_pct": 8.2,  # +8.2% (within +10% limit)
+                "time_impact_expected_pct": 7.5,  # +7.5% (within +10% limit)
+                "constraint_compliance": {
+                    "cost": {"within_limit": True, "actual_pct": 8.2, "limit_pct": 10.0},
+                    "time": {"within_limit": True, "actual_pct": 7.5, "limit_pct": 10.0},
+                    "incidents": {"within_limit": True, "actual_rate": 0.04, "limit_rate": 0.05},
+                },
+            },
+            "constraint_violations": {
+                "cost": 0,
+                "time": 0,
+                "incident": 0,
+                "total": 0,
+            },
+            "goals_progress": {
+                "approval_without_regen_24h": {
+                    "target_pp": 5.0,
+                    "current_pp": 2.3,
+                    "status": "on_track",
+                },
+                "v1_score_avg": {
+                    "target_increase": 8.0,
+                    "current_increase": 4.5,
+                    "status": "on_track",
+                },
+            },
+        },
+        
         # v24: Approval Learning Impact section
         "approval_learning_impact": {
             "version": "v24",
@@ -400,6 +449,22 @@ Brand Breakdown:
 False Positives Reduction:    {report['multibrand_governance']['goals']['false_positives_reduction']['current']:.1%} / {report['multibrand_governance']['goals']['false_positives_reduction']['target']:.1%} ({report['multibrand_governance']['goals']['false_positives_reduction']['status']})
 Approval wo/ Regen:           +{report['multibrand_governance']['goals']['approval_without_regen_improvement']['current']:.2f} / +{report['multibrand_governance']['goals']['approval_without_regen_improvement']['target']:.2f} p.p. ({report['multibrand_governance']['goals']['approval_without_regen_improvement']['status']})
 Quality Gap Reduction:        {report['multibrand_governance']['goals']['quality_gap_reduction']['current']:.1%} / {report['multibrand_governance']['goals']['quality_gap_reduction']['target']:.1%} ({report['multibrand_governance']['goals']['quality_gap_reduction']['status']})
+
+🔧 QUALITY OPTIMIZER v25
+────────────────────────────────────────────────────────────────────
+Cycles:                 {report['quality_optimizer_v25']['cycles']['total']} total, {report['quality_optimizer_v25']['cycles']['completed']} completed
+Proposals:              {report['quality_optimizer_v25']['proposals']['generated']} generated, {report['quality_optimizer_v25']['proposals']['applied']} applied
+                        {report['quality_optimizer_v25']['proposals']['blocked']} blocked, {report['quality_optimizer_v25']['proposals']['rejected']} rejected
+Rollbacks:              {report['quality_optimizer_v25']['rollbacks']['total']}
+
+Expected Impact:
+  - Quality Gain:       +{report['quality_optimizer_v25']['impact']['quality_gain_expected']:.1f} V1 points
+  - Cost Impact:        +{report['quality_optimizer_v25']['impact']['cost_impact_expected_pct']:.1f}% (limit: +10%)
+  - Time Impact:        +{report['quality_optimizer_v25']['impact']['time_impact_expected_pct']:.1f}% (limit: +10%)
+
+Goals Progress (6 weeks):
+  - Approval w/o Regen: +{report['quality_optimizer_v25']['goals_progress']['approval_without_regen_24h']['current_pp']:.1f} / +{report['quality_optimizer_v25']['goals_progress']['approval_without_regen_24h']['target_pp']:.1f} p.p. ({report['quality_optimizer_v25']['goals_progress']['approval_without_regen_24h']['status']})
+  - V1 Score Avg:       +{report['quality_optimizer_v25']['goals_progress']['v1_score_avg']['current_increase']:.1f} / +{report['quality_optimizer_v25']['goals_progress']['v1_score_avg']['target_increase']:.1f} points ({report['quality_optimizer_v25']['goals_progress']['v1_score_avg']['status']})
 
 🤖 AUTOMATED DECISIONS
 ────────────────────────────────────────────────────────────────────
