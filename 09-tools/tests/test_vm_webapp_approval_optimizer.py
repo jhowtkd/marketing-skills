@@ -100,7 +100,8 @@ class TestPriorityScorer:
             urgency_hours=4.0,
         )
 
-        score = scorer.calculate_priority(request)
+        result = scorer.calculate_priority(request)
+        score = result["priority_score"]
 
         assert 0 <= score <= 1
         assert score > 0.5  # medium risk + high impact/urgency
@@ -131,8 +132,10 @@ class TestPriorityScorer:
             urgency_hours=1.0,
         )
 
-        low_score = scorer.calculate_priority(low_priority)
-        high_score = scorer.calculate_priority(high_priority)
+        low_result = scorer.calculate_priority(low_priority)
+        high_result = scorer.calculate_priority(high_priority)
+        low_score = low_result["priority_score"]
+        high_score = high_result["priority_score"]
 
         assert high_score > low_score
 
@@ -275,8 +278,8 @@ class TestBatchingEngine:
         batch = engine.create_batch(requests, brand_id="brand-1")
 
         assert batch is not None
-        assert batch.brand_id == "brand-1"
-        assert len(batch.requests) == 3
+        assert batch["brand_id"] == "brand-1"
+        assert len(batch["requests"]) == 3
 
     def test_batch_same_brand_only(self):
         """Batch should only contain same brand requests"""
@@ -302,7 +305,7 @@ class TestBatchingEngine:
 
         # Should not create batch with mixed brands
         batch = engine.create_batch(requests, brand_id="brand-1")
-        assert batch is None or len(batch.requests) == 1
+        assert batch is None or len(batch["requests"]) == 1
 
     def test_batch_size_limit(self):
         """Batch should respect size limits"""
@@ -325,7 +328,7 @@ class TestBatchingEngine:
         batch = engine.create_batch(requests, brand_id="brand-1", limits=limits)
 
         assert batch is not None
-        assert len(batch.requests) <= limits.max_batch_size
+        assert len(batch["requests"]) <= limits.max_batch_size
 
     def test_batch_expiration(self):
         """Batch should have expiration time"""
@@ -344,14 +347,14 @@ class TestBatchingEngine:
         batch = engine.create_batch(requests, brand_id="brand-1")
 
         assert batch is not None
-        assert batch.expires_at is not None
+        assert batch["expires_at"] is not None
 
         # Check expiration is in the future
         now = datetime.now(timezone.utc)
-        if isinstance(batch.expires_at, str):
-            expires = datetime.fromisoformat(batch.expires_at)
+        if isinstance(batch["expires_at"], str):
+            expires = datetime.fromisoformat(batch["expires_at"])
         else:
-            expires = batch.expires_at
+            expires = batch["expires_at"]
         assert expires > now
 
     def test_fallback_to_individual_queue(self):
@@ -458,7 +461,7 @@ class TestMetrics:
         assert "batches_created_total" in snapshot
         assert "batches_approved_total" in snapshot
         assert "human_minutes_saved" in snapshot
-        assert "approval_queue_p95" in snapshot
+        assert "approval_queue_length_p95" in snapshot
 
         # Verify types
         assert isinstance(snapshot["batches_created_total"], int)

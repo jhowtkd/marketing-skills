@@ -320,6 +320,9 @@ class DagMetricsCollector:
 # Instância global para coleta de métricas
 _dag_metrics = DagMetricsCollector()
 
+# Alias para compatibilidade com testes
+metrics = _dag_metrics
+
 
 def get_dag_metrics() -> DagMetricsCollector:
     """Retorna coletor de métricas global."""
