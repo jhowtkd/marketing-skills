@@ -452,6 +452,35 @@ class PredictiveResilienceEngine:
             return True
         return False
     
+    def is_brand_frozen(self, brand_id: str) -> bool:
+        """Verifica se uma brand está congelada.
+        
+        Args:
+            brand_id: ID da brand
+            
+        Returns:
+            True se a brand está congelada
+        """
+        return brand_id in self._frozen_brands
+    
+    def evaluate_and_freeze_if_critical(
+        self,
+        brand_id: str,
+        score: ResilienceScore,
+    ) -> bool:
+        """Avalia score e congela brand se risco for CRITICAL.
+        
+        Args:
+            brand_id: ID da brand
+            score: Score de resiliência
+            
+        Returns:
+            True se freeze foi acionado
+        """
+        if score.risk_class == RiskClassification.CRITICAL:
+            return self.freeze_brand(brand_id, reason="Critical risk detected by predictive engine")
+        return False
+    
     def record_false_positive(self, signal_id: str, reason: str = "") -> None:
         """Registra um falso positivo.
         

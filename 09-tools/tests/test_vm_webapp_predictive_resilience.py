@@ -459,3 +459,259 @@ class TestPredictiveResilienceEngine:
         
         status = engine.get_status()
         assert status["false_positives_total"] == 1
+
+
+# =============================================================================
+# Task 2: Low-risk mitigation planner + guards
+# =============================================================================
+
+class TestLowRiskMitigationPlanner:
+    """Testes para o planejador de mitigação low-risk com safety guards."""
+
+    def test_auto_apply_low_risk_proposal(self):
+        """Propostas LOW devem ser auto-aplicadas sem aprovação."""
+        engine = PredictiveResilienceEngine()
+        
+        proposal = MitigationProposal(
+            proposal_id="prop-low-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.AUTO_ADJUST,
+            severity=MitigationSeverity.LOW,
+            description="Auto-adjust timeout threshold",
+        )
+        
+        # Auto-apply (no approval needed for LOW)
+        result = engine.apply_mitigation("prop-low-001", proposal)
+        
+        assert result is True
+        assert proposal.state == "applied"
+        assert proposal.applied_at is not None
+
+    def test_block_medium_risk_without_approval(self):
+        """Propostas MEDIUM devem ser bloqueadas sem aprovação."""
+        engine = PredictiveResilienceEngine()
+        
+        proposal = MitigationProposal(
+            proposal_id="prop-med-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.ADJUST_WITH_APPROVAL,
+            severity=MitigationSeverity.MEDIUM,
+            description="Adjust safety gates",
+        )
+        
+        # Try to apply without approval
+        result = engine.apply_mitigation("prop-med-001", proposal, approved=False)
+        
+        assert result is False
+        assert proposal.state == "pending"
+
+    def test_block_high_risk_without_approval(self):
+        """Propostas HIGH devem ser bloqueadas sem aprovação."""
+        engine = PredictiveResilienceEngine()
+        
+        proposal = MitigationProposal(
+            proposal_id="prop-high-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.FREEZE,
+            severity=MitigationSeverity.HIGH,
+            description="Emergency freeze",
+        )
+        
+        # Try to apply without approval
+        result = engine.apply_mitigation("prop-high-001", proposal, approved=False)
+        
+        assert result is False
+        assert proposal.state == "pending"
+
+    def test_apply_high_risk_with_approval(self):
+        """Propostas HIGH devem ser aplicáveis com aprovação explícita."""
+        engine = PredictiveResilienceEngine()
+        
+        proposal = MitigationProposal(
+            proposal_id="prop-high-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.FREEZE,
+            severity=MitigationSeverity.HIGH,
+            description="Emergency freeze",
+        )
+        
+        # Apply with approval
+        result = engine.apply_mitigation("prop-high-001", proposal, approved=True)
+        
+        assert result is True
+        assert proposal.state == "applied"
+
+    def test_freeze_and_rollback_integration(self):
+        """Freeze deve integrar com rollback de mitigações aplicadas."""
+        engine = PredictiveResilienceEngine()
+        
+        # Apply a low-risk mitigation first
+        proposal = MitigationProposal(
+            proposal_id="prop-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.AUTO_ADJUST,
+            severity=MitigationSeverity.LOW,
+        )
+        engine.apply_mitigation("prop-001", proposal)
+        
+        # Freeze the brand
+        engine.freeze_brand("brand-001", reason="Critical regression detected")
+        
+        # Rollback the mitigation
+        result = engine.rollback_mitigation("prop-001", proposal)
+        
+        assert result is True
+        assert proposal.state == "rolled_back"
+        assert "brand-001" in engine._frozen_brands
+
+    def test_critical_risk_triggers_freeze(self):
+        """Risco CRITICAL deve acionar freeze automático."""
+        engine = PredictiveResilienceEngine()
+        
+        score = ResilienceScore(
+            incident_component=0.20,
+            handoff_component=0.25,
+            approval_component=0.15,
+        )
+        
+        assert score.risk_class == RiskClassification.CRITICAL
+        
+        # O engine deve ter método para avaliar e congelar se necessário
+        result = engine.evaluate_and_freeze_if_critical("brand-001", score)
+        
+        assert result is True
+        assert "brand-001" in engine._frozen_brands
+
+    def test_unfreeze_brand(self):
+        """Engine deve permitir descongelar brand."""
+        engine = PredictiveResilienceEngine()
+        
+        # Freeze first
+        engine.freeze_brand("brand-001", reason="Critical risk")
+        assert "brand-001" in engine._frozen_brands
+        
+        # Unfreeze
+        result = engine.unfreeze_brand("brand-001")
+        
+        assert result is True
+        assert "brand-001" not in engine._frozen_brands
+
+    def test_is_brand_frozen(self):
+        """Engine deve reportar status de freeze da brand."""
+        engine = PredictiveResilienceEngine()
+        
+        assert engine.is_brand_frozen("brand-001") is False
+        
+        engine.freeze_brand("brand-001")
+        
+        assert engine.is_brand_frozen("brand-001") is True
+
+
+class TestOnlineControlLoopIntegration:
+    """Testes para integração com Online Control Loop v26."""
+
+    def test_control_loop_detects_predictive_signals(self):
+        """Control loop deve detectar sinais preditivos."""
+        from vm_webapp.online_control_loop import OnlineControlLoop
+        from vm_webapp.predictive_resilience import PredictiveResilienceEngine
+        
+        control_loop = OnlineControlLoop()
+        predictive_engine = PredictiveResilienceEngine()
+        
+        # Métricas com tendência de degradação
+        metrics = {
+            "incident_rate": 0.15,
+            "handoff_timeout_rate": 0.12,
+            "approval_sla_breach_rate": 0.08,
+        }
+        
+        # Calcular score e detectar sinais
+        score = predictive_engine.calculate_score(metrics)
+        signals = predictive_engine.detect_signals(metrics)
+        
+        assert score.composite_score < 0.85  # Degraded
+        assert len(signals) > 0  # Signals detected
+
+    def test_control_loop_generates_proposals(self):
+        """Control loop deve gerar propostas de mitigação."""
+        from vm_webapp.online_control_loop import OnlineControlLoop
+        from vm_webapp.predictive_resilience import PredictiveResilienceEngine, PredictiveSignal, MitigationSeverity
+        
+        control_loop = OnlineControlLoop()
+        predictive_engine = PredictiveResilienceEngine()
+        
+        # Criar sinais de teste
+        signals = [
+            PredictiveSignal(
+                signal_id="sig-001",
+                metric_name="incident_rate",
+                current_value=0.15,
+                predicted_value=0.25,
+                confidence=0.85,
+                severity=MitigationSeverity.MEDIUM,
+            )
+        ]
+        
+        # Gerar propostas
+        proposals = predictive_engine.generate_proposals(signals)
+        
+        assert len(proposals) > 0
+        assert proposals[0].signal_id == "sig-001"
+
+    def test_low_risk_proposals_auto_applied_in_cycle(self):
+        """Propostas LOW devem ser auto-aplicadas no ciclo."""
+        from vm_webapp.predictive_resilience import (
+            PredictiveResilienceEngine,
+            PredictiveSignal,
+            MitigationSeverity,
+        )
+        
+        predictive_engine = PredictiveResilienceEngine()
+        
+        # Criar sinal LOW
+        signal = PredictiveSignal(
+            signal_id="sig-low-001",
+            metric_name="handoff_timeout_rate",
+            current_value=0.09,
+            predicted_value=0.095,
+            confidence=0.80,
+            severity=MitigationSeverity.LOW,
+        )
+        
+        # Gerar proposta
+        proposals = predictive_engine.generate_proposals([signal])
+        
+        # Verificar se alguma proposta pode ser auto-aplicada
+        auto_apply_proposals = [p for p in proposals if p.can_auto_apply]
+        
+        # Auto-aplicar
+        for proposal in auto_apply_proposals:
+            predictive_engine.apply_mitigation(proposal.proposal_id, proposal)
+            assert proposal.state == "applied"
+
+    def test_medium_risk_proposals_require_approval_in_cycle(self):
+        """Propostas MEDIUM devem requerer aprovação no ciclo."""
+        from vm_webapp.predictive_resilience import (
+            PredictiveResilienceEngine,
+            MitigationProposal,
+            MitigationType,
+            MitigationSeverity,
+        )
+        
+        predictive_engine = PredictiveResilienceEngine()
+        
+        # Criar proposta MEDIUM
+        proposal = MitigationProposal(
+            proposal_id="prop-med-001",
+            signal_id="sig-001",
+            mitigation_type=MitigationType.ADJUST_WITH_APPROVAL,
+            severity=MitigationSeverity.MEDIUM,
+            description="Adjust threshold",
+        )
+        
+        # Tentar aplicar sem aprovação
+        result = predictive_engine.apply_mitigation("prop-med-001", proposal, approved=False)
+        
+        assert result is False
+        assert proposal.state == "pending"
+        assert not proposal.can_auto_apply
