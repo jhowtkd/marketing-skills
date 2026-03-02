@@ -1,0 +1,165 @@
+name: v34 Onboarding Recovery Reactivation CI Gate
+
+on:
+  push:
+    branches: [feature/governance-v34-onboarding-recovery-reactivation-autopilot]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/**'
+      - '.github/workflows/v34-ci-gate.yml'
+
+env:
+  PYTHONPATH: 09-tools
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run recovery core tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_recovery.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run recovery strategy tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_recovery_strategy.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_api_v2_v34_additions.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run metrics tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_v34_recovery.py -v
+        env:
+          PYTHONPATH: 09-tools
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install lint tools
+        run: pip install ruff black
+      
+      - name: Run ruff
+        run: |
+          ruff check 09-tools/vm_webapp/onboarding_recovery.py \
+                    09-tools/vm_webapp/onboarding_recovery_strategy.py \
+                    09-tools/vm_webapp/api_onboarding_recovery.py
+      
+      - name: Run black check
+        run: |
+          black --check 09-tools/vm_webapp/onboarding_recovery.py \
+                      09-tools/vm_webapp/onboarding_recovery_strategy.py \
+                      09-tools/vm_webapp/api_onboarding_recovery.py
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install mypy and stubs
+        run: |
+          pip install mypy types-PyYAML
+      
+      - name: Run type check on recovery modules
+        run: |
+          mypy 09-tools/vm_webapp/onboarding_recovery.py --ignore-missing-imports
+          mypy 09-tools/vm_webapp/onboarding_recovery_strategy.py --ignore-missing-imports
+
+  metrics-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest sqlalchemy pydantic-settings
+      
+      - name: Validate recovery metrics schema
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_v34_recovery.py::TestOnboardingRecoveryMetrics::test_recovery_metrics_in_snapshot -v
+        env:
+          PYTHONPATH: 09-tools
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install dependencies
+        run: cd 09-tools/web/vm-ui && npm ci
+      
+      - name: Run workspace tests
+        run: cd 09-tools/web/vm-ui && npm run test -- --run src/features/workspace/
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install dependencies
+        run: cd 09-tools/web/vm-ui && npm ci
+      
+      - name: Build frontend
+        run: cd 09-tools/web/vm-ui && npm run build
+
+  changelog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CHANGELOG.md updated
+        run: |
+          if ! git diff --name-only HEAD~1 | grep -q "CHANGELOG.md"; then
+            echo "⚠️ WARNING: CHANGELOG.md not updated in this PR"
+          fi

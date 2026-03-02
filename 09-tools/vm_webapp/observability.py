@@ -313,6 +313,106 @@ class OnboardingPersonalizationMetrics:
     last_block_at: Optional[str] = None
 
 
+@dataclass
+class OnboardingRecoveryMetrics:
+    """v34 Onboarding Recovery Reactivation Autopilot metrics."""
+    # Case metrics
+    cases_detected: int = 0
+    cases_recoverable: int = 0
+    cases_recovered: int = 0
+    cases_expired: int = 0
+    cases_rejected: int = 0
+    
+    # Priority distribution
+    priority_high: int = 0
+    priority_medium: int = 0
+    priority_low: int = 0
+    
+    # Dropoff reason tracking
+    dropoff_abandoned: int = 0
+    dropoff_timeout: int = 0
+    dropoff_error: int = 0
+    dropoff_external: int = 0
+    dropoff_user_exit: int = 0
+    
+    # Proposal metrics
+    proposals_generated: int = 0
+    proposals_auto_applied: int = 0
+    proposals_approved: int = 0
+    proposals_rejected: int = 0
+    
+    # Strategy distribution
+    strategy_reminder: int = 0
+    strategy_fast_lane: int = 0
+    strategy_template_boost: int = 0
+    strategy_guided_resume: int = 0
+    
+    # Resume path metrics
+    resume_paths_generated: int = 0
+    resume_avg_friction_score: float = 0.0
+    resume_friction_total: float = 0.0
+    
+    # Timing metrics
+    avg_time_to_resume_hours: float = 0.0
+    
+    # Timestamps
+    last_case_detected_at: Optional[str] = None
+    last_case_recovered_at: Optional[str] = None
+    last_proposal_generated_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+
+
+@dataclass
+class OnboardingContinuityMetrics:
+    """v35 Onboarding Cross-Session Continuity Autopilot metrics."""
+    # Checkpoint metrics
+    checkpoints_created: int = 0
+    checkpoints_committed: int = 0
+    checkpoints_rolled_back: int = 0
+    checkpoints_expired: int = 0
+    
+    # Bundle metrics
+    bundles_created: int = 0
+    bundles_pending: int = 0
+    bundles_in_progress: int = 0
+    bundles_completed: int = 0
+    bundles_failed: int = 0
+    
+    # Resume metrics
+    resumes_auto_applied: int = 0
+    resumes_needing_approval: int = 0
+    resumes_rolled_back: int = 0
+    
+    # Source priority distribution
+    source_session_count: int = 0
+    source_recovery_count: int = 0
+    source_default_count: int = 0
+    
+    # Context loss tracking
+    context_loss_events: int = 0
+    context_loss_step_regression: int = 0
+    context_loss_form_inconsistency: int = 0
+    context_loss_version_gap: int = 0
+    
+    # Conflict tracking
+    conflicts_detected: int = 0
+    conflict_data_mismatch: int = 0
+    conflict_step_regression: int = 0
+    conflict_form_inconsistency: int = 0
+    conflict_version_gap: int = 0
+    
+    # Approval tracking
+    approvals_pending: int = 0
+    approvals_granted: int = 0
+    approvals_rejected: int = 0
+    
+    # Timestamps
+    last_checkpoint_at: Optional[str] = None
+    last_bundle_created_at: Optional[str] = None
+    last_resume_completed_at: Optional[str] = None
+    last_context_loss_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -328,6 +428,8 @@ class MetricsCollector:
         self._onboarding_activation_metrics = OnboardingActivationMetrics()  # v31
         self._onboarding_experimentation_metrics = OnboardingExperimentationMetrics()  # v32
         self._onboarding_personalization_metrics = OnboardingPersonalizationMetrics()  # v33
+        self._onboarding_recovery_metrics = OnboardingRecoveryMetrics()  # v34
+        self._onboarding_continuity_metrics = OnboardingContinuityMetrics()  # v35
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -1088,6 +1190,98 @@ class MetricsCollector:
                         "last_block_at": self._onboarding_personalization_metrics.last_block_at,
                     },
                 },
+                "onboarding_recovery_v34": {
+                    "cases": {
+                        "detected": self._onboarding_recovery_metrics.cases_detected,
+                        "recoverable": self._onboarding_recovery_metrics.cases_recoverable,
+                        "recovered": self._onboarding_recovery_metrics.cases_recovered,
+                        "expired": self._onboarding_recovery_metrics.cases_expired,
+                        "rejected": self._onboarding_recovery_metrics.cases_rejected,
+                    },
+                    "priority_distribution": {
+                        "high": self._onboarding_recovery_metrics.priority_high,
+                        "medium": self._onboarding_recovery_metrics.priority_medium,
+                        "low": self._onboarding_recovery_metrics.priority_low,
+                    },
+                    "dropoff_reasons": {
+                        "abandoned": self._onboarding_recovery_metrics.dropoff_abandoned,
+                        "timeout": self._onboarding_recovery_metrics.dropoff_timeout,
+                        "error": self._onboarding_recovery_metrics.dropoff_error,
+                        "external": self._onboarding_recovery_metrics.dropoff_external,
+                        "user_exit": self._onboarding_recovery_metrics.dropoff_user_exit,
+                    },
+                    "proposals": {
+                        "generated": self._onboarding_recovery_metrics.proposals_generated,
+                        "auto_applied": self._onboarding_recovery_metrics.proposals_auto_applied,
+                        "approved": self._onboarding_recovery_metrics.proposals_approved,
+                        "rejected": self._onboarding_recovery_metrics.proposals_rejected,
+                    },
+                    "strategies": {
+                        "reminder": self._onboarding_recovery_metrics.strategy_reminder,
+                        "fast_lane": self._onboarding_recovery_metrics.strategy_fast_lane,
+                        "template_boost": self._onboarding_recovery_metrics.strategy_template_boost,
+                        "guided_resume": self._onboarding_recovery_metrics.strategy_guided_resume,
+                    },
+                    "resume_paths": {
+                        "generated": self._onboarding_recovery_metrics.resume_paths_generated,
+                        "avg_friction_score": round(self._onboarding_recovery_metrics.resume_avg_friction_score, 2),
+                    },
+                    "timestamps": {
+                        "last_case_detected": self._onboarding_recovery_metrics.last_case_detected_at,
+                        "last_case_recovered": self._onboarding_recovery_metrics.last_case_recovered_at,
+                        "last_proposal_generated": self._onboarding_recovery_metrics.last_proposal_generated_at,
+                        "last_proposal_applied": self._onboarding_recovery_metrics.last_proposal_applied_at,
+                    },
+                },
+                "onboarding_continuity_v35": {
+                    "checkpoints": {
+                        "created": self._onboarding_continuity_metrics.checkpoints_created,
+                        "committed": self._onboarding_continuity_metrics.checkpoints_committed,
+                        "rolled_back": self._onboarding_continuity_metrics.checkpoints_rolled_back,
+                        "expired": self._onboarding_continuity_metrics.checkpoints_expired,
+                    },
+                    "bundles": {
+                        "created": self._onboarding_continuity_metrics.bundles_created,
+                        "pending": self._onboarding_continuity_metrics.bundles_pending,
+                        "in_progress": self._onboarding_continuity_metrics.bundles_in_progress,
+                        "completed": self._onboarding_continuity_metrics.bundles_completed,
+                        "failed": self._onboarding_continuity_metrics.bundles_failed,
+                    },
+                    "resumes": {
+                        "auto_applied": self._onboarding_continuity_metrics.resumes_auto_applied,
+                        "needing_approval": self._onboarding_continuity_metrics.resumes_needing_approval,
+                        "rolled_back": self._onboarding_continuity_metrics.resumes_rolled_back,
+                    },
+                    "source_distribution": {
+                        "session": self._onboarding_continuity_metrics.source_session_count,
+                        "recovery": self._onboarding_continuity_metrics.source_recovery_count,
+                        "default": self._onboarding_continuity_metrics.source_default_count,
+                    },
+                    "context_loss": {
+                        "total_events": self._onboarding_continuity_metrics.context_loss_events,
+                        "step_regression": self._onboarding_continuity_metrics.context_loss_step_regression,
+                        "form_inconsistency": self._onboarding_continuity_metrics.context_loss_form_inconsistency,
+                        "version_gap": self._onboarding_continuity_metrics.context_loss_version_gap,
+                    },
+                    "conflicts": {
+                        "total_detected": self._onboarding_continuity_metrics.conflicts_detected,
+                        "data_mismatch": self._onboarding_continuity_metrics.conflict_data_mismatch,
+                        "step_regression": self._onboarding_continuity_metrics.conflict_step_regression,
+                        "form_inconsistency": self._onboarding_continuity_metrics.conflict_form_inconsistency,
+                        "version_gap": self._onboarding_continuity_metrics.conflict_version_gap,
+                    },
+                    "approvals": {
+                        "pending": self._onboarding_continuity_metrics.approvals_pending,
+                        "granted": self._onboarding_continuity_metrics.approvals_granted,
+                        "rejected": self._onboarding_continuity_metrics.approvals_rejected,
+                    },
+                    "timestamps": {
+                        "last_checkpoint": self._onboarding_continuity_metrics.last_checkpoint_at,
+                        "last_bundle": self._onboarding_continuity_metrics.last_bundle_created_at,
+                        "last_resume": self._onboarding_continuity_metrics.last_resume_completed_at,
+                        "last_context_loss": self._onboarding_continuity_metrics.last_context_loss_at,
+                    },
+                },
             }
 
     # v31: Onboarding Activation Learning Loop metrics
@@ -1369,6 +1563,246 @@ class MetricsCollector:
                 last_serve_at=self._onboarding_personalization_metrics.last_serve_at,
                 last_rollout_at=self._onboarding_personalization_metrics.last_rollout_at,
                 last_block_at=self._onboarding_personalization_metrics.last_block_at,
+            )
+    
+    # v34: Onboarding Recovery Reactivation metrics
+    def record_recovery_case_detected(self, reason: str, priority: str) -> None:
+        """v34: Record a recovery case being detected."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_detected += 1
+            self._onboarding_recovery_metrics.cases_recoverable += 1
+            self._onboarding_recovery_metrics.last_case_detected_at = datetime.now(timezone.utc).isoformat()
+            
+            # Track priority
+            if priority == "high":
+                self._onboarding_recovery_metrics.priority_high += 1
+            elif priority == "medium":
+                self._onboarding_recovery_metrics.priority_medium += 1
+            else:
+                self._onboarding_recovery_metrics.priority_low += 1
+            
+            # Track dropoff reason
+            if reason == "abandoned_step":
+                self._onboarding_recovery_metrics.dropoff_abandoned += 1
+            elif reason == "timeout":
+                self._onboarding_recovery_metrics.dropoff_timeout += 1
+            elif reason == "error":
+                self._onboarding_recovery_metrics.dropoff_error += 1
+            elif reason == "external_interruption":
+                self._onboarding_recovery_metrics.dropoff_external += 1
+            elif reason == "user_initiated_exit":
+                self._onboarding_recovery_metrics.dropoff_user_exit += 1
+    
+    def record_recovery_case_recovered(self) -> None:
+        """v34: Record a successful recovery."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_recovered += 1
+            if self._onboarding_recovery_metrics.cases_recoverable > 0:
+                self._onboarding_recovery_metrics.cases_recoverable -= 1
+            self._onboarding_recovery_metrics.last_case_recovered_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_case_expired(self) -> None:
+        """v34: Record a recovery case expiring."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_expired += 1
+            if self._onboarding_recovery_metrics.cases_recoverable > 0:
+                self._onboarding_recovery_metrics.cases_recoverable -= 1
+    
+    def record_recovery_proposal_generated(self, strategy: str, strategy_type: str) -> None:
+        """v34: Record a recovery proposal being generated."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_generated += 1
+            self._onboarding_recovery_metrics.last_proposal_generated_at = datetime.now(timezone.utc).isoformat()
+            
+            # Track strategy
+            if strategy == "reminder":
+                self._onboarding_recovery_metrics.strategy_reminder += 1
+            elif strategy == "fast_lane":
+                self._onboarding_recovery_metrics.strategy_fast_lane += 1
+            elif strategy == "template_boost":
+                self._onboarding_recovery_metrics.strategy_template_boost += 1
+            elif strategy == "guided_resume":
+                self._onboarding_recovery_metrics.strategy_guided_resume += 1
+    
+    def record_recovery_proposal_auto_applied(self, strategy: str) -> None:
+        """v34: Record an auto-applied recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_auto_applied += 1
+            self._onboarding_recovery_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_proposal_approved(self, strategy: str) -> None:
+        """v34: Record an approved recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_approved += 1
+            self._onboarding_recovery_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_proposal_rejected(self, strategy: str) -> None:
+        """v34: Record a rejected recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_rejected += 1
+            self._onboarding_recovery_metrics.cases_rejected += 1
+    
+    def record_recovery_resume_path_generated(self, estimated_minutes: int, friction_score: float) -> None:
+        """v34: Record a resume path being generated."""
+        with self._lock:
+            self._onboarding_recovery_metrics.resume_paths_generated += 1
+            self._onboarding_recovery_metrics.resume_friction_total += friction_score
+            # Update average
+            if self._onboarding_recovery_metrics.resume_paths_generated > 0:
+                self._onboarding_recovery_metrics.resume_avg_friction_score = (
+                    self._onboarding_recovery_metrics.resume_friction_total /
+                    self._onboarding_recovery_metrics.resume_paths_generated
+                )
+    
+    def get_recovery_metrics(self) -> OnboardingRecoveryMetrics:
+        """v34: Get current recovery metrics snapshot."""
+        with self._lock:
+            return OnboardingRecoveryMetrics(
+                cases_detected=self._onboarding_recovery_metrics.cases_detected,
+                cases_recoverable=self._onboarding_recovery_metrics.cases_recoverable,
+                cases_recovered=self._onboarding_recovery_metrics.cases_recovered,
+                cases_expired=self._onboarding_recovery_metrics.cases_expired,
+                cases_rejected=self._onboarding_recovery_metrics.cases_rejected,
+                priority_high=self._onboarding_recovery_metrics.priority_high,
+                priority_medium=self._onboarding_recovery_metrics.priority_medium,
+                priority_low=self._onboarding_recovery_metrics.priority_low,
+                dropoff_abandoned=self._onboarding_recovery_metrics.dropoff_abandoned,
+                dropoff_timeout=self._onboarding_recovery_metrics.dropoff_timeout,
+                dropoff_error=self._onboarding_recovery_metrics.dropoff_error,
+                dropoff_external=self._onboarding_recovery_metrics.dropoff_external,
+                dropoff_user_exit=self._onboarding_recovery_metrics.dropoff_user_exit,
+                proposals_generated=self._onboarding_recovery_metrics.proposals_generated,
+                proposals_auto_applied=self._onboarding_recovery_metrics.proposals_auto_applied,
+                proposals_approved=self._onboarding_recovery_metrics.proposals_approved,
+                proposals_rejected=self._onboarding_recovery_metrics.proposals_rejected,
+                strategy_reminder=self._onboarding_recovery_metrics.strategy_reminder,
+                strategy_fast_lane=self._onboarding_recovery_metrics.strategy_fast_lane,
+                strategy_template_boost=self._onboarding_recovery_metrics.strategy_template_boost,
+                strategy_guided_resume=self._onboarding_recovery_metrics.strategy_guided_resume,
+                resume_paths_generated=self._onboarding_recovery_metrics.resume_paths_generated,
+                resume_avg_friction_score=self._onboarding_recovery_metrics.resume_avg_friction_score,
+                resume_friction_total=self._onboarding_recovery_metrics.resume_friction_total,
+                avg_time_to_resume_hours=self._onboarding_recovery_metrics.avg_time_to_resume_hours,
+                last_case_detected_at=self._onboarding_recovery_metrics.last_case_detected_at,
+                last_case_recovered_at=self._onboarding_recovery_metrics.last_case_recovered_at,
+                last_proposal_generated_at=self._onboarding_recovery_metrics.last_proposal_generated_at,
+                last_proposal_applied_at=self._onboarding_recovery_metrics.last_proposal_applied_at,
+            )
+    
+    # v35: Onboarding Continuity metrics
+    def record_continuity_checkpoint_created(self, user_id: str, step_id: str) -> None:
+        """v35: Record a checkpoint being created."""
+        with self._lock:
+            self._onboarding_continuity_metrics.checkpoints_created += 1
+            self._onboarding_continuity_metrics.last_checkpoint_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_continuity_bundle_created(self, source_priority: str, status: str) -> None:
+        """v35: Record a handoff bundle being created."""
+        with self._lock:
+            self._onboarding_continuity_metrics.bundles_created += 1
+            self._onboarding_continuity_metrics.bundles_pending += 1
+            self._onboarding_continuity_metrics.last_bundle_created_at = datetime.now(timezone.utc).isoformat()
+            
+            # Track source priority
+            if source_priority == "session":
+                self._onboarding_continuity_metrics.source_session_count += 1
+            elif source_priority == "recovery":
+                self._onboarding_continuity_metrics.source_recovery_count += 1
+            else:
+                self._onboarding_continuity_metrics.source_default_count += 1
+    
+    def record_continuity_bundle_completed(self, auto_applied: bool = False) -> None:
+        """v35: Record a bundle being completed."""
+        with self._lock:
+            self._onboarding_continuity_metrics.bundles_completed += 1
+            if self._onboarding_continuity_metrics.bundles_pending > 0:
+                self._onboarding_continuity_metrics.bundles_pending -= 1
+            
+            if auto_applied:
+                self._onboarding_continuity_metrics.resumes_auto_applied += 1
+            
+            self._onboarding_continuity_metrics.last_resume_completed_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_continuity_bundle_failed(self, reason: str) -> None:
+        """v35: Record a bundle failing."""
+        with self._lock:
+            self._onboarding_continuity_metrics.bundles_failed += 1
+            if self._onboarding_continuity_metrics.bundles_pending > 0:
+                self._onboarding_continuity_metrics.bundles_pending -= 1
+    
+    def record_continuity_context_loss(self, reason: str, steps_lost: int = 0) -> None:
+        """v35: Record a context loss event."""
+        with self._lock:
+            self._onboarding_continuity_metrics.context_loss_events += 1
+            self._onboarding_continuity_metrics.last_context_loss_at = datetime.now(timezone.utc).isoformat()
+            
+            if reason == "step_regression":
+                self._onboarding_continuity_metrics.context_loss_step_regression += 1
+            elif reason == "form_inconsistency":
+                self._onboarding_continuity_metrics.context_loss_form_inconsistency += 1
+            elif reason == "version_gap":
+                self._onboarding_continuity_metrics.context_loss_version_gap += 1
+    
+    def record_continuity_conflict_detected(self, conflict_type: str) -> None:
+        """v35: Record a conflict being detected."""
+        with self._lock:
+            self._onboarding_continuity_metrics.conflicts_detected += 1
+            
+            if conflict_type == "data_mismatch":
+                self._onboarding_continuity_metrics.conflict_data_mismatch += 1
+            elif conflict_type == "step_regression":
+                self._onboarding_continuity_metrics.conflict_step_regression += 1
+            elif conflict_type == "form_inconsistency":
+                self._onboarding_continuity_metrics.conflict_form_inconsistency += 1
+            elif conflict_type == "version_gap":
+                self._onboarding_continuity_metrics.conflict_version_gap += 1
+    
+    def record_continuity_resume_rolled_back(self) -> None:
+        """v35: Record a resume being rolled back."""
+        with self._lock:
+            self._onboarding_continuity_metrics.resumes_rolled_back += 1
+    
+    def record_continuity_needs_approval(self, risk_level: str, reason: str) -> None:
+        """v35: Record a resume needing approval."""
+        with self._lock:
+            self._onboarding_continuity_metrics.resumes_needing_approval += 1
+            self._onboarding_continuity_metrics.approvals_pending += 1
+    
+    def get_continuity_metrics(self) -> OnboardingContinuityMetrics:
+        """v35: Get current continuity metrics snapshot."""
+        with self._lock:
+            return OnboardingContinuityMetrics(
+                checkpoints_created=self._onboarding_continuity_metrics.checkpoints_created,
+                checkpoints_committed=self._onboarding_continuity_metrics.checkpoints_committed,
+                checkpoints_rolled_back=self._onboarding_continuity_metrics.checkpoints_rolled_back,
+                checkpoints_expired=self._onboarding_continuity_metrics.checkpoints_expired,
+                bundles_created=self._onboarding_continuity_metrics.bundles_created,
+                bundles_pending=self._onboarding_continuity_metrics.bundles_pending,
+                bundles_in_progress=self._onboarding_continuity_metrics.bundles_in_progress,
+                bundles_completed=self._onboarding_continuity_metrics.bundles_completed,
+                bundles_failed=self._onboarding_continuity_metrics.bundles_failed,
+                resumes_auto_applied=self._onboarding_continuity_metrics.resumes_auto_applied,
+                resumes_needing_approval=self._onboarding_continuity_metrics.resumes_needing_approval,
+                resumes_rolled_back=self._onboarding_continuity_metrics.resumes_rolled_back,
+                source_session_count=self._onboarding_continuity_metrics.source_session_count,
+                source_recovery_count=self._onboarding_continuity_metrics.source_recovery_count,
+                source_default_count=self._onboarding_continuity_metrics.source_default_count,
+                context_loss_events=self._onboarding_continuity_metrics.context_loss_events,
+                context_loss_step_regression=self._onboarding_continuity_metrics.context_loss_step_regression,
+                context_loss_form_inconsistency=self._onboarding_continuity_metrics.context_loss_form_inconsistency,
+                context_loss_version_gap=self._onboarding_continuity_metrics.context_loss_version_gap,
+                conflicts_detected=self._onboarding_continuity_metrics.conflicts_detected,
+                conflict_data_mismatch=self._onboarding_continuity_metrics.conflict_data_mismatch,
+                conflict_step_regression=self._onboarding_continuity_metrics.conflict_step_regression,
+                conflict_form_inconsistency=self._onboarding_continuity_metrics.conflict_form_inconsistency,
+                conflict_version_gap=self._onboarding_continuity_metrics.conflict_version_gap,
+                approvals_pending=self._onboarding_continuity_metrics.approvals_pending,
+                approvals_granted=self._onboarding_continuity_metrics.approvals_granted,
+                approvals_rejected=self._onboarding_continuity_metrics.approvals_rejected,
+                last_checkpoint_at=self._onboarding_continuity_metrics.last_checkpoint_at,
+                last_bundle_created_at=self._onboarding_continuity_metrics.last_bundle_created_at,
+                last_resume_completed_at=self._onboarding_continuity_metrics.last_resume_completed_at,
+                last_context_loss_at=self._onboarding_continuity_metrics.last_context_loss_at,
             )
 
 
