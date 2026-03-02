@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { OnboardingWizard } from "../onboarding/OnboardingWizard";
 import TaskRail, { type Task, type NavigationEvent, type TaskTimeUpdate } from "./components/TaskRail";
 import GuidedRegenerateModal from "../quality/GuidedRegenerateModal";
 import QualityScoreCard from "../quality/QualityScoreCard";
@@ -144,6 +145,20 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const [activeTaskId, setActiveTaskId] = useState<string>("studio");
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
   const [taskTimes, setTaskTimes] = useState<Record<string, number>>({});
+
+  // v30: Onboarding wizard state
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+
+  // v30: Check onboarding completion on mount
+  useEffect(() => {
+    try {
+      const completed = localStorage.getItem("vm_onboarding_completed") === "true";
+      setShowOnboarding(!completed);
+    } catch {
+      // localStorage not available (SSR/test environment)
+      setShowOnboarding(false);
+    }
+  }, []);
 
   // Define available tasks for task-first workflow
   const tasks: Task[] = useMemo(() => [
@@ -1592,6 +1607,23 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         onClose={() => setGoldenModalOpen(false)}
         onSubmit={handleGoldenSubmit}
       />
+
+      {/* v30: Onboarding Wizard */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <OnboardingWizard
+            userId={activeThreadId || "new-user"}
+            onComplete={() => {
+              localStorage.setItem("vm_onboarding_completed", "true");
+              setShowOnboarding(false);
+            }}
+            onSkip={() => {
+              localStorage.setItem("vm_onboarding_completed", "true");
+              setShowOnboarding(false);
+            }}
+          />
+        </div>
+      )}
 
       {/* v19: ROI Optimizer Panel */}
       <RoiOptimizerPanel />
