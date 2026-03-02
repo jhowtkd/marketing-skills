@@ -18,19 +18,19 @@ export function useKeyboard() {
     // Focus panels: ⌘1, ⌘2, ⌘3
     if (mod && key === '1') {
       event.preventDefault()
-      document.querySelector('[data-panel="navigation"]')?.focus()
+      ;(document.querySelector('[data-panel="navigation"]') as HTMLElement)?.focus()
       return
     }
 
     if (mod && key === '2') {
       event.preventDefault()
-      document.querySelector('[data-panel="workspace"]')?.focus()
+      ;(document.querySelector('[data-panel="workspace"]') as HTMLElement)?.focus()
       return
     }
 
     if (mod && key === '3') {
       event.preventDefault()
-      document.querySelector('[data-panel="command"]')?.focus()
+      ;(document.querySelector('[data-panel="command"]') as HTMLElement)?.focus()
       return
     }
 
