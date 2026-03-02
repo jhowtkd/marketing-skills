@@ -1,0 +1,169 @@
+name: v37 Unified Workspace UI CI Gate
+
+on:
+  push:
+    branches: [feature/governance-v37-unified-workspace-ui]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/**'
+      - '.github/workflows/v37-ci-gate.yml'
+
+env:
+  PYTHONPATH: 09-tools
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run API v2 tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_api_v2.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run metrics tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -v
+        env:
+          PYTHONPATH: 09-tools
+
+  frontend-workspace-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: 09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Run unified layout tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/layout/unifiedLayout.test.ts
+      
+      - name: Run UnifiedTaskRail tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/components/UnifiedTaskRail.test.tsx
+      
+      - name: Run ExecutionCenter tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/components/ExecutionCenter.test.tsx
+      
+      - name: Run ActionInsightSidebar tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/components/ActionInsightSidebar.test.tsx
+      
+      - name: Run UX telemetry tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/WorkspaceUnifiedUx.test.tsx
+      
+      - name: Run all workspace tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm test -- --run src/features/workspace/
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: 09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: 09-tools/web/vm-ui
+        run: npm run build
+      
+      - name: Verify build output
+        run: |
+          if [ ! -d "09-tools/web/vm-ui/dist" ]; then
+            echo "❌ Build output not found"
+            exit 1
+          fi
+          echo "✓ Build output verified"
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: 09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Run TypeScript check
+        working-directory: 09-tools/web/vm-ui
+        run: npx tsc --noEmit --skipLibCheck
+
+  yaml-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate workflow YAML
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/v37-ci-gate.yml'))"
+          echo "✓ YAML validation passed"
+
+  release-note-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check release note exists
+        run: |
+          if [ ! -f "docs/releases/2026-03-02-vm-studio-v37-unified-workspace-ui.md" ]; then
+            echo "❌ Release note not found"
+            exit 1
+          fi
+          echo "✓ Release note exists"
+      
+      - name: Verify release note structure
+        run: |
+          RELEASE_NOTE="docs/releases/2026-03-02-vm-studio-v37-unified-workspace-ui.md"
+          if ! grep -q "## Summary" "$RELEASE_NOTE"; then
+            echo "❌ Summary section missing"
+            exit 1
+          fi
+          if ! grep -q "## Changes" "$RELEASE_NOTE"; then
+            echo "❌ Changes section missing"
+            exit 1
+          fi
+          if ! grep -q "## Metrics" "$RELEASE_NOTE"; then
+            echo "❌ Metrics section missing"
+            exit 1
+          fi
+          echo "✓ Release note structure verified"
