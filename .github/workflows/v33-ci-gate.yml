@@ -1,0 +1,132 @@
+name: v33 Onboarding Personalization CI Gate
+
+on:
+  push:
+    branches: [feature/governance-v33-onboarding-personalization-autopilot]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/**'
+      - '.github/workflows/v33-ci-gate.yml'
+
+env:
+  PYTHONPATH: 09-tools
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run personalization core tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_personalization.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run policy rollout tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_policy_rollout.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_api_v2.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run metrics tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py::TestOnboardingPersonalizationMetrics -v
+        env:
+          PYTHONPATH: 09-tools
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install lint tools
+        run: pip install ruff black
+      
+      - name: Run ruff
+        run: |
+          ruff check 09-tools/vm_webapp/onboarding_personalization.py \
+                    09-tools/vm_webapp/onboarding_policy_rollout.py \
+                    09-tools/vm_webapp/api_onboarding_personalization.py
+      
+      - name: Run black check
+        run: |
+          black --check 09-tools/vm_webapp/onboarding_personalization.py \
+                      09-tools/vm_webapp/onboarding_policy_rollout.py \
+                      09-tools/vm_webapp/api_onboarding_personalization.py
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install mypy and stubs
+        run: |
+          pip install mypy types-PyYAML
+      
+      - name: Run type check on personalization module
+        run: |
+          mypy 09-tools/vm_webapp/onboarding_personalization.py --ignore-missing-imports
+      
+      - name: Run type check on rollout module
+        run: |
+          mypy 09-tools/vm_webapp/onboarding_policy_rollout.py --ignore-missing-imports
+
+  metrics-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest sqlalchemy pydantic-settings
+      
+      - name: Validate personalization metrics schema
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py::TestOnboardingPersonalizationMetrics::test_personalization_metrics_in_snapshot -v
+        env:
+          PYTHONPATH: 09-tools
+
+  changelog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CHANGELOG.md updated
+        run: |
+          if ! git diff --name-only HEAD~1 | grep -q "CHANGELOG.md"; then
+            echo "⚠️ WARNING: CHANGELOG.md not updated in this PR"
+          fi
