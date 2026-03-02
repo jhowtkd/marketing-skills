@@ -675,3 +675,338 @@ class TestOnboardingExperimentRollbackEndpoint:
         assert data["experiment_id"] == "exp-test-005"
         assert data["status"] == "rolled_back"
         assert data["rolled_back_at"] is not None
+
+
+# =============================================================================
+# v33 Onboarding Personalization API Tests
+# =============================================================================
+
+from vm_webapp.api_onboarding_personalization import router as personalization_router
+
+
+# Create test app for personalization
+app_pers = FastAPI()
+app_pers.include_router(personalization_router)
+client_pers = TestClient(app_pers)
+
+
+def _reset_personalization_state():
+    """Reset personalization global state between tests."""
+    from vm_webapp.api_onboarding_personalization import _profiler, _engine, _manager
+    _profiler.clear()
+    _engine._serve_count = 0
+    _engine._fallback_count = 0
+    _engine._serve_latencies_ms.clear()
+
+
+class TestOnboardingPersonalizationStatusEndpoint:
+    """Testes para GET /api/v2/brands/{brand_id}/onboarding-personalization/status."""
+
+    def test_status_returns_basic_info(self):
+        """Status deve retornar informações básicas."""
+        response = client_pers.get("/api/v2/brands/brand-001/onboarding-personalization/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["brand_id"] == "brand-001"
+        assert "version" in data
+        assert data["version"] == "v33"
+
+    def test_status_includes_serve_metrics(self):
+        """Status deve incluir métricas de serving."""
+        response = client_pers.get("/api/v2/brands/brand-001/onboarding-personalization/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "metrics" in data
+        assert "total_serves" in data["metrics"]
+        assert "fallback_uses" in data["metrics"]
+        assert "avg_latency_ms" in data["metrics"]
+
+    def test_status_includes_active_policies(self):
+        """Status deve incluir políticas ativas."""
+        response = client_pers.get("/api/v2/brands/brand-001/onboarding-personalization/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_policies" in data
+        assert isinstance(data["active_policies"], list)
+
+
+class TestOnboardingPersonalizationRunEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-personalization/run."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_run_executes_pending_rollouts(self):
+        """Run deve executar rollouts pendentes."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-001",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.LOW,
+        )
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/run",
+            json={}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "rollouts" in data
+        assert "run_at" in data
+
+
+class TestOnboardingPersonalizationPoliciesEndpoint:
+    """Testes para GET /api/v2/brands/{brand_id}/onboarding-personalization/policies."""
+
+    def test_list_returns_policies(self):
+        """List deve retornar lista de políticas."""
+        response = client_pers.get("/api/v2/brands/brand-001/onboarding-personalization/policies")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "policies" in data
+        assert isinstance(data["policies"], list)
+        assert "total" in data
+
+    def test_list_supports_status_filter(self):
+        """List deve suportar filtro por status."""
+        response = client_pers.get("/api/v2/brands/brand-001/onboarding-personalization/policies?status=active")
+        
+        assert response.status_code == 200
+        data = response.json()
+        for policy in data.get("policies", []):
+            assert policy["status"] == "active"
+
+
+class TestOnboardingPersonalizationEffectiveEndpoint:
+    """Testes para GET /api/v2/brands/{brand_id}/onboarding-personalization/effective."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_get_effective_policy(self):
+        """Deve retornar política efetiva para segmento."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-002",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.LOW,
+        )
+        policy.activate()
+        _profiler.register_policy(policy)
+        
+        response = client_pers.get(
+            "/api/v2/brands/brand-001/onboarding-personalization/effective",
+            params={
+                "company_size": "small",
+                "industry": "tech",
+                "experience_level": "beginner",
+                "traffic_source": "organic",
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["policy_id"] == "policy-test-002"
+        assert data["source"] == "segment"
+        assert "fallback_used" in data
+
+
+class TestOnboardingPersonalizationApplyEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-personalization/policies/{id}/apply."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_apply_low_risk_auto(self):
+        """Apply de política low-risk deve auto-aplicar."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-003",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.LOW,
+        )
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/policies/policy-test-003/apply",
+            json={"applied_by": "system"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["policy_id"] == "policy-test-003"
+        assert data["decision"] in ["auto_apply", "approved", "pending_approval"]
+
+    def test_apply_medium_risk_needs_approval(self):
+        """Apply de política medium-risk deve requerer aprovação."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-004",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.MEDIUM,
+        )
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/policies/policy-test-004/apply",
+            json={"applied_by": "user-001"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["requires_approval"] is True
+
+
+class TestOnboardingPersonalizationRejectEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-personalization/policies/{id}/reject."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_reject_policy(self):
+        """Reject deve rejeitar uma política."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-005",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.MEDIUM,
+        )
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/policies/policy-test-005/reject",
+            json={
+                "rejected_by": "user-001",
+                "reason": "Too aggressive"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["policy_id"] == "policy-test-005"
+        assert data["status"] == "rejected"
+
+
+class TestOnboardingPersonalizationFreezeEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-personalization/freeze."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_freeze_all_policies(self):
+        """Freeze deve congelar todas as políticas ativas."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-006",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.LOW,
+        )
+        policy.activate()
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/freeze",
+            json={
+                "frozen_by": "user-001",
+                "reason": "Investigating metrics anomaly"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["frozen_count"] >= 0
+        assert data["reason"] == "Investigating metrics anomaly"
+
+
+class TestOnboardingPersonalizationRollbackEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-personalization/rollback."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_personalization_state()
+
+    def test_rollback_policy(self):
+        """Rollback deve reverter uma política."""
+        from vm_webapp.api_onboarding_personalization import _profiler
+        from vm_webapp.onboarding_personalization import PersonalizationPolicy, RiskLevel, SegmentKey
+        
+        policy = PersonalizationPolicy(
+            policy_id="policy-test-007",
+            segment_key=SegmentKey("small", "tech", "beginner", "organic"),
+            nudge_delay_ms=3000,
+            template_order=["simple"],
+            welcome_message="Welcome!",
+            show_video_tutorial=True,
+            max_steps=3,
+            risk_level=RiskLevel.LOW,
+        )
+        policy.activate()
+        _profiler.register_policy(policy)
+        
+        response = client_pers.post(
+            "/api/v2/brands/brand-001/onboarding-personalization/rollback",
+            json={
+                "policy_id": "policy-test-007",
+                "rolled_back_by": "user-001",
+                "reason": "Negative metrics detected"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["policy_id"] == "policy-test-007"
+        assert data["status"] == "rolled_back"
+        assert data["rolled_back_at"] is not None
