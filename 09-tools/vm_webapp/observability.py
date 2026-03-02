@@ -196,6 +196,44 @@ class RoiOptimizerMetrics:
     last_applied_at: Optional[str] = None
 
 
+@dataclass
+class OnboardingActivationMetrics:
+    """v31 Onboarding Activation Learning Loop metrics."""
+    # Cycle counters
+    cycles_total: int = 0
+    proposals_generated_total: int = 0
+    proposals_applied_total: int = 0
+    proposals_auto_applied_total: int = 0
+    proposals_rejected_total: int = 0
+    rollbacks_total: int = 0
+    freezes_total: int = 0
+    
+    # Risk distribution
+    low_risk_proposals_total: int = 0
+    medium_risk_proposals_total: int = 0
+    high_risk_proposals_total: int = 0
+    
+    # Friction tracking
+    total_abandons_tracked: int = 0
+    total_returns_tracked: int = 0
+    total_hesitations_tracked: int = 0
+    
+    # Impact metrics (6-week goals)
+    onboarding_completion_rate: float = 0.0  # Target: +15 p.p.
+    template_to_first_run_conversion: float = 0.0  # Target: +20%
+    time_to_first_action_ms: float = 0.0  # Target: -20%
+    step_1_dropoff_rate: float = 0.0  # Target: -25%
+    
+    # Weekly cadence tracking
+    adjustments_this_week: int = 0
+    max_adjustment_percent: float = 10.0  # ±10% per cycle
+    
+    # Timestamps
+    last_cycle_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -208,6 +246,7 @@ class MetricsCollector:
         self._control_loop_metrics = ControlLoopMetrics()
         self._predictive_metrics = PredictiveResilienceMetrics()  # v27
         self._recovery_metrics = RecoveryOrchestrationMetrics()  # v28
+        self._onboarding_activation_metrics = OnboardingActivationMetrics()  # v31
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -856,7 +895,104 @@ class MetricsCollector:
                     "last_freeze_at": self._recovery_metrics.last_freeze_at,
                     "last_rollback_at": self._recovery_metrics.last_rollback_at,
                 },
+                # v31: Onboarding Activation Learning Loop metrics
+                "onboarding_activation": {
+                    "cycles_total": self._onboarding_activation_metrics.cycles_total,
+                    "proposals_generated_total": self._onboarding_activation_metrics.proposals_generated_total,
+                    "proposals_applied_total": self._onboarding_activation_metrics.proposals_applied_total,
+                    "proposals_auto_applied_total": self._onboarding_activation_metrics.proposals_auto_applied_total,
+                    "proposals_rejected_total": self._onboarding_activation_metrics.proposals_rejected_total,
+                    "rollbacks_total": self._onboarding_activation_metrics.rollbacks_total,
+                    "freezes_total": self._onboarding_activation_metrics.freezes_total,
+                    "low_risk_proposals_total": self._onboarding_activation_metrics.low_risk_proposals_total,
+                    "medium_risk_proposals_total": self._onboarding_activation_metrics.medium_risk_proposals_total,
+                    "high_risk_proposals_total": self._onboarding_activation_metrics.high_risk_proposals_total,
+                    "friction_tracking": {
+                        "total_abandons": self._onboarding_activation_metrics.total_abandons_tracked,
+                        "total_returns": self._onboarding_activation_metrics.total_returns_tracked,
+                        "total_hesitations": self._onboarding_activation_metrics.total_hesitations_tracked,
+                    },
+                    "impact_metrics": {
+                        "onboarding_completion_rate": self._onboarding_activation_metrics.onboarding_completion_rate,
+                        "template_to_first_run_conversion": self._onboarding_activation_metrics.template_to_first_run_conversion,
+                        "time_to_first_action_ms": self._onboarding_activation_metrics.time_to_first_action_ms,
+                        "step_1_dropoff_rate": self._onboarding_activation_metrics.step_1_dropoff_rate,
+                    },
+                    "cadence": {
+                        "adjustments_this_week": self._onboarding_activation_metrics.adjustments_this_week,
+                        "max_adjustment_percent": self._onboarding_activation_metrics.max_adjustment_percent,
+                    },
+                    "timestamps": {
+                        "last_cycle_at": self._onboarding_activation_metrics.last_cycle_at,
+                        "last_proposal_applied_at": self._onboarding_activation_metrics.last_proposal_applied_at,
+                        "last_rollback_at": self._onboarding_activation_metrics.last_rollback_at,
+                    },
+                },
             }
+
+    # v31: Onboarding Activation Learning Loop metrics
+    def record_onboarding_activation_cycle(self) -> None:
+        """v31: Record an activation cycle run."""
+        with self._lock:
+            self._onboarding_activation_metrics.cycles_total += 1
+            self._onboarding_activation_metrics.last_cycle_at = datetime.now(timezone.utc).isoformat()
+
+    def record_onboarding_proposal_generated(self, risk_level: str) -> None:
+        """v31: Record a proposal generation."""
+        with self._lock:
+            self._onboarding_activation_metrics.proposals_generated_total += 1
+            if risk_level == "low":
+                self._onboarding_activation_metrics.low_risk_proposals_total += 1
+            elif risk_level == "medium":
+                self._onboarding_activation_metrics.medium_risk_proposals_total += 1
+            elif risk_level == "high":
+                self._onboarding_activation_metrics.high_risk_proposals_total += 1
+
+    def record_onboarding_proposal_applied(self, auto_applied: bool = False) -> None:
+        """v31: Record a proposal application."""
+        with self._lock:
+            self._onboarding_activation_metrics.proposals_applied_total += 1
+            if auto_applied:
+                self._onboarding_activation_metrics.proposals_auto_applied_total += 1
+            self._onboarding_activation_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+
+    def record_onboarding_proposal_rejected(self) -> None:
+        """v31: Record a proposal rejection."""
+        with self._lock:
+            self._onboarding_activation_metrics.proposals_rejected_total += 1
+
+    def record_onboarding_rollback(self) -> None:
+        """v31: Record a rollback."""
+        with self._lock:
+            self._onboarding_activation_metrics.rollbacks_total += 1
+            self._onboarding_activation_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+
+    def record_onboarding_freeze(self) -> None:
+        """v31: Record a freeze."""
+        with self._lock:
+            self._onboarding_activation_metrics.freezes_total += 1
+
+    def record_onboarding_friction(self, friction_type: str) -> None:
+        """v31: Record friction telemetry."""
+        with self._lock:
+            if friction_type == "abandon":
+                self._onboarding_activation_metrics.total_abandons_tracked += 1
+            elif friction_type == "return":
+                self._onboarding_activation_metrics.total_returns_tracked += 1
+            elif friction_type == "hesitation":
+                self._onboarding_activation_metrics.total_hesitations_tracked += 1
+
+    def update_onboarding_impact_metrics(self, **metrics) -> None:
+        """v31: Update impact metrics (6-week goals)."""
+        with self._lock:
+            if "completion_rate" in metrics:
+                self._onboarding_activation_metrics.onboarding_completion_rate = metrics["completion_rate"]
+            if "template_conversion" in metrics:
+                self._onboarding_activation_metrics.template_to_first_run_conversion = metrics["template_conversion"]
+            if "time_to_first_action_ms" in metrics:
+                self._onboarding_activation_metrics.time_to_first_action_ms = metrics["time_to_first_action_ms"]
+            if "step_1_dropoff_rate" in metrics:
+                self._onboarding_activation_metrics.step_1_dropoff_rate = metrics["step_1_dropoff_rate"]
 
 
 def _normalize_metric_name(name: str) -> str:
