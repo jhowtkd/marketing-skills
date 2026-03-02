@@ -462,3 +462,107 @@ class TestOnboardingPersonalizationMetrics:
         assert pers["serves"]["total"] == 1
         assert pers["serves"]["segment_hit"] == 1
         assert pers["rollouts"]["auto_applied"] == 1
+
+
+class TestOutcomeAttributionROIMetrics:
+    """Testes para métricas v36 Outcome Attribution e Hybrid ROI."""
+
+    def test_collector_initializes_outcome_roi_metrics(self):
+        """Collector deve inicializar métricas v36."""
+        collector = MetricsCollector()
+        metrics = collector.get_outcome_roi_metrics()
+        
+        assert "outcomes_attributed" in metrics
+        assert "proposals_generated" in metrics
+        assert "hybrid_roi_index_avg" in metrics
+
+    def test_record_outcome_attributed(self):
+        """Deve registrar outcome atribuído."""
+        collector = MetricsCollector()
+        
+        collector.record_outcome_attributed("activation", "linear")
+        collector.record_outcome_attributed("recovery", "first_touch")
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["outcomes_attributed"] == 2
+        assert metrics["attribution_methods"]["linear"] == 1
+        assert metrics["attribution_methods"]["first_touch"] == 1
+
+    def test_record_proposal_generated(self):
+        """Deve registrar proposal gerada."""
+        collector = MetricsCollector()
+        
+        collector.record_proposal_generated("low", 0.25)
+        collector.record_proposal_generated("medium", 0.12)
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["proposals_generated"] == 2
+        assert metrics["by_risk_level"]["low"] == 1
+
+    def test_record_hybrid_roi_index(self):
+        """Deve registrar hybrid ROI index."""
+        collector = MetricsCollector()
+        
+        collector.record_hybrid_roi_index(0.25)
+        collector.record_hybrid_roi_index(0.30)
+        collector.record_hybrid_roi_index(0.20)
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["hybrid_roi_index_avg"] == pytest.approx(0.25, rel=0.01)
+        assert metrics["hybrid_roi_index_min"] == pytest.approx(0.20, rel=0.01)
+        assert metrics["hybrid_roi_index_max"] == pytest.approx(0.30, rel=0.01)
+
+    def test_record_payback_time(self):
+        """Deve registrar payback time."""
+        collector = MetricsCollector()
+        
+        collector.record_payback_time(5.0)
+        collector.record_payback_time(7.0)
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["payback_time_avg_days"] == pytest.approx(6.0, rel=0.01)
+
+    def test_record_guardrail_violation(self):
+        """Deve registrar violação de guardrail."""
+        collector = MetricsCollector()
+        
+        collector.record_guardrail_violation("min_success_rate")
+        collector.record_guardrail_violation("max_incident_rate")
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["guardrail_violations"] == 2
+
+    def test_record_quality_penalty(self):
+        """Deve registrar penalidade de qualidade."""
+        collector = MetricsCollector()
+        
+        collector.record_quality_penalty("incident", 0.25)
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["quality_penalties_applied"] == 1
+
+    def test_record_roi_rollback(self):
+        """Deve registrar rollback de ROI."""
+        collector = MetricsCollector()
+        
+        collector.record_roi_rollback(3, "quality_degradation")
+        
+        metrics = collector.get_outcome_roi_metrics()
+        assert metrics["rollbacks_executed"] == 1
+        assert metrics["rolled_back_proposals"] == 3
+
+    def test_outcome_roi_metrics_in_snapshot(self):
+        """Métricas v36 devem estar no snapshot."""
+        collector = MetricsCollector()
+        
+        collector.record_outcome_attributed("activation", "linear")
+        collector.record_proposal_generated("low", 0.25)
+        collector.record_hybrid_roi_index(0.25)
+        
+        snapshot = collector.snapshot()
+        
+        assert "outcome_roi_v36" in snapshot
+        roi = snapshot["outcome_roi_v36"]
+        assert roi["attribution"]["outcomes_attributed"] == 1
+        assert roi["proposals"]["generated"] == 1
+        assert roi["hybrid_roi"]["index_avg"] == pytest.approx(0.25, rel=0.01)
