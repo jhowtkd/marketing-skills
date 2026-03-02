@@ -1,6 +1,6 @@
-"""Tests for v28 Recovery Orchestration API Endpoints.
+"""Tests for v28 Recovery Orchestration and v32 Onboarding Experimentation API Endpoints.
 
-TDD: Testes para run/status/events/approve/reject/freeze/rollback.
+TDD: Testes para run/status/events/approve/reject/freeze/rollback e onboarding experiments.
 """
 
 from __future__ import annotations
@@ -337,3 +337,341 @@ class TestRecoveryMetrics:
         updated_metrics = status_response.json()["metrics"]
         
         assert updated_metrics["total_runs"] == initial_total + 1
+
+
+# =============================================================================
+# v32 Onboarding Experimentation API Tests
+# =============================================================================
+
+from vm_webapp.api_onboarding_experiments import router as experiments_router
+
+
+# Create test app for experiments
+app_exp = FastAPI()
+app_exp.include_router(experiments_router)
+client_exp = TestClient(app_exp)
+
+
+def _reset_experiment_state():
+    """Reset experiment global state between tests."""
+    from vm_webapp.api_onboarding_experiments import _experiment_registry, _experiment_metrics
+    _experiment_registry.clear_assignments()
+    for key in _experiment_metrics:
+        _experiment_metrics[key] = 0
+
+
+class TestOnboardingExperimentsStatusEndpoint:
+    """Testes para GET /api/v2/brands/{brand_id}/onboarding-experiments/status."""
+
+    def test_status_returns_basic_info(self):
+        """Status deve retornar informações básicas."""
+        response = client_exp.get("/api/v2/brands/brand-001/onboarding-experiments/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["brand_id"] == "brand-001"
+        assert "version" in data
+        assert data["version"] == "v32"
+
+    def test_status_includes_experiment_metrics(self):
+        """Status deve incluir métricas de experimentação."""
+        response = client_exp.get("/api/v2/brands/brand-001/onboarding-experiments/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "metrics" in data
+        assert "total_experiments" in data["metrics"]
+        assert "running_experiments" in data["metrics"]
+        assert "assignments_today" in data["metrics"]
+
+    def test_status_includes_active_experiments(self):
+        """Status deve incluir experimentos ativos."""
+        response = client_exp.get("/api/v2/brands/brand-001/onboarding-experiments/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_experiments" in data
+        assert isinstance(data["active_experiments"], list)
+
+
+class TestOnboardingExperimentsRunEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-experiments/run."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_experiment_state()
+
+    def test_run_evaluates_all_running_experiments(self):
+        """Run deve avaliar todos os experimentos em execução."""
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/run",
+            json={"metrics_fetcher": "default"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "evaluations" in data
+        assert isinstance(data["evaluations"], list)
+        assert "run_at" in data
+
+    def test_run_returns_decisions(self):
+        """Run deve retornar decisões de promoção."""
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/run",
+            json={"metrics_fetcher": "default"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        for evaluation in data.get("evaluations", []):
+            assert "decision" in evaluation
+            assert "requires_approval" in evaluation
+
+
+class TestOnboardingExperimentsListEndpoint:
+    """Testes para GET /api/v2/brands/{brand_id}/onboarding-experiments."""
+
+    def test_list_returns_experiments(self):
+        """List deve retornar lista de experimentos."""
+        response = client_exp.get("/api/v2/brands/brand-001/onboarding-experiments")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "experiments" in data
+        assert isinstance(data["experiments"], list)
+        assert "total" in data
+
+    def test_list_supports_status_filter(self):
+        """List deve suportar filtro por status."""
+        response = client_exp.get("/api/v2/brands/brand-001/onboarding-experiments?status=running")
+        
+        assert response.status_code == 200
+        data = response.json()
+        for exp in data.get("experiments", []):
+            assert exp["status"] == "running"
+
+
+class TestOnboardingExperimentStartEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-experiments/{id}/start."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_experiment_state()
+
+    def test_start_experiment(self):
+        """Start deve iniciar um experimento em draft."""
+        # Primeiro criar um experimento
+        from vm_webapp.api_onboarding_experiments import _experiment_registry
+        from vm_webapp.onboarding_experiments import Experiment, ExperimentVariant, RiskLevel
+        
+        variants = [
+            ExperimentVariant("control", "Control", {}, 50),
+            ExperimentVariant("treatment", "Treatment", {}, 50),
+        ]
+        experiment = Experiment(
+            experiment_id="exp-test-001",
+            name="Test Experiment",
+            description="Test",
+            hypothesis="Test",
+            primary_metric="conversion",
+            variants=variants,
+            risk_level=RiskLevel.LOW,
+            min_sample_size=100,
+            min_confidence=0.95,
+            max_lift_threshold=0.10,
+        )
+        _experiment_registry.register(experiment)
+        
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/exp-test-001/start",
+            json={"started_by": "user-001"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["experiment_id"] == "exp-test-001"
+        assert data["status"] == "running"
+        assert data["started_at"] is not None
+
+    def test_start_nonexistent_returns_404(self):
+        """Start de experimento inexistente deve retornar 404."""
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/nonexistent/start",
+            json={"started_by": "user-001"}
+        )
+        
+        assert response.status_code == 404
+
+
+class TestOnboardingExperimentPauseEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-experiments/{id}/pause."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_experiment_state()
+
+    def test_pause_running_experiment(self):
+        """Pause deve pausar um experimento em execução."""
+        # Primeiro criar e iniciar um experimento
+        from vm_webapp.api_onboarding_experiments import _experiment_registry
+        from vm_webapp.onboarding_experiments import Experiment, ExperimentVariant, RiskLevel
+        
+        variants = [
+            ExperimentVariant("control", "Control", {}, 50),
+            ExperimentVariant("treatment", "Treatment", {}, 50),
+        ]
+        experiment = Experiment(
+            experiment_id="exp-test-002",
+            name="Test Experiment",
+            description="Test",
+            hypothesis="Test",
+            primary_metric="conversion",
+            variants=variants,
+            risk_level=RiskLevel.LOW,
+            min_sample_size=100,
+            min_confidence=0.95,
+            max_lift_threshold=0.10,
+        )
+        _experiment_registry.register(experiment)
+        _experiment_registry.start_experiment("exp-test-002")
+        
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/exp-test-002/pause",
+            json={"paused_by": "user-001", "reason": "Investigating anomaly"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["experiment_id"] == "exp-test-002"
+        assert data["status"] == "paused"
+        assert data["paused_at"] is not None
+
+
+class TestOnboardingExperimentPromoteEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-experiments/{id}/promote."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_experiment_state()
+
+    def test_promote_low_risk_auto(self):
+        """Promote de experimento low-risk deve auto-aplicar."""
+        # Criar experimento low-risk com resultados positivos
+        from vm_webapp.api_onboarding_experiments import _experiment_registry
+        from vm_webapp.onboarding_experiments import Experiment, ExperimentVariant, RiskLevel
+        
+        variants = [
+            ExperimentVariant("control", "Control", {}, 50),
+            ExperimentVariant("treatment", "Treatment", {}, 50),
+        ]
+        experiment = Experiment(
+            experiment_id="exp-test-003",
+            name="Test Experiment",
+            description="Test",
+            hypothesis="Test",
+            primary_metric="conversion",
+            variants=variants,
+            risk_level=RiskLevel.LOW,
+            min_sample_size=100,
+            min_confidence=0.95,
+            max_lift_threshold=0.10,
+        )
+        _experiment_registry.register(experiment)
+        _experiment_registry.start_experiment("exp-test-003")
+        
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/exp-test-003/promote",
+            json={
+                "promoted_by": "system",
+                "variant_id": "treatment",
+                "auto_apply": True
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["experiment_id"] == "exp-test-003"
+        assert data["decision"] in ["auto_apply", "approved", "pending_approval"]
+
+    def test_promote_medium_risk_needs_approval(self):
+        """Promote de experimento medium-risk deve requerer aprovação."""
+        from vm_webapp.api_onboarding_experiments import _experiment_registry
+        from vm_webapp.onboarding_experiments import Experiment, ExperimentVariant, RiskLevel
+        
+        variants = [
+            ExperimentVariant("control", "Control", {}, 50),
+            ExperimentVariant("treatment", "Treatment", {}, 50),
+        ]
+        experiment = Experiment(
+            experiment_id="exp-test-004",
+            name="Test Experiment",
+            description="Test",
+            hypothesis="Test",
+            primary_metric="conversion",
+            variants=variants,
+            risk_level=RiskLevel.MEDIUM,
+            min_sample_size=100,
+            min_confidence=0.95,
+            max_lift_threshold=0.10,
+        )
+        _experiment_registry.register(experiment)
+        _experiment_registry.start_experiment("exp-test-004")
+        
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/exp-test-004/promote",
+            json={
+                "promoted_by": "user-001",
+                "variant_id": "treatment",
+                "auto_apply": False
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["requires_approval"] is True
+
+
+class TestOnboardingExperimentRollbackEndpoint:
+    """Testes para POST /api/v2/brands/{brand_id}/onboarding-experiments/{id}/rollback."""
+
+    def setup_method(self):
+        """Reset state before each test."""
+        _reset_experiment_state()
+
+    def test_rollback_experiment(self):
+        """Rollback deve reverter um experimento."""
+        from vm_webapp.api_onboarding_experiments import _experiment_registry
+        from vm_webapp.onboarding_experiments import Experiment, ExperimentVariant, RiskLevel
+        
+        variants = [
+            ExperimentVariant("control", "Control", {}, 50),
+            ExperimentVariant("treatment", "Treatment", {}, 50),
+        ]
+        experiment = Experiment(
+            experiment_id="exp-test-005",
+            name="Test Experiment",
+            description="Test",
+            hypothesis="Test",
+            primary_metric="conversion",
+            variants=variants,
+            risk_level=RiskLevel.LOW,
+            min_sample_size=100,
+            min_confidence=0.95,
+            max_lift_threshold=0.10,
+        )
+        _experiment_registry.register(experiment)
+        _experiment_registry.start_experiment("exp-test-005")
+        
+        response = client_exp.post(
+            "/api/v2/brands/brand-001/onboarding-experiments/exp-test-005/rollback",
+            json={
+                "rolled_back_by": "user-001",
+                "reason": "Negative lift detected"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["experiment_id"] == "exp-test-005"
+        assert data["status"] == "rolled_back"
+        assert data["rolled_back_at"] is not None
