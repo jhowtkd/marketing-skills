@@ -3745,3 +3745,10 @@ from vm_webapp.api_onboarding import router as onboarding_router
 
 # Include v30 onboarding routes
 router.include_router(onboarding_router, prefix="/v2/onboarding")
+
+
+# Import v31 onboarding activation routes
+from vm_webapp.api_onboarding_activation import router as onboarding_activation_router
+
+# Include v31 onboarding activation routes
+router.include_router(onboarding_activation_router, prefix="/v2/brands/{brand_id}/onboarding-activation")
