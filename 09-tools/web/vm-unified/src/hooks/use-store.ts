@@ -2,46 +2,6 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type { Brand, Project, Thread, Run, Artifact, ViewMode, Template, ChatState } from '@/types'
 
-// Mock data for development
-const mockBrands: Brand[] = [
-  { id: 'brand-1', name: 'Acme Corp', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'brand-2', name: 'TechStart', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-]
-
-const mockProjects: Project[] = [
-  { id: 'proj-1', brandId: 'brand-1', name: 'Q1 Launch', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'proj-2', brandId: 'brand-1', name: 'Product Hunt', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'proj-3', brandId: 'brand-2', name: 'Beta Campaign', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-]
-
-const mockThreads: Thread[] = [
-  { id: 'thread-1', projectId: 'proj-1', name: 'Landing Page', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'thread-2', projectId: 'proj-1', name: 'Email Sequence', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'thread-3', projectId: 'proj-2', name: 'PH Launch', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-]
-
-const mockRuns: Run[] = [
-  {
-    id: 'run-1',
-    threadId: 'thread-1',
-    status: 'waiting_approval',
-    currentStage: 'brand-voice',
-    stages: [
-      { key: 'research', name: 'Research', status: 'completed' },
-      { key: 'brand-voice', name: 'Brand Voice', status: 'waiting_approval' },
-      { key: 'positioning', name: 'Positioning', status: 'pending' },
-      { key: 'keywords', name: 'Keywords', status: 'pending' },
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-]
-
-const mockArtifacts: Artifact[] = [
-  { path: '/research/market-landscape.md', name: 'market-landscape.md', type: 'markdown', stageKey: 'research', runId: 'run-1' },
-  { path: '/research/competitor-gaps.md', name: 'competitor-gaps.md', type: 'markdown', stageKey: 'research', runId: 'run-1' },
-]
-
 interface VMState {
   // Hierarchy
   brands: Brand[]
@@ -91,17 +51,17 @@ interface VMState {
 export const useStore = create<VMState>()(
   devtools(
     (set, get) => ({
-      // Initial State
-      brands: mockBrands,
-      projects: mockProjects,
-      threads: mockThreads,
-      runs: mockRuns,
-      artifacts: mockArtifacts,
+      // Initial State (clean, no mocks)
+      brands: [],
+      projects: [],
+      threads: [],
+      runs: [],
+      artifacts: [],
 
-      activeBrandId: 'brand-1',
-      activeProjectId: 'proj-1',
-      activeThreadId: 'thread-1',
-      activeRunId: 'run-1',
+      activeBrandId: null,
+      activeProjectId: null,
+      activeThreadId: null,
+      activeRunId: null,
 
       viewMode: 'guided',
       chat: {
