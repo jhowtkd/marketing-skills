@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { OnboardingWizard } from "../onboarding/OnboardingWizard";
+import {
+  createUnifiedLayoutState,
+  toggleLeftColumn,
+  toggleRightColumn,
+  setActiveSection,
+  type UnifiedLayoutState,
+  type SectionId,
+} from "./layout/unifiedLayout";
 import TaskRail, { type Task, type NavigationEvent, type TaskTimeUpdate } from "./components/TaskRail";
 import GuidedRegenerateModal from "../quality/GuidedRegenerateModal";
 import QualityScoreCard from "../quality/QualityScoreCard";
@@ -149,6 +157,24 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
 
   // v30: Onboarding wizard state
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+
+  // v37: Unified workspace layout state
+  const [layoutState, setLayoutState] = useState<UnifiedLayoutState>(() =>
+    createUnifiedLayoutState({ activeSection: "execution" })
+  );
+
+  // v37: Layout state handlers
+  const handleToggleLeftColumn = useCallback(() => {
+    setLayoutState((prev) => toggleLeftColumn(prev));
+  }, []);
+
+  const handleToggleRightColumn = useCallback(() => {
+    setLayoutState((prev) => toggleRightColumn(prev));
+  }, []);
+
+  const handleSetActiveSection = useCallback((section: SectionId) => {
+    setLayoutState((prev) => setActiveSection(prev, section));
+  }, []);
 
   // v30: Check onboarding completion on mount
   useEffect(() => {
@@ -1476,8 +1502,28 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
     </section>
   );
 
+  // v37: Calculate grid template columns based on layout state
+  const gridTemplateColumns = useMemo(() => {
+    const widths = layoutState.columns
+      .filter((c) => c.visible)
+      .map((c) => (c.width === "flex" ? "1fr" : `${c.width}px`));
+    return widths.join(" ");
+  }, [layoutState.columns]);
+
   return (
-    <div className="flex gap-4 h-full">
+    <div 
+      className="flex gap-4 h-full"
+      data-unified-workspace="v37"
+      data-active-section={layoutState.activeSection}
+    >
+      {/* v37: Left Column - Task Rail (Etapas & Fila) */}
+      {layoutState.columns[0].visible && (
+        <aside 
+          className="flex-shrink-0 transition-all duration-200"
+          style={{ width: layoutState.columns[0].width }}
+          data-column="left"
+        >
+          <div className="h-full rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 shadow-sm">
       {/* v29: Task Rail Navigation */}
       <TaskRail
         tasks={tasks}
@@ -1489,9 +1535,16 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
         onNavigate={handleNavigate}
         onTaskTimeUpdate={handleTaskTimeUpdate}
       />
+          </div>
+        </aside>
+      )}
       
-      {/* Main Content */}
-      <div className="flex-1 space-y-4 overflow-auto">
+      {/* v37: Center Column - Execution Center */}
+      {layoutState.columns[1].visible && (
+        <main 
+          className="flex-1 space-y-4 overflow-auto min-w-0 transition-all duration-200"
+          data-column="center"
+        >
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-slate-600">
@@ -1665,7 +1718,84 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </pre>
         </section>
       ) : null}
-      </div>
+        </main>
+      )}
+
+      {/* v37: Right Column - Action & Insights Sidebar */}
+      {layoutState.columns[2].visible && (
+        <aside 
+          className="flex-shrink-0 space-y-4 overflow-auto transition-all duration-200"
+          style={{ width: layoutState.columns[2].width }}
+          data-column="right"
+        >
+          {/* Next Best Actions */}
+          {editorialRecommendationsSection}
+          
+          {/* Insights Panel */}
+          {editorialInsightsSection}
+          
+          {/* Forecast Panel */}
+          {editorialForecastSection}
+          
+          {/* Control Center Summary */}
+          <section className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/90 p-4 shadow-sm">
+            <h3 className="font-serif text-lg text-slate-900">Control Center</h3>
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => handleSetActiveSection("execution")}
+                className={`w-full rounded-lg px-3 py-2 text-sm font-medium text-left transition-colors ${
+                  layoutState.activeSection === "execution"
+                    ? "bg-[var(--vm-primary)] text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Execução
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetActiveSection("queue")}
+                className={`w-full rounded-lg px-3 py-2 text-sm font-medium text-left transition-colors ${
+                  layoutState.activeSection === "queue"
+                    ? "bg-[var(--vm-primary)] text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Fila Operacional
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetActiveSection("insights")}
+                className={`w-full rounded-lg px-3 py-2 text-sm font-medium text-left transition-colors ${
+                  layoutState.activeSection === "insights"
+                    ? "bg-[var(--vm-primary)] text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Insights
+              </button>
+            </div>
+            
+            {/* Collapse Controls */}
+            <div className="mt-4 pt-4 border-t border-slate-200 flex gap-2">
+              <button
+                type="button"
+                onClick={handleToggleLeftColumn}
+                className="flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                {layoutState.leftCollapsed ? "→" : "←"} Esquerda
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleRightColumn}
+                className="flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Direita {layoutState.rightCollapsed ? "←" : "→"}
+              </button>
+            </div>
+          </section>
+        </aside>
+      )}
     </div>
   );
 }

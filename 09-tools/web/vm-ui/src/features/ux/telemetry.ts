@@ -177,3 +177,126 @@ export function trackStepProgress(context: StepProgressContext): void {
     timestamp,
   });
 }
+
+// ============================================
+// v37: Unified Workspace UX Telemetry
+// ============================================
+
+export interface PrimaryActionContext {
+  action: string;
+  location: 'rail' | 'center' | 'sidebar';
+  stepId?: string;
+}
+
+export function trackPrimaryAction(context: PrimaryActionContext): void {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  
+  addEvent({
+    type: 'primary_action_clicked',
+    timestamp: Date.now(),
+    ...context,
+  });
+}
+
+export interface ContextSwitchContext {
+  from: string;
+  to: string;
+  trigger: 'user' | 'system';
+}
+
+export function trackContextSwitch(context: ContextSwitchContext): void {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  
+  addEvent({
+    type: 'context_switch',
+    timestamp: Date.now(),
+    ...context,
+  });
+  
+  // Increment context switch counter in session
+  const currentCount = (state as unknown as { contextSwitchCount?: number }).contextSwitchCount || 0;
+  (state as unknown as { contextSwitchCount: number }).contextSwitchCount = currentCount + 1;
+}
+
+export function getContextSwitchCount(): number {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  return (state as unknown as { contextSwitchCount?: number }).contextSwitchCount || 0;
+}
+
+export interface StepToActionLatencyContext {
+  stepId: string;
+  action: string;
+  latencyMs: number;
+}
+
+const stepActionStartTimes: Record<string, number> = {};
+
+export function startStepToActionTracking(stepId: string): void {
+  stepActionStartTimes[stepId] = Date.now();
+}
+
+export function trackStepToActionLatency(context: Omit<StepToActionLatencyContext, 'latencyMs'>): void {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  
+  const startTime = stepActionStartTimes[context.stepId];
+  if (!startTime) {
+    return; // No start time recorded, skip tracking
+  }
+  
+  const latencyMs = Date.now() - startTime;
+  
+  addEvent({
+    type: 'step_to_action_latency',
+    timestamp: Date.now(),
+    ...context,
+    latencyMs,
+  });
+  
+  // Clean up
+  delete stepActionStartTimes[context.stepId];
+}
+
+export interface ResponsiveLayoutContext {
+  breakpoint: 'mobile' | 'tablet' | 'desktop';
+  columnsVisible: number;
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
+}
+
+export function trackResponsiveLayout(context: ResponsiveLayoutContext): void {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  
+  addEvent({
+    type: 'responsive_layout_change',
+    timestamp: Date.now(),
+    ...context,
+  });
+}
+
+export interface WorkspaceInteractionContext {
+  component: 'unified_task_rail' | 'execution_center' | 'action_insight_sidebar';
+  action: string;
+  details?: Record<string, unknown>;
+}
+
+export function trackWorkspaceInteraction(context: WorkspaceInteractionContext): void {
+  if (!state) {
+    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
+  }
+  
+  addEvent({
+    type: 'workspace_interaction',
+    timestamp: Date.now(),
+    ...context,
+  });
+}
