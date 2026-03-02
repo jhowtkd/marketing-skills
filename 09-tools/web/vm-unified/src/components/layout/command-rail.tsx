@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 export function CommandRail() {
   const { activeThreadId, activeRunId } = useStore()
   const { data: runs = [], isLoading } = useRuns(activeThreadId)
-  const activeRun = runs.find(r => r.id === activeRunId)
+  const activeRun = runs.find((r: { id: string }) => r.id === activeRunId)
   const resumeRun = useResumeRun()
 
   return (

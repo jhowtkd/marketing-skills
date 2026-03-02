@@ -10,6 +10,9 @@ export interface Project {
   id: string
   brandId: string
   name: string
+  objective?: string
+  channels?: string[]
+  dueDate?: string
   createdAt: string
   updatedAt: string
 }
@@ -17,7 +20,11 @@ export interface Project {
 export interface Thread {
   id: string
   projectId: string
+  brandId: string
   name: string
+  status?: string
+  modes?: string[]
+  lastActivityAt?: string
   createdAt: string
   updatedAt: string
 }

@@ -55,7 +55,7 @@ export function useCreateProject() {
 
 export function useUpdateProject() {
   const queryClient = useQueryClient()
-  const { success, error: toastError } = useToast()
+  const { error: toastError } = useToast()
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Project> }) => {
@@ -78,7 +78,7 @@ export function useUpdateProject() {
       
       return { previous }
     },
-    onError: (err, vars, context) => {
+    onError: (_err, vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData([PROJECTS_KEY, vars.updates.brandId], context.previous)
       }
@@ -109,7 +109,7 @@ export function useDeleteProject() {
       
       return { previous }
     },
-    onError: (err, vars, context) => {
+    onError: (_err, vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData([PROJECTS_KEY, vars.brandId], context.previous)
       }

@@ -50,7 +50,7 @@ export function useCreateBrand() {
 // PATCH /brands/:id
 export function useUpdateBrand() {
   const queryClient = useQueryClient()
-  const { success, error: toastError } = useToast()
+  const { error: toastError } = useToast()
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Brand> }) => {
@@ -72,7 +72,7 @@ export function useUpdateBrand() {
       
       return { previous }
     },
-    onError: (err, vars, context) => {
+    onError: (_err, _vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData([BRANDS_KEY], context.previous)
       }
@@ -104,7 +104,7 @@ export function useDeleteBrand() {
       
       return { previous }
     },
-    onError: (err, brandId, context) => {
+    onError: (_err, _brandId, context) => {
       if (context?.previous) {
         queryClient.setQueryData([BRANDS_KEY], context.previous)
       }

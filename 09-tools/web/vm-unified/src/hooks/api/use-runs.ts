@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { get, post, buildIdempotencyKey, APIError } from '@/lib/api'
-import type { RunResponse, RunsResponse } from '@/types/api'
-import type { Run } from '@/types'
+import { get, post, buildIdempotencyKey } from '@/lib/api'
+import type { RunsResponse } from '@/types/api'
 import { mapRun } from '@/adapters/run-adapter'
 import { useToast } from '@/hooks/ui/use-toast'
 
@@ -18,15 +17,17 @@ export function useRuns(threadId: string | null) {
     enabled: !!threadId,
     staleTime: 10 * 1000,
     
-    refetchInterval: (data) => {
-      const hasRunning = data?.some(run => 
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const hasRunning = data?.some((run: { status: string }) => 
         run.status === 'running' || run.status === 'queued'
       )
       return hasRunning ? 2000 : false
     },
     
-    retry: (failureCount, error: APIError) => {
-      if (error.status >= 500) return failureCount < 3
+    retry: (failureCount, error) => {
+      const status = (error as unknown as { status?: number }).status
+      if (status && status >= 500) return failureCount < 3
       return false
     },
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
@@ -73,7 +74,7 @@ export function useResumeRun() {
   const { success, error: toastError } = useToast()
 
   return useMutation({
-    mutationFn: async ({ runId, threadId }: { runId: string; threadId: string }) => {
+    mutationFn: async ({ runId }: { runId: string; threadId: string }) => {
       const response = await post<{ run_id: string; status: string }>(
         `/workflow-runs/${encodeURIComponent(runId)}/resume`,
         {},
@@ -96,7 +97,7 @@ export function useGrantApproval() {
   const { success, error: toastError } = useToast()
 
   return useMutation({
-    mutationFn: async ({ approvalId, threadId }: { approvalId: string; threadId: string }) => {
+    mutationFn: async ({ approvalId }: { approvalId: string; threadId: string }) => {
       await post(
         `/approvals/${encodeURIComponent(approvalId)}/grant`,
         {},

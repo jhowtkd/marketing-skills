@@ -54,7 +54,7 @@ export function useCreateThread() {
 
 export function useUpdateThread() {
   const queryClient = useQueryClient()
-  const { success, error: toastError } = useToast()
+  const { error: toastError } = useToast()
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Thread> }) => {
@@ -77,7 +77,7 @@ export function useUpdateThread() {
       
       return { previous }
     },
-    onError: (err, vars, context) => {
+    onError: (_err, vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData([THREADS_KEY, vars.updates.projectId], context.previous)
       }
@@ -108,7 +108,7 @@ export function useDeleteThread() {
       
       return { previous }
     },
-    onError: (err, vars, context) => {
+    onError: (_err, vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData([THREADS_KEY, vars.projectId], context.previous)
       }
