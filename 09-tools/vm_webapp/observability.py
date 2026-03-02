@@ -234,6 +234,44 @@ class OnboardingActivationMetrics:
     last_rollback_at: Optional[str] = None
 
 
+@dataclass
+class OnboardingExperimentationMetrics:
+    """v32 Onboarding Experimentation Layer metrics."""
+    # Experiment counts
+    experiments_total: int = 0
+    experiments_running: int = 0
+    experiments_completed: int = 0
+    experiments_paused: int = 0
+    experiments_rolled_back: int = 0
+    
+    # Assignment metrics
+    assignments_total: int = 0
+    assignments_today: int = 0
+    
+    # Promotion decision metrics
+    promotions_auto_applied: int = 0
+    promotions_approved: int = 0
+    promotions_pending_approval: int = 0
+    promotions_blocked: int = 0
+    rollbacks_triggered: int = 0
+    
+    # Guardrail metrics
+    guardrail_blocks_total: int = 0
+    sample_size_violations: int = 0
+    lift_threshold_violations: int = 0
+    
+    # Weekly evaluation metrics
+    evaluations_run_total: int = 0
+    significant_results: int = 0
+    insignificant_results: int = 0
+    
+    # Timestamps
+    last_assignment_at: Optional[str] = None
+    last_evaluation_at: Optional[str] = None
+    last_promotion_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -247,6 +285,7 @@ class MetricsCollector:
         self._predictive_metrics = PredictiveResilienceMetrics()  # v27
         self._recovery_metrics = RecoveryOrchestrationMetrics()  # v28
         self._onboarding_activation_metrics = OnboardingActivationMetrics()  # v31
+        self._onboarding_experimentation_metrics = OnboardingExperimentationMetrics()  # v32
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -928,6 +967,43 @@ class MetricsCollector:
                         "last_rollback_at": self._onboarding_activation_metrics.last_rollback_at,
                     },
                 },
+                # v32: Onboarding Experimentation Layer metrics
+                "onboarding_experimentation_v32": {
+                    "experiments": {
+                        "total": self._onboarding_experimentation_metrics.experiments_total,
+                        "running": self._onboarding_experimentation_metrics.experiments_running,
+                        "completed": self._onboarding_experimentation_metrics.experiments_completed,
+                        "paused": self._onboarding_experimentation_metrics.experiments_paused,
+                        "rolled_back": self._onboarding_experimentation_metrics.experiments_rolled_back,
+                    },
+                    "assignments": {
+                        "total": self._onboarding_experimentation_metrics.assignments_total,
+                        "today": self._onboarding_experimentation_metrics.assignments_today,
+                    },
+                    "promotions": {
+                        "auto_applied": self._onboarding_experimentation_metrics.promotions_auto_applied,
+                        "approved": self._onboarding_experimentation_metrics.promotions_approved,
+                        "pending_approval": self._onboarding_experimentation_metrics.promotions_pending_approval,
+                        "blocked": self._onboarding_experimentation_metrics.promotions_blocked,
+                        "rollbacks": self._onboarding_experimentation_metrics.rollbacks_triggered,
+                    },
+                    "guardrails": {
+                        "blocks_total": self._onboarding_experimentation_metrics.guardrail_blocks_total,
+                        "sample_size_violations": self._onboarding_experimentation_metrics.sample_size_violations,
+                        "lift_threshold_violations": self._onboarding_experimentation_metrics.lift_threshold_violations,
+                    },
+                    "evaluations": {
+                        "total": self._onboarding_experimentation_metrics.evaluations_run_total,
+                        "significant": self._onboarding_experimentation_metrics.significant_results,
+                        "insignificant": self._onboarding_experimentation_metrics.insignificant_results,
+                    },
+                    "timestamps": {
+                        "last_assignment_at": self._onboarding_experimentation_metrics.last_assignment_at,
+                        "last_evaluation_at": self._onboarding_experimentation_metrics.last_evaluation_at,
+                        "last_promotion_at": self._onboarding_experimentation_metrics.last_promotion_at,
+                        "last_rollback_at": self._onboarding_experimentation_metrics.last_rollback_at,
+                    },
+                },
             }
 
     # v31: Onboarding Activation Learning Loop metrics
@@ -993,6 +1069,115 @@ class MetricsCollector:
                 self._onboarding_activation_metrics.time_to_first_action_ms = metrics["time_to_first_action_ms"]
             if "step_1_dropoff_rate" in metrics:
                 self._onboarding_activation_metrics.step_1_dropoff_rate = metrics["step_1_dropoff_rate"]
+    
+    # v32: Onboarding Experimentation Layer metrics
+    def record_experiment_created(self) -> None:
+        """v32: Record experiment creation."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.experiments_total += 1
+    
+    def record_experiment_started(self) -> None:
+        """v32: Record experiment started (running)."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.experiments_running += 1
+    
+    def record_experiment_paused(self) -> None:
+        """v32: Record experiment paused."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.experiments_paused += 1
+            self._onboarding_experimentation_metrics.experiments_running = max(
+                0, self._onboarding_experimentation_metrics.experiments_running - 1
+            )
+    
+    def record_experiment_completed(self) -> None:
+        """v32: Record experiment completed."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.experiments_completed += 1
+            self._onboarding_experimentation_metrics.experiments_running = max(
+                0, self._onboarding_experimentation_metrics.experiments_running - 1
+            )
+            self._onboarding_experimentation_metrics.last_promotion_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_experiment_rolled_back(self) -> None:
+        """v32: Record experiment rolled back."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.experiments_rolled_back += 1
+            self._onboarding_experimentation_metrics.rollbacks_triggered += 1
+            self._onboarding_experimentation_metrics.experiments_running = max(
+                0, self._onboarding_experimentation_metrics.experiments_running - 1
+            )
+            self._onboarding_experimentation_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_assignment(self) -> None:
+        """v32: Record variant assignment."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.assignments_total += 1
+            self._onboarding_experimentation_metrics.assignments_today += 1
+            self._onboarding_experimentation_metrics.last_assignment_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_promotion_decision(self, decision_type: str) -> None:
+        """v32: Record promotion decision.
+        
+        Args:
+            decision_type: One of 'auto_apply', 'approved', 'pending', 'blocked', 'rollback'
+        """
+        with self._lock:
+            if decision_type == "auto_apply":
+                self._onboarding_experimentation_metrics.promotions_auto_applied += 1
+            elif decision_type == "approved":
+                self._onboarding_experimentation_metrics.promotions_approved += 1
+            elif decision_type == "pending":
+                self._onboarding_experimentation_metrics.promotions_pending_approval += 1
+            elif decision_type == "blocked":
+                self._onboarding_experimentation_metrics.promotions_blocked += 1
+                self._onboarding_experimentation_metrics.guardrail_blocks_total += 1
+            elif decision_type == "rollback":
+                self._onboarding_experimentation_metrics.rollbacks_triggered += 1
+    
+    def record_evaluation_run(self, significant_results: int = 0, insignificant_results: int = 0) -> None:
+        """v32: Record weekly evaluation run."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.evaluations_run_total += 1
+            self._onboarding_experimentation_metrics.significant_results += significant_results
+            self._onboarding_experimentation_metrics.insignificant_results += insignificant_results
+            self._onboarding_experimentation_metrics.last_evaluation_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_guardrail_block(self, violation_type: str) -> None:
+        """v32: Record guardrail block."""
+        with self._lock:
+            self._onboarding_experimentation_metrics.guardrail_blocks_total += 1
+            if violation_type == "sample_size":
+                self._onboarding_experimentation_metrics.sample_size_violations += 1
+            elif violation_type == "lift_threshold":
+                self._onboarding_experimentation_metrics.lift_threshold_violations += 1
+    
+    def get_experimentation_metrics(self) -> OnboardingExperimentationMetrics:
+        """v32: Get current experimentation metrics snapshot."""
+        with self._lock:
+            return OnboardingExperimentationMetrics(
+                experiments_total=self._onboarding_experimentation_metrics.experiments_total,
+                experiments_running=self._onboarding_experimentation_metrics.experiments_running,
+                experiments_completed=self._onboarding_experimentation_metrics.experiments_completed,
+                experiments_paused=self._onboarding_experimentation_metrics.experiments_paused,
+                experiments_rolled_back=self._onboarding_experimentation_metrics.experiments_rolled_back,
+                assignments_total=self._onboarding_experimentation_metrics.assignments_total,
+                assignments_today=self._onboarding_experimentation_metrics.assignments_today,
+                promotions_auto_applied=self._onboarding_experimentation_metrics.promotions_auto_applied,
+                promotions_approved=self._onboarding_experimentation_metrics.promotions_approved,
+                promotions_pending_approval=self._onboarding_experimentation_metrics.promotions_pending_approval,
+                promotions_blocked=self._onboarding_experimentation_metrics.promotions_blocked,
+                rollbacks_triggered=self._onboarding_experimentation_metrics.rollbacks_triggered,
+                guardrail_blocks_total=self._onboarding_experimentation_metrics.guardrail_blocks_total,
+                sample_size_violations=self._onboarding_experimentation_metrics.sample_size_violations,
+                lift_threshold_violations=self._onboarding_experimentation_metrics.lift_threshold_violations,
+                evaluations_run_total=self._onboarding_experimentation_metrics.evaluations_run_total,
+                significant_results=self._onboarding_experimentation_metrics.significant_results,
+                insignificant_results=self._onboarding_experimentation_metrics.insignificant_results,
+                last_assignment_at=self._onboarding_experimentation_metrics.last_assignment_at,
+                last_evaluation_at=self._onboarding_experimentation_metrics.last_evaluation_at,
+                last_promotion_at=self._onboarding_experimentation_metrics.last_promotion_at,
+                last_rollback_at=self._onboarding_experimentation_metrics.last_rollback_at,
+            )
 
 
 def _normalize_metric_name(name: str) -> str:

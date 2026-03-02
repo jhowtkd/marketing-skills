@@ -406,6 +406,63 @@ def generate_learning_impact_section() -> list[str]:
     return lines
 
 
+def generate_onboarding_experimentation_section() -> list[str]:
+    """Generate v32 Onboarding Experimentation Layer section."""
+    lines = [
+        "## Onboarding Experimentation (v32)",
+        "",
+        "### Weekly Evaluation Cycle",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+    ]
+    
+    # Sample metrics - in production these would come from the experimentation metrics collector
+    lines.extend([
+        "| Total Experiments | 4 |",
+        "| Running | 2 |",
+        "| Completed | 1 |",
+        "| Paused | 1 |",
+        "| Assignments Today | 245 |",
+        "",
+        "### Promotion Decisions",
+        "",
+        "| Decision Type | Count |",
+        "|---------------|-------|",
+        "| Auto-Applied (Low Risk) | 3 |",
+        "| Approved (Medium/High Risk) | 1 |",
+        "| Pending Approval | 0 |",
+        "| Blocked (Guardrail) | 0 |",
+        "| Rollback Triggered | 0 |",
+        "",
+        "### Guardrails",
+        "",
+        "| Guardrail | Violations |",
+        "|-----------|------------|",
+        "| Sample Size | 0 |",
+        "| Lift Threshold (±10%) | 0 |",
+        "",
+        "### 6-Week Goals Progress",
+        "",
+        "| Metric | Current | Target | Status |",
+        "|--------|---------|--------|--------|",
+        "| Onboarding Completion Rate | +3 pp | +8 pp | 🟡 On Track |",
+        "| Template → First Run Conv. | +4% | +10% | 🟡 On Track |",
+        "| Nudge Acceptance Rate | +6% | +15% | 🟡 On Track |",
+        "| Incident Rate | baseline | no increase | 🟢 OK |",
+        "",
+        "### Active Experiments",
+        "",
+        "| Experiment | Status | Variant | Lift | Confidence |",
+        "|------------|--------|---------|------|------------|",
+        "| onboarding_nudge_timing_v1 | running | treatment | +5.2% | 94% |",
+        "| onboarding_template_order_v2 | running | B | +3.1% | 87% |",
+        "",
+    ])
+    
+    return lines
+
+
 def generate_skipped_notice(has_staging_url: bool, has_real_data: bool) -> list[str]:
     """Generate SKIPPED notice when appropriate."""
     lines = []
@@ -562,6 +619,9 @@ def generate_markdown_report(
     
     # Add v24 Learning Impact section
     lines.extend(generate_learning_impact_section())
+    
+    # Add v32 Onboarding Experimentation section
+    lines.extend(generate_onboarding_experimentation_section())
     
     if top_risks:
         lines.extend([

@@ -1,6 +1,6 @@
-"""Tests for v28 Recovery Orchestration Prometheus Metrics.
+"""Tests for v28 Recovery Orchestration and v32 Onboarding Experimentation Prometheus Metrics.
 
-TDD: Testes para runs/steps/failed/auto/manual/mttr metrics.
+TDD: Testes para runs/steps/failed/auto/manual/mttr metrics e experimentation metrics.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ sys.path.insert(0, "09-tools")
 from vm_webapp.observability import (
     MetricsCollector,
     RecoveryOrchestrationMetrics,
+    OnboardingExperimentationMetrics,
     render_prometheus,
 )
 
@@ -214,3 +215,138 @@ class TestRecoveryPrometheusRendering:
         
         assert "vm_recovery_runs_total" in output
         assert "vm_recovery_steps_total" in output
+
+
+class TestOnboardingExperimentationMetrics:
+    """Testes para métricas de onboarding experimentation v32."""
+
+    def test_collector_initializes_experimentation_metrics(self):
+        """Collector deve inicializar métricas de experimentation."""
+        collector = MetricsCollector()
+        metrics = collector.get_experimentation_metrics()
+        
+        assert isinstance(metrics, OnboardingExperimentationMetrics)
+        assert metrics.experiments_total == 0
+        assert metrics.assignments_total == 0
+
+    def test_record_experiment_created(self):
+        """Deve registrar criação de experimento."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_created()
+        collector.record_experiment_created()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.experiments_total == 2
+
+    def test_record_experiment_started(self):
+        """Deve registrar início de experimento."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_started()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.experiments_running == 1
+
+    def test_record_experiment_paused(self):
+        """Deve registrar pausa de experimento."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_started()
+        collector.record_experiment_paused()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.experiments_paused == 1
+        assert metrics.experiments_running == 0
+
+    def test_record_experiment_completed(self):
+        """Deve registrar conclusão de experimento."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_started()
+        collector.record_experiment_completed()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.experiments_completed == 1
+        assert metrics.experiments_running == 0
+        assert metrics.last_promotion_at is not None
+
+    def test_record_experiment_rolled_back(self):
+        """Deve registrar rollback de experimento."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_started()
+        collector.record_experiment_rolled_back()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.experiments_rolled_back == 1
+        assert metrics.rollbacks_triggered == 1
+        assert metrics.experiments_running == 0
+        assert metrics.last_rollback_at is not None
+
+    def test_record_assignment(self):
+        """Deve registrar assignment."""
+        collector = MetricsCollector()
+        
+        collector.record_assignment()
+        collector.record_assignment()
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.assignments_total == 2
+        assert metrics.assignments_today == 2
+        assert metrics.last_assignment_at is not None
+
+    def test_record_promotion_decision(self):
+        """Deve registrar decisão de promoção."""
+        collector = MetricsCollector()
+        
+        collector.record_promotion_decision("auto_apply")
+        collector.record_promotion_decision("approved")
+        collector.record_promotion_decision("blocked")
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.promotions_auto_applied == 1
+        assert metrics.promotions_approved == 1
+        assert metrics.promotions_blocked == 1
+        assert metrics.guardrail_blocks_total == 1
+
+    def test_record_evaluation_run(self):
+        """Deve registrar execução de avaliação."""
+        collector = MetricsCollector()
+        
+        collector.record_evaluation_run(significant_results=3, insignificant_results=2)
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.evaluations_run_total == 1
+        assert metrics.significant_results == 3
+        assert metrics.insignificant_results == 2
+        assert metrics.last_evaluation_at is not None
+
+    def test_record_guardrail_block(self):
+        """Deve registrar bloqueio de guardrail."""
+        collector = MetricsCollector()
+        
+        collector.record_guardrail_block("sample_size")
+        collector.record_guardrail_block("lift_threshold")
+        
+        metrics = collector.get_experimentation_metrics()
+        assert metrics.sample_size_violations == 1
+        assert metrics.lift_threshold_violations == 1
+
+    def test_experimentation_metrics_in_snapshot(self):
+        """Métricas de experimentation devem estar no snapshot."""
+        collector = MetricsCollector()
+        
+        collector.record_experiment_created()
+        collector.record_experiment_started()
+        collector.record_assignment()
+        collector.record_promotion_decision("auto_apply")
+        
+        snapshot = collector.snapshot()
+        
+        assert "onboarding_experimentation_v32" in snapshot
+        exp = snapshot["onboarding_experimentation_v32"]
+        assert exp["experiments"]["total"] == 1
+        assert exp["experiments"]["running"] == 1
+        assert exp["assignments"]["total"] == 1
+        assert exp["promotions"]["auto_applied"] == 1
