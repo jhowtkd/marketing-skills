@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --vm-bg: #0F0F0F;
+    --vm-surface: #1A1A1A;
+    --vm-surface-elevated: #242424;
+    --vm-border: #2A2A2A;
+    --vm-ink: #F5F5F5;
+    --vm-ink-muted: #8A8A8A;
+    --vm-ink-subtle: #5A5A5A;
+    --vm-primary: #FF6B35;
+    --vm-primary-dim: rgba(255, 107, 53, 0.12);
+    --vm-success: #4ADE80;
+    --vm-warning: #FBBF24;
+    --vm-error: #F87171;
+    --vm-hover: rgba(255, 255, 255, 0.06);
+    --vm-active: rgba(255, 255, 255, 0.1);
+  }
+
+  * {
+    @apply border-vm-border;
+  }
+
+  html {
+    @apply bg-vm-bg text-vm-ink;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
