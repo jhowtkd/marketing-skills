@@ -2,6 +2,67 @@
 
 All notable changes to the Vibe Marketing platform.
 
+## [v35.0.0] - Cross-Session Continuity Autopilot
+
+### Added
+- **Session State Graph**: Versioned checkpoints for deterministic continuity
+  - `CheckpointStatus`: active, committed, rolled_back, expired
+  - `SessionCheckpoint` with auto-incrementing versions
+  - `HandoffBundle` for cross-session context transfer
+  - `SourcePriority`: SESSION > RECOVERY > DEFAULT for conflict resolution
+- **Resume Orchestrator**: Conflict detection and resolution
+  - `ConflictType`: data_mismatch, step_regression, form_inconsistency, version_gap
+  - `ConsistencyGuardrails`: max_version_gap (5), max_step_regression (2)
+  - `ConflictResolution`: use_higher_priority, use_latest, merge, reject
+  - Auto-apply for low risk, approval for high risk
+- **API v2 Endpoints**:
+  - `GET /api/v2/brands/{brand_id}/onboarding-continuity/status` - Continuity metrics
+  - `POST /api/v2/brands/{brand_id}/onboarding-continuity/run` - Create checkpoint + bundle
+  - `GET /api/v2/brands/{brand_id}/onboarding-continuity/handoffs` - List handoffs
+  - `GET /api/v2/brands/{brand_id}/onboarding-continuity/handoffs/{id}` - Handoff detail
+  - `POST /api/v2/brands/{brand_id}/onboarding-continuity/resume` - Execute resume
+  - `POST /api/v2/brands/{brand_id}/onboarding-continuity/freeze` - Emergency freeze
+  - `POST /api/v2/brands/{brand_id}/onboarding-continuity/rollback` - Rollback operations
+- **Observability**:
+  - `OnboardingContinuityMetrics`: checkpoints, bundles, context_loss, conflicts
+  - Source distribution tracking: session, recovery, default
+  - Nightly report section with v35 6-week goal tracking
+- **Studio Continuity Ops Panel**:
+  - `useOnboardingContinuity` hook with polling
+  - `OnboardingContinuityPanel` component with handoff management
+  - Context payload preview, conflict display, resume controls
+- **CI Gate**: GitHub Actions workflow for v35 validation (6 jobs)
+
+### Metrics
+
+| Metric | Target | Method |
+|--------|--------|--------|
+| resume_completion_rate | +15 pp | Versioned checkpoints + conflict resolution |
+| time_to_resume_after_dropoff | -25% | Deterministic handoff bundles |
+| context_loss_rate | -40% | Consistency guardrails + validation |
+| first_run_after_resume_rate | +10 pp | Source priority resolution |
+| incident_rate | No increase | Approval gates + rollback support |
+
+### Files Added/Modified
+
+```
+09-tools/vm_webapp/onboarding_continuity.py                      (+306 lines)
+09-tools/vm_webapp/onboarding_resume_orchestrator.py             (+427 lines)
+09-tools/vm_webapp/api_onboarding_continuity.py                  (+403 lines)
+09-tools/vm_webapp/observability.py                              (+198 lines)
+09-tools/scripts/editorial_ops_report.py                         (+70 lines)
+09-tools/tests/test_vm_webapp_onboarding_continuity.py
+09-tools/tests/test_vm_webapp_onboarding_resume_orchestrator.py
+09-tools/tests/test_vm_webapp_api_v2_v35_additions.py
+09-tools/tests/test_vm_webapp_metrics_v35_continuity.py
+09-tools/web/vm-ui/src/features/workspace/hooks/useOnboardingContinuity.ts
+09-tools/web/vm-ui/src/features/workspace/components/OnboardingContinuityPanel.tsx
+09-tools/web/vm-ui/src/features/workspace/components/OnboardingContinuityPanel.test.tsx
+.github/workflows/v35-ci-gate.yml
+CHANGELOG.md
+docs/releases/2026-03-02-vm-studio-v35-cross-session-continuity-autopilot.md
+```
+
 ## [v34.0.0] - Onboarding Recovery & Reactivation Autopilot
 
 ### Added

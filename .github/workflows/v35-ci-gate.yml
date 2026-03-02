@@ -1,0 +1,139 @@
+name: v35 Onboarding Continuity CI Gate
+
+on:
+  push:
+    branches: [feature/governance-v35-cross-session-continuity-autopilot]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/**'
+      - '.github/workflows/v35-ci-gate.yml'
+
+env:
+  PYTHONPATH: 09-tools
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run continuity core tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_continuity.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run resume orchestrator tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_onboarding_resume_orchestrator.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_api_v2_v35_additions.py -v
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run metrics tests
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_v35_continuity.py -v
+        env:
+          PYTHONPATH: 09-tools
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install lint tools
+        run: pip install ruff black
+      
+      - name: Run ruff
+        run: |
+          ruff check 09-tools/vm_webapp/onboarding_continuity.py \
+                    09-tools/vm_webapp/onboarding_resume_orchestrator.py \
+                    09-tools/vm_webapp/api_onboarding_continuity.py
+      
+      - name: Run black check
+        run: |
+          black --check 09-tools/vm_webapp/onboarding_continuity.py \
+                      09-tools/vm_webapp/onboarding_resume_orchestrator.py \
+                      09-tools/vm_webapp/api_onboarding_continuity.py
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install mypy and stubs
+        run: |
+          pip install mypy types-PyYAML
+      
+      - name: Run type check on continuity modules
+        run: |
+          mypy 09-tools/vm_webapp/onboarding_continuity.py --ignore-missing-imports
+          mypy 09-tools/vm_webapp/onboarding_resume_orchestrator.py --ignore-missing-imports
+
+  metrics-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest sqlalchemy pydantic-settings
+      
+      - name: Validate continuity metrics schema
+        run: |
+          pytest 09-tools/tests/test_vm_webapp_metrics_v35_continuity.py::TestOnboardingContinuityMetrics::test_continuity_metrics_in_snapshot -v
+        env:
+          PYTHONPATH: 09-tools
+
+  yaml-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate workflow YAML
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/v35-ci-gate.yml'))"
+          echo "✓ YAML validation passed"
+
+  changelog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CHANGELOG.md updated
+        run: |
+          if ! git diff --name-only HEAD~1 | grep -q "CHANGELOG.md"; then
+            echo "⚠️ WARNING: CHANGELOG.md not updated in this PR"
+          fi
