@@ -14,6 +14,7 @@ from vm_webapp.observability import (
     MetricsCollector,
     RecoveryOrchestrationMetrics,
     OnboardingExperimentationMetrics,
+    OnboardingPersonalizationMetrics,
     render_prometheus,
 )
 
@@ -350,3 +351,114 @@ class TestOnboardingExperimentationMetrics:
         assert exp["experiments"]["running"] == 1
         assert exp["assignments"]["total"] == 1
         assert exp["promotions"]["auto_applied"] == 1
+
+
+class TestOnboardingPersonalizationMetrics:
+    """Testes para métricas de onboarding personalization v33."""
+
+    def test_collector_initializes_personalization_metrics(self):
+        """Collector deve inicializar métricas de personalization."""
+        collector = MetricsCollector()
+        metrics = collector.get_personalization_metrics()
+        
+        assert isinstance(metrics, OnboardingPersonalizationMetrics)
+        assert metrics.serves_total == 0
+        assert metrics.policies_total == 0
+
+    def test_record_policy_serve(self):
+        """Deve registrar serve de política."""
+        collector = MetricsCollector()
+        
+        collector.record_policy_serve("segment", 45.5)
+        collector.record_policy_serve("brand", 52.3)
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.serves_total == 2
+        assert metrics.serves_segment_hit == 1
+        assert metrics.serves_brand_fallback == 1
+        assert metrics.segment_served_count == 1
+        assert metrics.brand_fallback_count == 1
+
+    def test_record_policy_registered(self):
+        """Deve registrar registro de política."""
+        collector = MetricsCollector()
+        
+        collector.record_policy_registered()
+        collector.record_policy_registered()
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.policies_total == 2
+
+    def test_record_policy_activated(self):
+        """Deve registrar ativação de política."""
+        collector = MetricsCollector()
+        
+        collector.record_policy_activated()
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.policies_active == 1
+
+    def test_record_policy_rolled_back(self):
+        """Deve registrar rollback de política."""
+        collector = MetricsCollector()
+        
+        collector.record_policy_activated()
+        collector.record_policy_rolled_back()
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.policies_rolled_back == 1
+        assert metrics.policies_active == 0
+
+    def test_record_rollout_decision(self):
+        """Deve registrar decisão de rollout."""
+        collector = MetricsCollector()
+        
+        collector.record_rollout_decision("auto_apply")
+        collector.record_rollout_decision("approved")
+        collector.record_rollout_decision("block")
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.rollouts_total == 3
+        assert metrics.rollouts_auto_applied == 1
+        assert metrics.rollouts_approved == 1
+        assert metrics.rollouts_blocked == 1
+
+    def test_record_validation_failure(self):
+        """Deve registrar falha de validação."""
+        collector = MetricsCollector()
+        
+        collector.record_validation_failure()
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.validation_failures == 1
+
+    def test_record_personalization_guardrail_block(self):
+        """Deve registrar bloqueio de guardrail v33."""
+        collector = MetricsCollector()
+        
+        collector.record_personalization_guardrail_block("latency")
+        collector.record_personalization_guardrail_block("complexity")
+        
+        metrics = collector.get_personalization_metrics()
+        assert metrics.guardrail_blocks == 2
+        assert metrics.latency_violations == 1
+        assert metrics.complexity_violations == 1
+
+    def test_personalization_metrics_in_snapshot(self):
+        """Métricas de personalization devem estar no snapshot."""
+        collector = MetricsCollector()
+        
+        collector.record_policy_registered()
+        collector.record_policy_activated()
+        collector.record_policy_serve("segment", 45.5)
+        collector.record_rollout_decision("auto_apply")
+        
+        snapshot = collector.snapshot()
+        
+        assert "onboarding_personalization_v33" in snapshot
+        pers = snapshot["onboarding_personalization_v33"]
+        assert pers["policies"]["total"] == 1
+        assert pers["policies"]["active"] == 1
+        assert pers["serves"]["total"] == 1
+        assert pers["serves"]["segment_hit"] == 1
+        assert pers["rollouts"]["auto_applied"] == 1

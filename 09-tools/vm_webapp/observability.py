@@ -272,6 +272,47 @@ class OnboardingExperimentationMetrics:
     last_rollback_at: Optional[str] = None
 
 
+@dataclass
+class OnboardingPersonalizationMetrics:
+    """v33 Onboarding Personalization Autopilot metrics."""
+    # Serve metrics
+    serves_total: int = 0
+    serves_segment_hit: int = 0
+    serves_brand_fallback: int = 0
+    serves_global_fallback: int = 0
+    serve_latency_ms_total: float = 0.0
+    serve_latency_ms_count: int = 0
+    
+    # Policy metrics
+    policies_total: int = 0
+    policies_active: int = 0
+    policies_frozen: int = 0
+    policies_rolled_back: int = 0
+    
+    # Rollout metrics
+    rollouts_total: int = 0
+    rollouts_auto_applied: int = 0
+    rollouts_approved: int = 0
+    rollouts_blocked: int = 0
+    rollouts_rejected: int = 0
+    
+    # Source tracking
+    segment_served_count: int = 0
+    brand_fallback_count: int = 0
+    global_fallback_count: int = 0
+    
+    # Guardrail metrics
+    validation_failures: int = 0
+    guardrail_blocks: int = 0
+    latency_violations: int = 0
+    complexity_violations: int = 0
+    
+    # Timestamps
+    last_serve_at: Optional[str] = None
+    last_rollout_at: Optional[str] = None
+    last_block_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -286,6 +327,7 @@ class MetricsCollector:
         self._recovery_metrics = RecoveryOrchestrationMetrics()  # v28
         self._onboarding_activation_metrics = OnboardingActivationMetrics()  # v31
         self._onboarding_experimentation_metrics = OnboardingExperimentationMetrics()  # v32
+        self._onboarding_personalization_metrics = OnboardingPersonalizationMetrics()  # v33
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -1004,6 +1046,48 @@ class MetricsCollector:
                         "last_rollback_at": self._onboarding_experimentation_metrics.last_rollback_at,
                     },
                 },
+                # v33: Onboarding Personalization Autopilot metrics
+                "onboarding_personalization_v33": {
+                    "serves": {
+                        "total": self._onboarding_personalization_metrics.serves_total,
+                        "segment_hit": self._onboarding_personalization_metrics.serves_segment_hit,
+                        "brand_fallback": self._onboarding_personalization_metrics.serves_brand_fallback,
+                        "global_fallback": self._onboarding_personalization_metrics.serves_global_fallback,
+                        "avg_latency_ms": round(
+                            self._onboarding_personalization_metrics.serve_latency_ms_total / 
+                            max(1, self._onboarding_personalization_metrics.serve_latency_ms_count), 2
+                        ),
+                    },
+                    "policies": {
+                        "total": self._onboarding_personalization_metrics.policies_total,
+                        "active": self._onboarding_personalization_metrics.policies_active,
+                        "frozen": self._onboarding_personalization_metrics.policies_frozen,
+                        "rolled_back": self._onboarding_personalization_metrics.policies_rolled_back,
+                    },
+                    "rollouts": {
+                        "total": self._onboarding_personalization_metrics.rollouts_total,
+                        "auto_applied": self._onboarding_personalization_metrics.rollouts_auto_applied,
+                        "approved": self._onboarding_personalization_metrics.rollouts_approved,
+                        "blocked": self._onboarding_personalization_metrics.rollouts_blocked,
+                        "rejected": self._onboarding_personalization_metrics.rollouts_rejected,
+                    },
+                    "sources": {
+                        "segment_served": self._onboarding_personalization_metrics.segment_served_count,
+                        "brand_fallback": self._onboarding_personalization_metrics.brand_fallback_count,
+                        "global_fallback": self._onboarding_personalization_metrics.global_fallback_count,
+                    },
+                    "guardrails": {
+                        "validation_failures": self._onboarding_personalization_metrics.validation_failures,
+                        "blocks": self._onboarding_personalization_metrics.guardrail_blocks,
+                        "latency_violations": self._onboarding_personalization_metrics.latency_violations,
+                        "complexity_violations": self._onboarding_personalization_metrics.complexity_violations,
+                    },
+                    "timestamps": {
+                        "last_serve_at": self._onboarding_personalization_metrics.last_serve_at,
+                        "last_rollout_at": self._onboarding_personalization_metrics.last_rollout_at,
+                        "last_block_at": self._onboarding_personalization_metrics.last_block_at,
+                    },
+                },
             }
 
     # v31: Onboarding Activation Learning Loop metrics
@@ -1177,6 +1261,114 @@ class MetricsCollector:
                 last_evaluation_at=self._onboarding_experimentation_metrics.last_evaluation_at,
                 last_promotion_at=self._onboarding_experimentation_metrics.last_promotion_at,
                 last_rollback_at=self._onboarding_experimentation_metrics.last_rollback_at,
+            )
+    
+    # v33: Onboarding Personalization Autopilot metrics
+    def record_policy_serve(self, source: str, latency_ms: float) -> None:
+        """v33: Record policy serve with source and latency."""
+        with self._lock:
+            self._onboarding_personalization_metrics.serves_total += 1
+            self._onboarding_personalization_metrics.serve_latency_ms_total += latency_ms
+            self._onboarding_personalization_metrics.serve_latency_ms_count += 1
+            
+            if source == "segment":
+                self._onboarding_personalization_metrics.serves_segment_hit += 1
+                self._onboarding_personalization_metrics.segment_served_count += 1
+            elif source == "brand":
+                self._onboarding_personalization_metrics.serves_brand_fallback += 1
+                self._onboarding_personalization_metrics.brand_fallback_count += 1
+            elif source == "global":
+                self._onboarding_personalization_metrics.serves_global_fallback += 1
+                self._onboarding_personalization_metrics.global_fallback_count += 1
+            
+            self._onboarding_personalization_metrics.last_serve_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_policy_registered(self) -> None:
+        """v33: Record policy registration."""
+        with self._lock:
+            self._onboarding_personalization_metrics.policies_total += 1
+    
+    def record_policy_activated(self) -> None:
+        """v33: Record policy activated."""
+        with self._lock:
+            self._onboarding_personalization_metrics.policies_active += 1
+    
+    def record_policy_frozen(self) -> None:
+        """v33: Record policy frozen."""
+        with self._lock:
+            self._onboarding_personalization_metrics.policies_frozen += 1
+            self._onboarding_personalization_metrics.policies_active = max(
+                0, self._onboarding_personalization_metrics.policies_active - 1
+            )
+    
+    def record_policy_rolled_back(self) -> None:
+        """v33: Record policy rolled back."""
+        with self._lock:
+            self._onboarding_personalization_metrics.policies_rolled_back += 1
+            self._onboarding_personalization_metrics.policies_active = max(
+                0, self._onboarding_personalization_metrics.policies_active - 1
+            )
+            self._onboarding_personalization_metrics.last_rollout_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_rollout_decision(self, decision_type: str) -> None:
+        """v33: Record rollout decision."""
+        with self._lock:
+            self._onboarding_personalization_metrics.rollouts_total += 1
+            if decision_type == "auto_apply":
+                self._onboarding_personalization_metrics.rollouts_auto_applied += 1
+            elif decision_type == "approved":
+                self._onboarding_personalization_metrics.rollouts_approved += 1
+            elif decision_type == "block":
+                self._onboarding_personalization_metrics.rollouts_blocked += 1
+            elif decision_type == "reject":
+                self._onboarding_personalization_metrics.rollouts_rejected += 1
+            
+            self._onboarding_personalization_metrics.last_rollout_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_validation_failure(self) -> None:
+        """v33: Record validation failure."""
+        with self._lock:
+            self._onboarding_personalization_metrics.validation_failures += 1
+    
+    def record_personalization_guardrail_block(self, violation_type: str) -> None:
+        """v33: Record personalization guardrail block."""
+        with self._lock:
+            self._onboarding_personalization_metrics.guardrail_blocks += 1
+            if violation_type == "latency":
+                self._onboarding_personalization_metrics.latency_violations += 1
+            elif violation_type == "complexity":
+                self._onboarding_personalization_metrics.complexity_violations += 1
+            self._onboarding_personalization_metrics.last_block_at = datetime.now(timezone.utc).isoformat()
+    
+    def get_personalization_metrics(self) -> OnboardingPersonalizationMetrics:
+        """v33: Get current personalization metrics snapshot."""
+        with self._lock:
+            return OnboardingPersonalizationMetrics(
+                serves_total=self._onboarding_personalization_metrics.serves_total,
+                serves_segment_hit=self._onboarding_personalization_metrics.serves_segment_hit,
+                serves_brand_fallback=self._onboarding_personalization_metrics.serves_brand_fallback,
+                serves_global_fallback=self._onboarding_personalization_metrics.serves_global_fallback,
+                serve_latency_ms_total=self._onboarding_personalization_metrics.serve_latency_ms_total,
+                serve_latency_ms_count=self._onboarding_personalization_metrics.serve_latency_ms_count,
+                policies_total=self._onboarding_personalization_metrics.policies_total,
+                policies_active=self._onboarding_personalization_metrics.policies_active,
+                policies_frozen=self._onboarding_personalization_metrics.policies_frozen,
+                policies_rolled_back=self._onboarding_personalization_metrics.policies_rolled_back,
+                rollouts_total=self._onboarding_personalization_metrics.rollouts_total,
+                rollouts_auto_applied=self._onboarding_personalization_metrics.rollouts_auto_applied,
+                rollouts_approved=self._onboarding_personalization_metrics.rollouts_approved,
+                rollouts_blocked=self._onboarding_personalization_metrics.rollouts_blocked,
+                rollouts_rejected=self._onboarding_personalization_metrics.rollouts_rejected,
+                segment_served_count=self._onboarding_personalization_metrics.segment_served_count,
+                brand_fallback_count=self._onboarding_personalization_metrics.brand_fallback_count,
+                global_fallback_count=self._onboarding_personalization_metrics.global_fallback_count,
+                validation_failures=self._onboarding_personalization_metrics.validation_failures,
+                guardrail_blocks=self._onboarding_personalization_metrics.guardrail_blocks,
+                latency_violations=self._onboarding_personalization_metrics.latency_violations,
+                complexity_violations=self._onboarding_personalization_metrics.complexity_violations,
+                last_serve_at=self._onboarding_personalization_metrics.last_serve_at,
+                last_rollout_at=self._onboarding_personalization_metrics.last_rollout_at,
+                last_block_at=self._onboarding_personalization_metrics.last_block_at,
             )
 
 
