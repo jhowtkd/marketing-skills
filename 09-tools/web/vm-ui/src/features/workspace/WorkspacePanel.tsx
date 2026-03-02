@@ -40,6 +40,7 @@ import { useAlerts } from "./hooks/useAlerts";
 import { AlertPanel } from "./components/AlertPanel";
 import { RoiOptimizerPanel } from "./components/RoiOptimizerPanel";
 import { QualityFirstOptimizerPanel } from "./components/QualityFirstOptimizerPanel";
+import { PredictiveResiliencePanel } from "./components/PredictiveResiliencePanel";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
 
 type MaybeId = string | null;
@@ -1530,6 +1531,10 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
 
       {/* v25: Quality-First Constrained Optimizer Panel */}
       {currentRunId && <QualityFirstOptimizerPanel runId={currentRunId} />}
+
+      {currentRunId && runDetail?.brand_id && (
+        <PredictiveResiliencePanel brandId={runDetail.brand_id} />
+      )}
 
       {currentRunId && runDetail && devMode ? (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
