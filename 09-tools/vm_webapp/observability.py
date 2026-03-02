@@ -82,6 +82,50 @@ class ControlLoopMetrics:
 
 
 @dataclass
+class PredictiveResilienceMetrics:
+    """v27 Predictive Resilience Engine metrics."""
+    # Counters
+    cycles_total: int = 0
+    alerts_total: int = 0  # predictive_alerts_total
+    mitigations_applied_total: int = 0
+    mitigations_blocked_total: int = 0
+    mitigations_rejected_total: int = 0
+    rollbacks_total: int = 0
+    false_positives_total: int = 0
+    
+    # Score metrics
+    composite_score_avg: float = 0.0
+    composite_score_min: float = 1.0
+    composite_score_max: float = 0.0
+    score_measurements: int = 0
+    
+    # Risk classification counts
+    risk_low_count: int = 0
+    risk_medium_count: int = 0
+    risk_high_count: int = 0
+    risk_critical_count: int = 0
+    
+    # Time-based metrics (in seconds)
+    time_to_detect_seconds: float = 0.0
+    time_to_mitigate_seconds: float = 0.0
+    time_to_detect_count: int = 0
+    time_to_mitigate_count: int = 0
+    
+    # Active state
+    active_cycles: int = 0
+    frozen_brands: int = 0
+    pending_proposals: int = 0
+    
+    # Timestamps
+    last_cycle_at: Optional[str] = None
+    last_alert_at: Optional[str] = None
+    last_mitigation_applied_at: Optional[str] = None
+    last_mitigation_rejected_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+    last_false_positive_at: Optional[str] = None
+
+
+@dataclass
 class RoiOptimizerMetrics:
     """v19 ROI Optimizer metrics snapshot."""
     # Counters
@@ -118,6 +162,7 @@ class MetricsCollector:
         self._learning_metrics = ApprovalLearningMetrics()
         self._quality_metrics = QualityOptimizerMetrics()
         self._control_loop_metrics = ControlLoopMetrics()
+        self._predictive_metrics = PredictiveResilienceMetrics()  # v27
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -327,6 +372,143 @@ class MetricsCollector:
                 last_rollback_at=self._control_loop_metrics.last_rollback_at,
             )
     
+    # v27: Predictive Resilience metrics
+    def record_predictive_cycle(self) -> None:
+        """v27: Record a predictive resilience cycle run."""
+        with self._lock:
+            self._predictive_metrics.cycles_total += 1
+            self._predictive_metrics.active_cycles += 1
+            self._predictive_metrics.last_cycle_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_alert(self) -> None:
+        """v27: Record a predictive alert generated."""
+        with self._lock:
+            self._predictive_metrics.alerts_total += 1
+            self._predictive_metrics.last_alert_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_mitigation_applied(self) -> None:
+        """v27: Record a mitigation being applied."""
+        with self._lock:
+            self._predictive_metrics.mitigations_applied_total += 1
+            self._predictive_metrics.last_mitigation_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_mitigation_blocked(self) -> None:
+        """v27: Record a mitigation being blocked."""
+        with self._lock:
+            self._predictive_metrics.mitigations_blocked_total += 1
+    
+    def record_predictive_mitigation_rejected(self) -> None:
+        """v27: Record a mitigation being rejected."""
+        with self._lock:
+            self._predictive_metrics.mitigations_rejected_total += 1
+            self._predictive_metrics.last_mitigation_rejected_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_rollback(self) -> None:
+        """v27: Record a rollback operation."""
+        with self._lock:
+            self._predictive_metrics.rollbacks_total += 1
+            self._predictive_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_false_positive(self) -> None:
+        """v27: Record a false positive alert."""
+        with self._lock:
+            self._predictive_metrics.false_positives_total += 1
+            self._predictive_metrics.last_false_positive_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_predictive_score(self, score: float, risk_class: str) -> None:
+        """v27: Record a resilience score measurement."""
+        with self._lock:
+            # Update running average
+            current = self._predictive_metrics.composite_score_avg
+            count = self._predictive_metrics.score_measurements
+            new_count = count + 1
+            new_avg = (current * count + score) / new_count
+            self._predictive_metrics.composite_score_avg = new_avg
+            self._predictive_metrics.score_measurements = new_count
+            
+            # Update min/max
+            self._predictive_metrics.composite_score_min = min(self._predictive_metrics.composite_score_min, score)
+            self._predictive_metrics.composite_score_max = max(self._predictive_metrics.composite_score_max, score)
+            
+            # Update risk class counts
+            if risk_class == "low":
+                self._predictive_metrics.risk_low_count += 1
+            elif risk_class == "medium":
+                self._predictive_metrics.risk_medium_count += 1
+            elif risk_class == "high":
+                self._predictive_metrics.risk_high_count += 1
+            elif risk_class == "critical":
+                self._predictive_metrics.risk_critical_count += 1
+    
+    def record_predictive_time_to_detect(self, seconds: float) -> None:
+        """v27: Record time to detect degradation (seconds)."""
+        with self._lock:
+            current = self._predictive_metrics.time_to_detect_seconds
+            count = self._predictive_metrics.time_to_detect_count
+            new_count = count + 1
+            new_avg = (current * count + seconds) / new_count
+            self._predictive_metrics.time_to_detect_seconds = new_avg
+            self._predictive_metrics.time_to_detect_count = new_count
+    
+    def record_predictive_time_to_mitigate(self, seconds: float) -> None:
+        """v27: Record time to mitigate degradation (seconds)."""
+        with self._lock:
+            current = self._predictive_metrics.time_to_mitigate_seconds
+            count = self._predictive_metrics.time_to_mitigate_count
+            new_count = count + 1
+            new_avg = (current * count + seconds) / new_count
+            self._predictive_metrics.time_to_mitigate_seconds = new_avg
+            self._predictive_metrics.time_to_mitigate_count = new_count
+    
+    def update_predictive_active_cycles(self, count: int) -> None:
+        """v27: Update active cycles count."""
+        with self._lock:
+            self._predictive_metrics.active_cycles = count
+    
+    def update_predictive_frozen_brands(self, count: int) -> None:
+        """v27: Update frozen brands count."""
+        with self._lock:
+            self._predictive_metrics.frozen_brands = count
+    
+    def update_predictive_pending_proposals(self, count: int) -> None:
+        """v27: Update pending proposals count."""
+        with self._lock:
+            self._predictive_metrics.pending_proposals = count
+    
+    def get_predictive_metrics(self) -> PredictiveResilienceMetrics:
+        """v27: Get current predictive resilience metrics snapshot."""
+        with self._lock:
+            return PredictiveResilienceMetrics(
+                cycles_total=self._predictive_metrics.cycles_total,
+                alerts_total=self._predictive_metrics.alerts_total,
+                mitigations_applied_total=self._predictive_metrics.mitigations_applied_total,
+                mitigations_blocked_total=self._predictive_metrics.mitigations_blocked_total,
+                mitigations_rejected_total=self._predictive_metrics.mitigations_rejected_total,
+                rollbacks_total=self._predictive_metrics.rollbacks_total,
+                false_positives_total=self._predictive_metrics.false_positives_total,
+                composite_score_avg=self._predictive_metrics.composite_score_avg,
+                composite_score_min=self._predictive_metrics.composite_score_min,
+                composite_score_max=self._predictive_metrics.composite_score_max,
+                score_measurements=self._predictive_metrics.score_measurements,
+                risk_low_count=self._predictive_metrics.risk_low_count,
+                risk_medium_count=self._predictive_metrics.risk_medium_count,
+                risk_high_count=self._predictive_metrics.risk_high_count,
+                risk_critical_count=self._predictive_metrics.risk_critical_count,
+                time_to_detect_seconds=self._predictive_metrics.time_to_detect_seconds,
+                time_to_mitigate_seconds=self._predictive_metrics.time_to_mitigate_seconds,
+                time_to_detect_count=self._predictive_metrics.time_to_detect_count,
+                time_to_mitigate_count=self._predictive_metrics.time_to_mitigate_count,
+                active_cycles=self._predictive_metrics.active_cycles,
+                frozen_brands=self._predictive_metrics.frozen_brands,
+                pending_proposals=self._predictive_metrics.pending_proposals,
+                last_cycle_at=self._predictive_metrics.last_cycle_at,
+                last_alert_at=self._predictive_metrics.last_alert_at,
+                last_mitigation_applied_at=self._predictive_metrics.last_mitigation_applied_at,
+                last_mitigation_rejected_at=self._predictive_metrics.last_mitigation_rejected_at,
+                last_rollback_at=self._predictive_metrics.last_rollback_at,
+                last_false_positive_at=self._predictive_metrics.last_false_positive_at,
+            )
+    
     # v19: ROI Optimizer metrics
     def record_roi_cycle(self) -> None:
         """v19: Record an ROI optimizer cycle run."""
@@ -446,6 +628,31 @@ class MetricsCollector:
                     "frozen_brands": self._control_loop_metrics.frozen_brands,
                     "last_cycle_at": self._control_loop_metrics.last_cycle_at,
                     "last_regression_detected_at": self._control_loop_metrics.last_regression_detected_at,
+                },
+                # v27 Predictive Resilience metrics
+                "predictive_resilience_v27": {
+                    "cycles_total": self._predictive_metrics.cycles_total,
+                    "alerts_total": self._predictive_metrics.alerts_total,
+                    "mitigations_applied_total": self._predictive_metrics.mitigations_applied_total,
+                    "mitigations_blocked_total": self._predictive_metrics.mitigations_blocked_total,
+                    "mitigations_rejected_total": self._predictive_metrics.mitigations_rejected_total,
+                    "rollbacks_total": self._predictive_metrics.rollbacks_total,
+                    "false_positives_total": self._predictive_metrics.false_positives_total,
+                    "composite_score_avg": self._predictive_metrics.composite_score_avg,
+                    "composite_score_min": self._predictive_metrics.composite_score_min,
+                    "composite_score_max": self._predictive_metrics.composite_score_max,
+                    "risk_low_count": self._predictive_metrics.risk_low_count,
+                    "risk_medium_count": self._predictive_metrics.risk_medium_count,
+                    "risk_high_count": self._predictive_metrics.risk_high_count,
+                    "risk_critical_count": self._predictive_metrics.risk_critical_count,
+                    "time_to_detect_seconds": self._predictive_metrics.time_to_detect_seconds,
+                    "time_to_mitigate_seconds": self._predictive_metrics.time_to_mitigate_seconds,
+                    "active_cycles": self._predictive_metrics.active_cycles,
+                    "frozen_brands": self._predictive_metrics.frozen_brands,
+                    "pending_proposals": self._predictive_metrics.pending_proposals,
+                    "last_cycle_at": self._predictive_metrics.last_cycle_at,
+                    "last_alert_at": self._predictive_metrics.last_alert_at,
+                    "last_false_positive_at": self._predictive_metrics.last_false_positive_at,
                 },
             }
 

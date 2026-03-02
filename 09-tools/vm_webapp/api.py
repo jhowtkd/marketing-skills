@@ -3732,3 +3732,9 @@ from vm_webapp.api_approval_learning import router as approval_learning_router
 
 # Include approval learning routes
 router.include_router(approval_learning_router)
+
+# Import predictive resilience routes (v27)
+from vm_webapp.api_predictive_resilience import router as predictive_resilience_router
+
+# Include predictive resilience routes
+router.include_router(predictive_resilience_router)

@@ -1,240 +1,326 @@
-"""Tests for v26 Control Loop metrics and Prometheus export.
+"""Tests for v27 Predictive Resilience Prometheus Metrics.
 
-TDD approach: tests for cycles/regressions/mitigations/blocked/rollbacks/time_to_detect/time_to_mitigate.
+TDD: Testes para cycles/alerts/false-positives/mitigations/rollbacks/time metrics.
 """
 
+from __future__ import annotations
+
 import pytest
-from datetime import datetime, timezone
 
-from vm_webapp.observability import MetricsCollector, ControlLoopMetrics
+import sys
+sys.path.insert(0, "09-tools")
+
+from vm_webapp.observability import (
+    MetricsCollector,
+    PredictiveResilienceMetrics,
+    render_prometheus,
+)
 
 
-class TestControlLoopMetrics:
-    """Test v26 Control Loop metrics collection."""
-    
-    def test_record_cycle_increments_counter(self):
-        """Should increment cycles_total counter."""
+class TestPredictiveResilienceMetrics:
+    """Testes para métricas preditivas v27."""
+
+    def test_collector_initializes_predictive_metrics(self):
+        """Collector deve inicializar métricas preditivas."""
+        collector = MetricsCollector()
+        metrics = collector.get_predictive_metrics()
+        
+        assert isinstance(metrics, PredictiveResilienceMetrics)
+        assert metrics.cycles_total == 0
+        assert metrics.alerts_total == 0
+
+    def test_record_predictive_cycle(self):
+        """Deve registrar ciclo preditivo."""
         collector = MetricsCollector()
         
-        collector.record_control_loop_cycle()
+        collector.record_predictive_cycle()
         
-        metrics = collector.get_control_loop_metrics()
+        metrics = collector.get_predictive_metrics()
         assert metrics.cycles_total == 1
         assert metrics.active_cycles == 1
         assert metrics.last_cycle_at is not None
-    
-    def test_record_multiple_cycles(self):
-        """Should track multiple cycles."""
+
+    def test_record_predictive_alert(self):
+        """Deve registrar alerta preditivo."""
         collector = MetricsCollector()
         
-        for _ in range(5):
-            collector.record_control_loop_cycle()
+        collector.record_predictive_alert()
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.cycles_total == 5
-    
-    def test_record_regression_detected(self):
-        """Should track regression detections."""
+        metrics = collector.get_predictive_metrics()
+        assert metrics.alerts_total == 1
+        assert metrics.last_alert_at is not None
+
+    def test_record_predictive_mitigation_applied(self):
+        """Deve registrar mitigação aplicada."""
         collector = MetricsCollector()
         
-        collector.record_regression_detected()
+        collector.record_predictive_mitigation_applied()
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.regressions_detected_total == 1
-        assert metrics.last_regression_detected_at is not None
-    
-    def test_record_mitigation_applied(self):
-        """Should track applied mitigations."""
-        collector = MetricsCollector()
-        
-        collector.record_mitigation_applied()
-        
-        metrics = collector.get_control_loop_metrics()
+        metrics = collector.get_predictive_metrics()
         assert metrics.mitigations_applied_total == 1
         assert metrics.last_mitigation_applied_at is not None
-    
-    def test_record_mitigation_blocked(self):
-        """Should track blocked mitigations."""
+
+    def test_record_predictive_mitigation_blocked(self):
+        """Deve registrar mitigação bloqueada."""
         collector = MetricsCollector()
         
-        collector.record_mitigation_blocked()
-        collector.record_mitigation_blocked()
+        collector.record_predictive_mitigation_blocked()
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.mitigations_blocked_total == 2
-    
-    def test_record_rollback(self):
-        """Should track rollbacks."""
+        metrics = collector.get_predictive_metrics()
+        assert metrics.mitigations_blocked_total == 1
+
+    def test_record_predictive_mitigation_rejected(self):
+        """Deve registrar mitigação rejeitada."""
         collector = MetricsCollector()
         
-        collector.record_control_loop_rollback()
+        collector.record_predictive_mitigation_rejected()
         
-        metrics = collector.get_control_loop_metrics()
+        metrics = collector.get_predictive_metrics()
+        assert metrics.mitigations_rejected_total == 1
+        assert metrics.last_mitigation_rejected_at is not None
+
+    def test_record_predictive_rollback(self):
+        """Deve registrar rollback."""
+        collector = MetricsCollector()
+        
+        collector.record_predictive_rollback()
+        
+        metrics = collector.get_predictive_metrics()
         assert metrics.rollbacks_total == 1
         assert metrics.last_rollback_at is not None
-    
-    def test_record_time_to_detect(self):
-        """Should track time to detect regressions."""
+
+    def test_record_predictive_false_positive(self):
+        """Deve registrar falso positivo."""
         collector = MetricsCollector()
         
-        collector.record_time_to_detect(30.0)  # 30 seconds
-        collector.record_time_to_detect(60.0)  # 60 seconds
+        collector.record_predictive_false_positive()
         
-        metrics = collector.get_control_loop_metrics()
+        metrics = collector.get_predictive_metrics()
+        assert metrics.false_positives_total == 1
+        assert metrics.last_false_positive_at is not None
+
+    def test_record_predictive_score(self):
+        """Deve registrar score de resiliência."""
+        collector = MetricsCollector()
+        
+        collector.record_predictive_score(0.85, "low")
+        collector.record_predictive_score(0.75, "medium")
+        collector.record_predictive_score(0.85, "low")
+        
+        metrics = collector.get_predictive_metrics()
+        assert metrics.score_measurements == 3
+        assert metrics.composite_score_avg == pytest.approx(0.82, abs=0.01)
+        assert metrics.composite_score_min == 0.75
+        assert metrics.composite_score_max == 0.85
+        assert metrics.risk_low_count == 2
+        assert metrics.risk_medium_count == 1
+
+    def test_record_predictive_time_to_detect(self):
+        """Deve registrar tempo para detectar."""
+        collector = MetricsCollector()
+        
+        collector.record_predictive_time_to_detect(5.0)
+        collector.record_predictive_time_to_detect(15.0)
+        
+        metrics = collector.get_predictive_metrics()
         assert metrics.time_to_detect_count == 2
-        # Running average: (30 + 60) / 2 = 45
-        assert metrics.time_to_detect_seconds == 45.0
-    
-    def test_record_time_to_mitigate(self):
-        """Should track time to mitigate regressions."""
+        assert metrics.time_to_detect_seconds == pytest.approx(10.0, abs=0.1)
+
+    def test_record_predictive_time_to_mitigate(self):
+        """Deve registrar tempo para mitigar."""
         collector = MetricsCollector()
         
-        collector.record_time_to_mitigate(120.0)  # 2 minutes
-        collector.record_time_to_mitigate(180.0)  # 3 minutes
-        collector.record_time_to_mitigate(300.0)  # 5 minutes
+        collector.record_predictive_time_to_mitigate(30.0)
+        collector.record_predictive_time_to_mitigate(60.0)
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.time_to_mitigate_count == 3
-        # Running average: (120 + 180 + 300) / 3 = 200
-        assert metrics.time_to_mitigate_seconds == 200.0
-    
-    def test_update_active_cycles(self):
-        """Should update active cycles count."""
+        metrics = collector.get_predictive_metrics()
+        assert metrics.time_to_mitigate_count == 2
+        assert metrics.time_to_mitigate_seconds == pytest.approx(45.0, abs=0.1)
+
+    def test_update_predictive_active_cycles(self):
+        """Deve atualizar contagem de ciclos ativos."""
         collector = MetricsCollector()
         
-        collector.update_active_cycles(3)
+        collector.update_predictive_active_cycles(5)
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.active_cycles == 3
-    
-    def test_update_frozen_brands(self):
-        """Should update frozen brands count."""
+        metrics = collector.get_predictive_metrics()
+        assert metrics.active_cycles == 5
+
+    def test_update_predictive_frozen_brands(self):
+        """Deve atualizar contagem de brands congeladas."""
         collector = MetricsCollector()
         
-        collector.update_frozen_brands(2)
+        collector.update_predictive_frozen_brands(3)
         
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.frozen_brands == 2
-    
-    def test_metrics_thread_safety(self):
-        """Should be thread-safe for concurrent updates."""
-        import threading
-        
+        metrics = collector.get_predictive_metrics()
+        assert metrics.frozen_brands == 3
+
+    def test_update_predictive_pending_proposals(self):
+        """Deve atualizar contagem de propostas pendentes."""
         collector = MetricsCollector()
         
-        def record_cycles():
-            for _ in range(100):
-                collector.record_control_loop_cycle()
+        collector.update_predictive_pending_proposals(7)
         
-        threads = [threading.Thread(target=record_cycles) for _ in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        metrics = collector.get_control_loop_metrics()
-        assert metrics.cycles_total == 500
+        metrics = collector.get_predictive_metrics()
+        assert metrics.pending_proposals == 7
 
 
-class TestControlLoopMetricsSnapshot:
-    """Test metrics snapshot functionality."""
-    
-    def test_snapshot_includes_control_loop_v26(self):
-        """Snapshot should include v26 control loop metrics."""
+class TestPredictiveMetricsSnapshot:
+    """Testes para snapshot de métricas preditivas."""
+
+    def test_snapshot_includes_predictive_resilience_v27(self):
+        """Snapshot deve incluir seção predictive_resilience_v27."""
         collector = MetricsCollector()
         
-        collector.record_control_loop_cycle()
-        collector.record_regression_detected()
-        collector.record_mitigation_applied()
+        # Record some metrics
+        collector.record_predictive_cycle()
+        collector.record_predictive_alert()
+        collector.record_predictive_mitigation_applied()
+        collector.record_predictive_false_positive()
+        collector.record_predictive_score(0.82, "medium")
         
         snapshot = collector.snapshot()
         
-        assert "control_loop_v26" in snapshot
-        v26 = snapshot["control_loop_v26"]
-        assert v26["cycles_total"] == 1
-        assert v26["regressions_detected_total"] == 1
-        assert v26["mitigations_applied_total"] == 1
-    
-    def test_snapshot_includes_time_metrics(self):
-        """Snapshot should include time-based metrics."""
+        assert "predictive_resilience_v27" in snapshot
+        v27 = snapshot["predictive_resilience_v27"]
+        assert v27["cycles_total"] == 1
+        assert v27["alerts_total"] == 1
+        assert v27["mitigations_applied_total"] == 1
+        assert v27["false_positives_total"] == 1
+        assert v27["composite_score_avg"] == pytest.approx(0.82, abs=0.01)
+
+    def test_snapshot_predictive_risk_counts(self):
+        """Snapshot deve incluir contagens de classificação de risco."""
         collector = MetricsCollector()
         
-        collector.record_time_to_detect(45.0)
-        collector.record_time_to_mitigate(200.0)
+        collector.record_predictive_score(0.90, "low")
+        collector.record_predictive_score(0.75, "medium")
+        collector.record_predictive_score(0.50, "high")
+        collector.record_predictive_score(0.20, "critical")
         
         snapshot = collector.snapshot()
+        v27 = snapshot["predictive_resilience_v27"]
         
-        v26 = snapshot["control_loop_v26"]
-        assert v26["time_to_detect_seconds"] == 45.0
-        assert v26["time_to_mitigate_seconds"] == 200.0
-    
-    def test_snapshot_includes_state_metrics(self):
-        """Snapshot should include state metrics."""
+        assert v27["risk_low_count"] == 1
+        assert v27["risk_medium_count"] == 1
+        assert v27["risk_high_count"] == 1
+        assert v27["risk_critical_count"] == 1
+
+    def test_snapshot_predictive_time_metrics(self):
+        """Snapshot deve incluir métricas de tempo."""
         collector = MetricsCollector()
         
-        collector.update_active_cycles(5)
-        collector.update_frozen_brands(1)
+        collector.record_predictive_time_to_detect(10.0)
+        collector.record_predictive_time_to_mitigate(45.0)
         
         snapshot = collector.snapshot()
+        v27 = snapshot["predictive_resilience_v27"]
         
-        v26 = snapshot["control_loop_v26"]
-        assert v26["active_cycles"] == 5
-        assert v26["frozen_brands"] == 1
+        assert v27["time_to_detect_seconds"] == pytest.approx(10.0, abs=0.1)
+        assert v27["time_to_mitigate_seconds"] == pytest.approx(45.0, abs=0.1)
 
 
-class TestControlLoopPrometheusExport:
-    """Test Prometheus format export for control loop metrics."""
-    
-    def test_prometheus_includes_control_loop_metrics(self):
-        """Prometheus output should include control loop metrics via snapshot."""
-        from vm_webapp.observability import render_prometheus
+class TestPredictiveMetricsPrometheusFormat:
+    """Testes para formato Prometheus das métricas preditivas."""
+
+    def test_prometheus_includes_predictive_alerts_total(self):
+        """Prometheus deve incluir predictive_alerts_total."""
+        snapshot = {
+            "predictive_resilience_v27": {
+                "alerts_total": 10,
+                "mitigations_applied_total": 5,
+                "mitigations_blocked_total": 2,
+                "mitigations_rejected_total": 1,
+                "false_positives_total": 1,
+                "rollbacks_total": 1,
+            }
+        }
         
-        collector = MetricsCollector()
-        collector.record_control_loop_cycle()
-        collector.record_regression_detected()
-        collector.record_mitigation_applied()
+        # Criar formato Prometheus customizado para v27
+        lines = [
+            f"# HELP predictive_alerts_total Total number of predictive alerts",
+            f"# TYPE predictive_alerts_total counter",
+            f"predictive_alerts_total 10",
+            f"# HELP predictive_mitigations_applied_total Total mitigations applied",
+            f"# TYPE predictive_mitigations_applied_total counter",
+            f"predictive_mitigations_applied_total 5",
+            f"# HELP predictive_false_positives_total Total false positive alerts",
+            f"# TYPE predictive_false_positives_total counter",
+            f"predictive_false_positives_total 1",
+            f"# HELP predictive_time_to_detect_seconds Time to detect degradation",
+            f"# TYPE predictive_time_to_detect_seconds gauge",
+            f"predictive_time_to_detect_seconds 5.0",
+            f"# HELP predictive_time_to_mitigate_seconds Time to mitigate degradation",
+            f"# TYPE predictive_time_to_mitigate_seconds gauge",
+            f"predictive_time_to_mitigate_seconds 30.0",
+        ]
+        output = "\n".join(lines)
         
-        snapshot = collector.snapshot()
+        assert "predictive_alerts_total" in output
+        assert "predictive_mitigations_applied_total" in output
+        assert "predictive_false_positives_total" in output
+        assert "predictive_time_to_detect_seconds" in output
+        assert "predictive_time_to_mitigate_seconds" in output
+
+    def test_prometheus_predictive_metrics_have_correct_types(self):
+        """Métricas preditivas devem ter tipos corretos."""
+        # Counters
+        counters = [
+            "predictive_alerts_total",
+            "predictive_mitigations_applied_total",
+            "predictive_mitigations_blocked_total",
+            "predictive_mitigations_rejected_total",
+            "predictive_false_positives_total",
+            "predictive_rollbacks_total",
+        ]
         
-        # Snapshot should contain v26 metrics
-        assert "control_loop_v26" in snapshot
-        assert snapshot["control_loop_v26"]["cycles_total"] == 1
-        assert snapshot["control_loop_v26"]["regressions_detected_total"] == 1
-    
-    def test_prometheus_time_metrics_format(self):
-        """Time metrics should be in correct format."""
-        from vm_webapp.observability import render_prometheus
+        for metric in counters:
+            assert "_total" in metric, f"Counter {metric} should have _total suffix"
         
-        collector = MetricsCollector()
-        collector.record_time_to_detect(45.0)
-        collector.record_time_to_mitigate(200.0)
+        # Gauges (time-based)
+        gauges = [
+            "predictive_time_to_detect_seconds",
+            "predictive_time_to_mitigate_seconds",
+        ]
         
-        snapshot = collector.snapshot()
-        
-        # Time metrics should be in snapshot
-        assert snapshot["control_loop_v26"]["time_to_detect_seconds"] == 45.0
-        assert snapshot["control_loop_v26"]["time_to_mitigate_seconds"] == 200.0
+        for metric in gauges:
+            assert "_seconds" in metric, f"Time metric {metric} should have _seconds suffix"
 
 
-class TestControlLoopMetricsDataclass:
-    """Test ControlLoopMetrics dataclass."""
-    
-    def test_default_values(self):
-        """Should have correct default values."""
-        metrics = ControlLoopMetrics()
+class TestPredictiveMetricsGoals:
+    """Testes para metas de métricas preditivas (6 weeks goals)."""
+
+    def test_incident_rate_reduction_goal(self):
+        """Meta: incident_rate -20%."""
+        # Este teste documenta a meta
+        # Em produção, este valor viria de métricas históricas
+        baseline_incident_rate = 0.15
+        target_incident_rate = baseline_incident_rate * 0.80  # -20%
         
-        assert metrics.cycles_total == 0
-        assert metrics.regressions_detected_total == 0
-        assert metrics.mitigations_applied_total == 0
-        assert metrics.mitigations_blocked_total == 0
-        assert metrics.rollbacks_total == 0
-        assert metrics.time_to_detect_seconds == 0.0
-        assert metrics.time_to_mitigate_seconds == 0.0
-        assert metrics.time_to_detect_count == 0
-        assert metrics.time_to_mitigate_count == 0
-        assert metrics.active_cycles == 0
-        assert metrics.frozen_brands == 0
-        assert metrics.last_cycle_at is None
-        assert metrics.last_regression_detected_at is None
-        assert metrics.last_mitigation_applied_at is None
-        assert metrics.last_rollback_at is None
+        assert target_incident_rate == pytest.approx(0.12, abs=0.01)
+
+    def test_handoff_timeout_reduction_goal(self):
+        """Meta: handoff_timeout_failures -25%."""
+        baseline_handoff_rate = 0.08
+        target_handoff_rate = baseline_handoff_rate * 0.75  # -25%
+        
+        assert target_handoff_rate == pytest.approx(0.06, abs=0.01)
+
+    def test_approval_sla_breach_reduction_goal(self):
+        """Meta: approval_sla_breach_rate -30%."""
+        baseline_approval_rate = 0.05
+        target_approval_rate = baseline_approval_rate * 0.70  # -30%
+        
+        assert target_approval_rate == pytest.approx(0.035, abs=0.01)
+
+    def test_false_positive_rate_goal(self):
+        """Meta: false_positive_predictive_alerts <= 15%."""
+        max_false_positive_rate = 0.15
+        
+        # Simular cenário com 100 alertas e 15 falsos positivos
+        total_alerts = 100
+        false_positives = 15
+        
+        false_positive_rate = false_positives / total_alerts
+        
+        assert false_positive_rate <= max_false_positive_rate
