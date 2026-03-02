@@ -313,6 +313,55 @@ class OnboardingPersonalizationMetrics:
     last_block_at: Optional[str] = None
 
 
+@dataclass
+class OnboardingRecoveryMetrics:
+    """v34 Onboarding Recovery Reactivation Autopilot metrics."""
+    # Case metrics
+    cases_detected: int = 0
+    cases_recoverable: int = 0
+    cases_recovered: int = 0
+    cases_expired: int = 0
+    cases_rejected: int = 0
+    
+    # Priority distribution
+    priority_high: int = 0
+    priority_medium: int = 0
+    priority_low: int = 0
+    
+    # Dropoff reason tracking
+    dropoff_abandoned: int = 0
+    dropoff_timeout: int = 0
+    dropoff_error: int = 0
+    dropoff_external: int = 0
+    dropoff_user_exit: int = 0
+    
+    # Proposal metrics
+    proposals_generated: int = 0
+    proposals_auto_applied: int = 0
+    proposals_approved: int = 0
+    proposals_rejected: int = 0
+    
+    # Strategy distribution
+    strategy_reminder: int = 0
+    strategy_fast_lane: int = 0
+    strategy_template_boost: int = 0
+    strategy_guided_resume: int = 0
+    
+    # Resume path metrics
+    resume_paths_generated: int = 0
+    resume_avg_friction_score: float = 0.0
+    resume_friction_total: float = 0.0
+    
+    # Timing metrics
+    avg_time_to_resume_hours: float = 0.0
+    
+    # Timestamps
+    last_case_detected_at: Optional[str] = None
+    last_case_recovered_at: Optional[str] = None
+    last_proposal_generated_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -328,6 +377,7 @@ class MetricsCollector:
         self._onboarding_activation_metrics = OnboardingActivationMetrics()  # v31
         self._onboarding_experimentation_metrics = OnboardingExperimentationMetrics()  # v32
         self._onboarding_personalization_metrics = OnboardingPersonalizationMetrics()  # v33
+        self._onboarding_recovery_metrics = OnboardingRecoveryMetrics()  # v34
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -1088,6 +1138,49 @@ class MetricsCollector:
                         "last_block_at": self._onboarding_personalization_metrics.last_block_at,
                     },
                 },
+                "onboarding_recovery_v34": {
+                    "cases": {
+                        "detected": self._onboarding_recovery_metrics.cases_detected,
+                        "recoverable": self._onboarding_recovery_metrics.cases_recoverable,
+                        "recovered": self._onboarding_recovery_metrics.cases_recovered,
+                        "expired": self._onboarding_recovery_metrics.cases_expired,
+                        "rejected": self._onboarding_recovery_metrics.cases_rejected,
+                    },
+                    "priority_distribution": {
+                        "high": self._onboarding_recovery_metrics.priority_high,
+                        "medium": self._onboarding_recovery_metrics.priority_medium,
+                        "low": self._onboarding_recovery_metrics.priority_low,
+                    },
+                    "dropoff_reasons": {
+                        "abandoned": self._onboarding_recovery_metrics.dropoff_abandoned,
+                        "timeout": self._onboarding_recovery_metrics.dropoff_timeout,
+                        "error": self._onboarding_recovery_metrics.dropoff_error,
+                        "external": self._onboarding_recovery_metrics.dropoff_external,
+                        "user_exit": self._onboarding_recovery_metrics.dropoff_user_exit,
+                    },
+                    "proposals": {
+                        "generated": self._onboarding_recovery_metrics.proposals_generated,
+                        "auto_applied": self._onboarding_recovery_metrics.proposals_auto_applied,
+                        "approved": self._onboarding_recovery_metrics.proposals_approved,
+                        "rejected": self._onboarding_recovery_metrics.proposals_rejected,
+                    },
+                    "strategies": {
+                        "reminder": self._onboarding_recovery_metrics.strategy_reminder,
+                        "fast_lane": self._onboarding_recovery_metrics.strategy_fast_lane,
+                        "template_boost": self._onboarding_recovery_metrics.strategy_template_boost,
+                        "guided_resume": self._onboarding_recovery_metrics.strategy_guided_resume,
+                    },
+                    "resume_paths": {
+                        "generated": self._onboarding_recovery_metrics.resume_paths_generated,
+                        "avg_friction_score": round(self._onboarding_recovery_metrics.resume_avg_friction_score, 2),
+                    },
+                    "timestamps": {
+                        "last_case_detected": self._onboarding_recovery_metrics.last_case_detected_at,
+                        "last_case_recovered": self._onboarding_recovery_metrics.last_case_recovered_at,
+                        "last_proposal_generated": self._onboarding_recovery_metrics.last_proposal_generated_at,
+                        "last_proposal_applied": self._onboarding_recovery_metrics.last_proposal_applied_at,
+                    },
+                },
             }
 
     # v31: Onboarding Activation Learning Loop metrics
@@ -1369,6 +1462,130 @@ class MetricsCollector:
                 last_serve_at=self._onboarding_personalization_metrics.last_serve_at,
                 last_rollout_at=self._onboarding_personalization_metrics.last_rollout_at,
                 last_block_at=self._onboarding_personalization_metrics.last_block_at,
+            )
+    
+    # v34: Onboarding Recovery Reactivation metrics
+    def record_recovery_case_detected(self, reason: str, priority: str) -> None:
+        """v34: Record a recovery case being detected."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_detected += 1
+            self._onboarding_recovery_metrics.cases_recoverable += 1
+            self._onboarding_recovery_metrics.last_case_detected_at = datetime.now(timezone.utc).isoformat()
+            
+            # Track priority
+            if priority == "high":
+                self._onboarding_recovery_metrics.priority_high += 1
+            elif priority == "medium":
+                self._onboarding_recovery_metrics.priority_medium += 1
+            else:
+                self._onboarding_recovery_metrics.priority_low += 1
+            
+            # Track dropoff reason
+            if reason == "abandoned_step":
+                self._onboarding_recovery_metrics.dropoff_abandoned += 1
+            elif reason == "timeout":
+                self._onboarding_recovery_metrics.dropoff_timeout += 1
+            elif reason == "error":
+                self._onboarding_recovery_metrics.dropoff_error += 1
+            elif reason == "external_interruption":
+                self._onboarding_recovery_metrics.dropoff_external += 1
+            elif reason == "user_initiated_exit":
+                self._onboarding_recovery_metrics.dropoff_user_exit += 1
+    
+    def record_recovery_case_recovered(self) -> None:
+        """v34: Record a successful recovery."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_recovered += 1
+            if self._onboarding_recovery_metrics.cases_recoverable > 0:
+                self._onboarding_recovery_metrics.cases_recoverable -= 1
+            self._onboarding_recovery_metrics.last_case_recovered_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_case_expired(self) -> None:
+        """v34: Record a recovery case expiring."""
+        with self._lock:
+            self._onboarding_recovery_metrics.cases_expired += 1
+            if self._onboarding_recovery_metrics.cases_recoverable > 0:
+                self._onboarding_recovery_metrics.cases_recoverable -= 1
+    
+    def record_recovery_proposal_generated(self, strategy: str, strategy_type: str) -> None:
+        """v34: Record a recovery proposal being generated."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_generated += 1
+            self._onboarding_recovery_metrics.last_proposal_generated_at = datetime.now(timezone.utc).isoformat()
+            
+            # Track strategy
+            if strategy == "reminder":
+                self._onboarding_recovery_metrics.strategy_reminder += 1
+            elif strategy == "fast_lane":
+                self._onboarding_recovery_metrics.strategy_fast_lane += 1
+            elif strategy == "template_boost":
+                self._onboarding_recovery_metrics.strategy_template_boost += 1
+            elif strategy == "guided_resume":
+                self._onboarding_recovery_metrics.strategy_guided_resume += 1
+    
+    def record_recovery_proposal_auto_applied(self, strategy: str) -> None:
+        """v34: Record an auto-applied recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_auto_applied += 1
+            self._onboarding_recovery_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_proposal_approved(self, strategy: str) -> None:
+        """v34: Record an approved recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_approved += 1
+            self._onboarding_recovery_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_proposal_rejected(self, strategy: str) -> None:
+        """v34: Record a rejected recovery proposal."""
+        with self._lock:
+            self._onboarding_recovery_metrics.proposals_rejected += 1
+            self._onboarding_recovery_metrics.cases_rejected += 1
+    
+    def record_recovery_resume_path_generated(self, estimated_minutes: int, friction_score: float) -> None:
+        """v34: Record a resume path being generated."""
+        with self._lock:
+            self._onboarding_recovery_metrics.resume_paths_generated += 1
+            self._onboarding_recovery_metrics.resume_friction_total += friction_score
+            # Update average
+            if self._onboarding_recovery_metrics.resume_paths_generated > 0:
+                self._onboarding_recovery_metrics.resume_avg_friction_score = (
+                    self._onboarding_recovery_metrics.resume_friction_total /
+                    self._onboarding_recovery_metrics.resume_paths_generated
+                )
+    
+    def get_recovery_metrics(self) -> OnboardingRecoveryMetrics:
+        """v34: Get current recovery metrics snapshot."""
+        with self._lock:
+            return OnboardingRecoveryMetrics(
+                cases_detected=self._onboarding_recovery_metrics.cases_detected,
+                cases_recoverable=self._onboarding_recovery_metrics.cases_recoverable,
+                cases_recovered=self._onboarding_recovery_metrics.cases_recovered,
+                cases_expired=self._onboarding_recovery_metrics.cases_expired,
+                cases_rejected=self._onboarding_recovery_metrics.cases_rejected,
+                priority_high=self._onboarding_recovery_metrics.priority_high,
+                priority_medium=self._onboarding_recovery_metrics.priority_medium,
+                priority_low=self._onboarding_recovery_metrics.priority_low,
+                dropoff_abandoned=self._onboarding_recovery_metrics.dropoff_abandoned,
+                dropoff_timeout=self._onboarding_recovery_metrics.dropoff_timeout,
+                dropoff_error=self._onboarding_recovery_metrics.dropoff_error,
+                dropoff_external=self._onboarding_recovery_metrics.dropoff_external,
+                dropoff_user_exit=self._onboarding_recovery_metrics.dropoff_user_exit,
+                proposals_generated=self._onboarding_recovery_metrics.proposals_generated,
+                proposals_auto_applied=self._onboarding_recovery_metrics.proposals_auto_applied,
+                proposals_approved=self._onboarding_recovery_metrics.proposals_approved,
+                proposals_rejected=self._onboarding_recovery_metrics.proposals_rejected,
+                strategy_reminder=self._onboarding_recovery_metrics.strategy_reminder,
+                strategy_fast_lane=self._onboarding_recovery_metrics.strategy_fast_lane,
+                strategy_template_boost=self._onboarding_recovery_metrics.strategy_template_boost,
+                strategy_guided_resume=self._onboarding_recovery_metrics.strategy_guided_resume,
+                resume_paths_generated=self._onboarding_recovery_metrics.resume_paths_generated,
+                resume_avg_friction_score=self._onboarding_recovery_metrics.resume_avg_friction_score,
+                resume_friction_total=self._onboarding_recovery_metrics.resume_friction_total,
+                avg_time_to_resume_hours=self._onboarding_recovery_metrics.avg_time_to_resume_hours,
+                last_case_detected_at=self._onboarding_recovery_metrics.last_case_detected_at,
+                last_case_recovered_at=self._onboarding_recovery_metrics.last_case_recovered_at,
+                last_proposal_generated_at=self._onboarding_recovery_metrics.last_proposal_generated_at,
+                last_proposal_applied_at=self._onboarding_recovery_metrics.last_proposal_applied_at,
             )
 
 
