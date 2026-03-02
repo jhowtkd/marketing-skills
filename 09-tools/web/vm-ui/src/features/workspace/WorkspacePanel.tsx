@@ -41,6 +41,7 @@ import { AlertPanel } from "./components/AlertPanel";
 import { RoiOptimizerPanel } from "./components/RoiOptimizerPanel";
 import { QualityFirstOptimizerPanel } from "./components/QualityFirstOptimizerPanel";
 import { PredictiveResiliencePanel } from "./components/PredictiveResiliencePanel";
+import { RecoveryOrchestrationPanel } from "./components/RecoveryOrchestrationPanel";
 import { readWorkspaceView, writeWorkspaceView, type WorkspaceView } from "./viewState";
 
 type MaybeId = string | null;
@@ -1534,6 +1535,11 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
 
       {currentRunId && runDetail?.brand_id && (
         <PredictiveResiliencePanel brandId={runDetail.brand_id} />
+      )}
+
+      {/* v28: Recovery Orchestration Panel */}
+      {currentRunId && runDetail?.brand_id && (
+        <RecoveryOrchestrationPanel brandId={runDetail.brand_id} />
       )}
 
       {currentRunId && runDetail && devMode ? (
