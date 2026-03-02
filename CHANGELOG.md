@@ -2,6 +2,76 @@
 
 All notable changes to the Vibe Marketing platform.
 
+## [v34.0.0] - Onboarding Recovery & Reactivation Autopilot
+
+### Added
+- **Dropoff Detection Engine**: Automatic detection of onboarding abandonment
+  - Detection rules: step abandonment (60min), timeout (24h), errors, external interruption
+  - `RecoveryCase` with states: active → recoverable → recovered/expired
+  - Priority calculation: HIGH (>70% or errors), MEDIUM (30-70%), LOW (<30%)
+- **Reactivation Strategy Engine**: Intelligent recovery strategy selection
+  - `ReactivationStrategy`: reminder, fast_lane, template_boost, guided_resume
+  - `StrategyType`: low_touch (auto), medium_touch, high_touch (approval)
+  - Rule-based selection by priority and dropoff reason
+- **Smart Resume Path**: Optimized re-engagement flow
+  - Dynamic entry point based on progress
+  - Step skipping for completed sections
+  - Form prefill from session metadata
+  - Friction scoring (0.0-1.0) and completion time estimation
+- **API v2 Endpoints**:
+  - `GET /api/v2/brands/{brand_id}/onboarding-recovery/status` - Recovery metrics
+  - `POST /api/v2/brands/{brand_id}/onboarding-recovery/run` - Detect & generate proposals
+  - `GET /api/v2/brands/{brand_id}/onboarding-recovery/cases` - List recovery cases
+  - `POST /api/v2/brands/{brand_id}/onboarding-recovery/cases/{id}/apply` - Apply recovery
+  - `POST /api/v2/brands/{brand_id}/onboarding-recovery/cases/{id}/reject` - Reject case
+  - `POST /api/v2/brands/{brand_id}/onboarding-recovery/freeze` - Emergency freeze
+  - `POST /api/v2/brands/{brand_id}/onboarding-recovery/rollback` - Rollback actions
+- **Approval Gates**: 
+  - Auto-apply for low-touch strategies (LOW priority)
+  - Human approval required for high-touch (HIGH priority, errors)
+  - Pending approvals queue per brand
+- **Observability**:
+  - `OnboardingRecoveryMetrics`: cases, priorities, dropoff reasons, proposals, strategies
+  - Nightly report section with v34 6-week goal tracking
+  - Prometheus integration with full metric export
+- **Studio Recovery Inbox Panel**:
+  - `useOnboardingRecovery` hook with polling
+  - `OnboardingRecoveryPanel` component with case management
+  - Priority badges, strategy preview, one-click actions
+  - Freeze/Rollback emergency controls
+  - Metrics dashboard
+- **CI Gate**: GitHub Actions workflow for v34 validation (backend + frontend)
+
+### Metrics
+
+| Metric | Target | Method |
+|--------|--------|--------|
+| setup_dropoff_rate | -20% | Early detection + fast-lane |
+| resume_completion_rate | +25% | Smart resume paths |
+| time_to_resume_after_dropoff | -40% | Priority-based urgency |
+| first_run_after_resume_rate | +15% | Guided resume for errors |
+| incident_rate | No increase | Approval gates + validation |
+
+### Files Added/Modified
+
+```
+09-tools/vm_webapp/onboarding_recovery.py                      (+288 lines)
+09-tools/vm_webapp/onboarding_recovery_strategy.py             (+425 lines)
+09-tools/vm_webapp/api_onboarding_recovery.py                  (+389 lines)
+09-tools/vm_webapp/observability.py                            (+180 lines)
+09-tools/scripts/editorial_ops_report.py                       (+78 lines)
+09-tools/tests/test_vm_webapp_onboarding_recovery.py
+09-tools/tests/test_vm_webapp_onboarding_recovery_strategy.py
+09-tools/tests/test_vm_webapp_api_v2_v34_additions.py
+09-tools/tests/test_vm_webapp_metrics_v34_recovery.py
+09-tools/web/vm-ui/src/features/workspace/hooks/useOnboardingRecovery.ts
+09-tools/web/vm-ui/src/features/workspace/components/OnboardingRecoveryPanel.tsx
+09-tools/web/vm-ui/src/features/workspace/components/OnboardingRecoveryPanel.test.tsx
+.github/workflows/v34-ci-gate.yml
+CHANGELOG.md
+docs/releases/2026-03-02-vm-studio-v34-onboarding-recovery-reactivation-autopilot.md
+```
+
 ## [v33.0.0] - Onboarding Personalization Autopilot
 
 ### Added
