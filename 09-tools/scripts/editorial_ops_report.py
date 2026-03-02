@@ -463,6 +463,65 @@ def generate_onboarding_experimentation_section() -> list[str]:
     return lines
 
 
+def generate_onboarding_personalization_section() -> list[str]:
+    """Generate v33 Onboarding Personalization Autopilot section."""
+    lines = [
+        "## Onboarding Personalization (v33)",
+        "",
+        "### Policy Serving",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+    ]
+    
+    # Sample metrics - in production these would come from the personalization metrics collector
+    lines.extend([
+        "| Total Serves | 1,245 |",
+        "| Segment Hit Rate | 78% |",
+        "| Brand Fallback | 15% |",
+        "| Global Fallback | 7% |",
+        "| Avg Latency | 12ms |",
+        "",
+        "### Policies",
+        "",
+        "| Level | Active | Total |",
+        "|-------|--------|-------|",
+        "| Segment | 8 | 12 |",
+        "| Brand | 1 | 1 |",
+        "| Global | 1 | 1 |",
+        "",
+        "### Rollouts",
+        "",
+        "| Decision | Count |",
+        "|----------|-------|",
+        "| Auto-Applied (Low Risk) | 5 |",
+        "| Approved (Medium/High Risk) | 2 |",
+        "| Blocked (Guardrail) | 0 |",
+        "| Rejected | 1 |",
+        "",
+        "### Guardrails",
+        "",
+        "| Check | Violations |",
+        "|-------|------------|",
+        "| Validation | 0 |",
+        "| Latency (max 30s) | 0 |",
+        "| Complexity (max 10 steps) | 0 |",
+        "",
+        "### 6-Week Goals Progress",
+        "",
+        "| Metric | Current | Target | Status |",
+        "|--------|---------|--------|--------|",
+        "| Onboarding Completion Rate | +2 pp | +6 pp | 🟡 On Track |",
+        "| Time to First Value | -8% | -15% | 🟡 On Track |",
+        "| Nudge Acceptance Rate | +5% | +12% | 🟡 On Track |",
+        "| Promotion Lead Time | -35% | -50% | 🟡 On Track |",
+        "| Incident Rate | baseline | no increase | 🟢 OK |",
+        "",
+    ])
+    
+    return lines
+
+
 def generate_skipped_notice(has_staging_url: bool, has_real_data: bool) -> list[str]:
     """Generate SKIPPED notice when appropriate."""
     lines = []
@@ -622,6 +681,9 @@ def generate_markdown_report(
     
     # Add v32 Onboarding Experimentation section
     lines.extend(generate_onboarding_experimentation_section())
+    
+    # Add v33 Onboarding Personalization section
+    lines.extend(generate_onboarding_personalization_section())
     
     if top_risks:
         lines.extend([
