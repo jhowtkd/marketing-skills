@@ -1,12 +1,12 @@
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Loader2 } from 'lucide-react'
 import { useStore } from '@/hooks/use-store'
+import { useBrands } from '@/hooks/api/use-brands'
+import { useProjects } from '@/hooks/api/use-projects'
+import { useThreads } from '@/hooks/api/use-threads'
 import { cn } from '@/lib/utils'
 
 export function NavigationPanel() {
   const {
-    brands,
-    projects,
-    threads,
     activeBrandId,
     activeProjectId,
     activeThreadId,
@@ -15,11 +15,23 @@ export function NavigationPanel() {
     selectThread,
   } = useStore()
 
+  const { data: brands = [], isLoading: isLoadingBrands } = useBrands()
+  const { data: projects = [], isLoading: isLoadingProjects } = useProjects(activeBrandId)
+  const { data: threads = [], isLoading: isLoadingThreads } = useThreads(activeProjectId)
+
   const getBrandProjects = (brandId: string) =>
     projects.filter(p => p.brandId === brandId)
 
   const getProjectThreads = (projectId: string) =>
     threads.filter(t => t.projectId === projectId)
+
+  if (isLoadingBrands) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-vm-ink-muted" />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto p-3">
@@ -46,7 +58,7 @@ export function NavigationPanel() {
                 {isActive ? (
                   <ChevronDown className="w-3.5 h-3.5" />
                 ) : (
-                  <ChevronRight className="w-3.5 h-3.5 text-vm-ink-subtle" />
+                  <ChevronRight className="w-3.5 h-3.5 text-vm-ink-muted" />
                 )}
                 <span className="text-sm font-medium flex-1 text-left">{brand.name}</span>
                 <button
@@ -57,53 +69,65 @@ export function NavigationPanel() {
                 </button>
               </button>
 
-              {isActive && brandProjects.length > 0 && (
+              {isActive && (
                 <div className="ml-4 mt-0.5 space-y-0.5 border-l border-vm-border pl-2">
-                  {brandProjects.map((project) => {
-                    const isProjectActive = project.id === activeProjectId
-                    const projectThreads = getProjectThreads(project.id)
+                  {isLoadingProjects ? (
+                    <div className="px-2 py-1.5">
+                      <Loader2 className="w-4 h-4 animate-spin text-vm-ink-muted" />
+                    </div>
+                  ) : (
+                    brandProjects.map((project) => {
+                      const isProjectActive = project.id === activeProjectId
+                      const projectThreads = getProjectThreads(project.id)
 
-                    return (
-                      <div key={project.id}>
-                        <button
-                          onClick={() => selectProject(isProjectActive ? null : project.id)}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2 py-1.5 rounded-vm-md transition-colors',
-                            isProjectActive ? 'text-vm-ink' : 'text-vm-ink-muted hover:text-vm-ink hover:bg-vm-hover'
-                          )}
-                        >
-                          {isProjectActive ? (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          ) : (
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          )}
-                          <span className="text-sm">{project.name}</span>
-                        </button>
+                      return (
+                        <div key={project.id}>
+                          <button
+                            onClick={() => selectProject(isProjectActive ? null : project.id)}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-2 py-1.5 rounded-vm-md transition-colors',
+                              isProjectActive ? 'text-vm-ink' : 'text-vm-ink-muted hover:text-vm-ink hover:bg-vm-hover'
+                            )}
+                          >
+                            {isProjectActive ? (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            )}
+                            <span className="text-sm">{project.name}</span>
+                          </button>
 
-                        {isProjectActive && projectThreads.length > 0 && (
-                          <div className="ml-4 mt-0.5 space-y-0.5">
-                            {projectThreads.map((thread) => {
-                              const isThreadActive = thread.id === activeThreadId
-                              return (
-                                <button
-                                  key={thread.id}
-                                  onClick={() => selectThread(thread.id)}
-                                  className={cn(
-                                    'w-full text-left px-2 py-1.5 rounded-vm-md text-sm transition-colors',
-                                    isThreadActive
-                                      ? 'bg-vm-primary-dim text-vm-primary'
-                                      : 'text-vm-ink-muted hover:bg-vm-hover'
-                                  )}
-                                >
-                                  {thread.name}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                          {isProjectActive && (
+                            <div className="ml-4 mt-0.5 space-y-0.5">
+                              {isLoadingThreads ? (
+                                <div className="px-2 py-1.5">
+                                  <Loader2 className="w-3 h-3 animate-spin text-vm-ink-muted" />
+                                </div>
+                              ) : (
+                                projectThreads.map((thread) => {
+                                  const isThreadActive = thread.id === activeThreadId
+                                  return (
+                                    <button
+                                      key={thread.id}
+                                      onClick={() => selectThread(thread.id)}
+                                      className={cn(
+                                        'w-full text-left px-2 py-1.5 rounded-vm-md text-sm transition-colors',
+                                        isThreadActive
+                                          ? 'bg-vm-primary-dim text-vm-primary'
+                                          : 'text-vm-ink-muted hover:bg-vm-hover'
+                                      )}
+                                    >
+                                      {thread.name}
+                                    </button>
+                                  )
+                                })
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
                 </div>
               )}
             </div>
