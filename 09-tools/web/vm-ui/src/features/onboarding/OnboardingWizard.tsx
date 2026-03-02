@@ -5,6 +5,8 @@ import {
   OnboardingStep,
 } from './telemetry';
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
+import { ContextualTour } from './ContextualTour';
+import type { TourStep } from './ContextualTour';
 
 export { OnboardingStep };
 
@@ -42,6 +44,37 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     selectedTemplate: null,
     startedAt: Date.now(),
   });
+
+  // v30: Contextual tour state
+  const [showTour, setShowTour] = useState(false);
+
+  // Tour steps for contextual guidance
+  const tourSteps: TourStep[] = [
+    {
+      id: 'welcome',
+      title: 'Bem-vindo ao VM Studio',
+      content: 'Vamos guiar você pelos primeiros passos para criar seu primeiro conteúdo.',
+      target: '#wizard-welcome',
+    },
+    {
+      id: 'workspace',
+      title: 'Configure seu Workspace',
+      content: 'Dê um nome ao seu workspace para organizar seus projetos.',
+      target: '#wizard-workspace',
+    },
+    {
+      id: 'templates',
+      title: 'Escolha um Template',
+      content: 'Selecione um template pré-configurado para acelerar seu trabalho.',
+      target: '#wizard-templates',
+    },
+    {
+      id: 'completion',
+      title: 'Pronto para começar!',
+      content: 'Seu setup está completo. Vamos criar algo incrível juntos.',
+      target: '#wizard-completion',
+    },
+  ];
 
   useEffect(() => {
     trackOnboardingStarted(userId);
@@ -276,6 +309,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
           )}
         </div>
       </div>
+
+      {/* v30: Contextual Tour Integration */}
+      <ContextualTour
+        steps={tourSteps}
+        isOpen={showTour}
+        onComplete={() => setShowTour(false)}
+        onSkip={() => setShowTour(false)}
+        tourId={`onboarding-${userId}`}
+      />
     </div>
   );
 };
