@@ -82,6 +82,50 @@ class ControlLoopMetrics:
 
 
 @dataclass
+class RecoveryOrchestrationMetrics:
+    """v28 Recovery Orchestration metrics."""
+    # Counters
+    runs_total: int = 0
+    runs_successful: int = 0
+    runs_failed: int = 0
+    runs_auto: int = 0
+    runs_manual: int = 0
+    steps_total: int = 0
+    steps_successful: int = 0
+    steps_failed: int = 0
+    steps_skipped: int = 0
+    approval_requests_total: int = 0
+    approvals_granted: int = 0
+    approvals_rejected: int = 0
+    frozen_incidents: int = 0
+    rolled_back_runs: int = 0
+    
+    # Time-based metrics (MTTR in seconds)
+    mttr_seconds_total: float = 0.0
+    mttr_count: int = 0
+    mttr_seconds_avg: float = 0.0
+    
+    # Incident classification counts
+    incident_handoff_timeout: int = 0
+    incident_approval_sla_breach: int = 0
+    incident_quality_regression: int = 0
+    incident_system_failure: int = 0
+    
+    # Active state
+    active_runs: int = 0
+    pending_approvals: int = 0
+    
+    # Timestamps
+    last_run_at: Optional[str] = None
+    last_successful_run_at: Optional[str] = None
+    last_failed_run_at: Optional[str] = None
+    last_approval_at: Optional[str] = None
+    last_rejection_at: Optional[str] = None
+    last_freeze_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+
+
+@dataclass
 class PredictiveResilienceMetrics:
     """v27 Predictive Resilience Engine metrics."""
     # Counters
@@ -163,6 +207,7 @@ class MetricsCollector:
         self._quality_metrics = QualityOptimizerMetrics()
         self._control_loop_metrics = ControlLoopMetrics()
         self._predictive_metrics = PredictiveResilienceMetrics()  # v27
+        self._recovery_metrics = RecoveryOrchestrationMetrics()  # v28
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -509,6 +554,131 @@ class MetricsCollector:
                 last_false_positive_at=self._predictive_metrics.last_false_positive_at,
             )
     
+    # v28: Recovery Orchestration metrics
+    def record_recovery_run(self, auto: bool = False) -> None:
+        """v28: Record a recovery run started."""
+        with self._lock:
+            self._recovery_metrics.runs_total += 1
+            self._recovery_metrics.active_runs += 1
+            self._recovery_metrics.last_run_at = datetime.now(timezone.utc).isoformat()
+            if auto:
+                self._recovery_metrics.runs_auto += 1
+            else:
+                self._recovery_metrics.runs_manual += 1
+    
+    def record_recovery_run_success(self, duration_seconds: float) -> None:
+        """v28: Record a successful recovery run completion."""
+        with self._lock:
+            self._recovery_metrics.runs_successful += 1
+            self._recovery_metrics.active_runs -= 1
+            self._recovery_metrics.last_successful_run_at = datetime.now(timezone.utc).isoformat()
+            # Update MTTR
+            current = self._recovery_metrics.mttr_seconds_total
+            count = self._recovery_metrics.mttr_count
+            new_count = count + 1
+            new_total = current + duration_seconds
+            self._recovery_metrics.mttr_seconds_total = new_total
+            self._recovery_metrics.mttr_count = new_count
+            self._recovery_metrics.mttr_seconds_avg = new_total / new_count if new_count > 0 else 0.0
+    
+    def record_recovery_run_failure(self) -> None:
+        """v28: Record a failed recovery run."""
+        with self._lock:
+            self._recovery_metrics.runs_failed += 1
+            self._recovery_metrics.active_runs = max(0, self._recovery_metrics.active_runs - 1)
+            self._recovery_metrics.last_failed_run_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_step(self, status: str) -> None:
+        """v28: Record a step execution with status."""
+        with self._lock:
+            self._recovery_metrics.steps_total += 1
+            if status == "success":
+                self._recovery_metrics.steps_successful += 1
+            elif status == "failed":
+                self._recovery_metrics.steps_failed += 1
+            elif status == "skipped":
+                self._recovery_metrics.steps_skipped += 1
+    
+    def record_approval_requested(self) -> None:
+        """v28: Record an approval request created."""
+        with self._lock:
+            self._recovery_metrics.approval_requests_total += 1
+            self._recovery_metrics.pending_approvals += 1
+    
+    def record_approval_granted(self) -> None:
+        """v28: Record an approval being granted."""
+        with self._lock:
+            self._recovery_metrics.approvals_granted += 1
+            self._recovery_metrics.pending_approvals = max(0, self._recovery_metrics.pending_approvals - 1)
+            self._recovery_metrics.last_approval_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_approval_rejected(self) -> None:
+        """v28: Record an approval being rejected."""
+        with self._lock:
+            self._recovery_metrics.approvals_rejected += 1
+            self._recovery_metrics.pending_approvals = max(0, self._recovery_metrics.pending_approvals - 1)
+            self._recovery_metrics.last_rejection_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_frozen(self) -> None:
+        """v28: Record a recovery being frozen."""
+        with self._lock:
+            self._recovery_metrics.frozen_incidents += 1
+            self._recovery_metrics.last_freeze_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_recovery_rollback(self) -> None:
+        """v28: Record a recovery rollback operation."""
+        with self._lock:
+            self._recovery_metrics.rolled_back_runs += 1
+            self._recovery_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+    
+    def record_incident_classified(self, incident_type: str) -> None:
+        """v28: Record an incident classification."""
+        with self._lock:
+            if incident_type == "handoff_timeout":
+                self._recovery_metrics.incident_handoff_timeout += 1
+            elif incident_type == "approval_sla_breach":
+                self._recovery_metrics.incident_approval_sla_breach += 1
+            elif incident_type == "quality_regression":
+                self._recovery_metrics.incident_quality_regression += 1
+            elif incident_type == "system_failure":
+                self._recovery_metrics.incident_system_failure += 1
+    
+    def get_recovery_metrics(self) -> RecoveryOrchestrationMetrics:
+        """v28: Get current recovery orchestration metrics snapshot."""
+        with self._lock:
+            return RecoveryOrchestrationMetrics(
+                runs_total=self._recovery_metrics.runs_total,
+                runs_successful=self._recovery_metrics.runs_successful,
+                runs_failed=self._recovery_metrics.runs_failed,
+                runs_auto=self._recovery_metrics.runs_auto,
+                runs_manual=self._recovery_metrics.runs_manual,
+                steps_total=self._recovery_metrics.steps_total,
+                steps_successful=self._recovery_metrics.steps_successful,
+                steps_failed=self._recovery_metrics.steps_failed,
+                steps_skipped=self._recovery_metrics.steps_skipped,
+                approval_requests_total=self._recovery_metrics.approval_requests_total,
+                approvals_granted=self._recovery_metrics.approvals_granted,
+                approvals_rejected=self._recovery_metrics.approvals_rejected,
+                frozen_incidents=self._recovery_metrics.frozen_incidents,
+                rolled_back_runs=self._recovery_metrics.rolled_back_runs,
+                mttr_seconds_total=self._recovery_metrics.mttr_seconds_total,
+                mttr_count=self._recovery_metrics.mttr_count,
+                mttr_seconds_avg=self._recovery_metrics.mttr_seconds_avg,
+                incident_handoff_timeout=self._recovery_metrics.incident_handoff_timeout,
+                incident_approval_sla_breach=self._recovery_metrics.incident_approval_sla_breach,
+                incident_quality_regression=self._recovery_metrics.incident_quality_regression,
+                incident_system_failure=self._recovery_metrics.incident_system_failure,
+                active_runs=self._recovery_metrics.active_runs,
+                pending_approvals=self._recovery_metrics.pending_approvals,
+                last_run_at=self._recovery_metrics.last_run_at,
+                last_successful_run_at=self._recovery_metrics.last_successful_run_at,
+                last_failed_run_at=self._recovery_metrics.last_failed_run_at,
+                last_approval_at=self._recovery_metrics.last_approval_at,
+                last_rejection_at=self._recovery_metrics.last_rejection_at,
+                last_freeze_at=self._recovery_metrics.last_freeze_at,
+                last_rollback_at=self._recovery_metrics.last_rollback_at,
+            )
+    
     # v19: ROI Optimizer metrics
     def record_roi_cycle(self) -> None:
         """v19: Record an ROI optimizer cycle run."""
@@ -653,6 +823,38 @@ class MetricsCollector:
                     "last_cycle_at": self._predictive_metrics.last_cycle_at,
                     "last_alert_at": self._predictive_metrics.last_alert_at,
                     "last_false_positive_at": self._predictive_metrics.last_false_positive_at,
+                },
+                # v28 Recovery Orchestration metrics
+                "recovery_orchestration_v28": {
+                    "runs_total": self._recovery_metrics.runs_total,
+                    "runs_successful": self._recovery_metrics.runs_successful,
+                    "runs_failed": self._recovery_metrics.runs_failed,
+                    "runs_auto": self._recovery_metrics.runs_auto,
+                    "runs_manual": self._recovery_metrics.runs_manual,
+                    "steps_total": self._recovery_metrics.steps_total,
+                    "steps_successful": self._recovery_metrics.steps_successful,
+                    "steps_failed": self._recovery_metrics.steps_failed,
+                    "steps_skipped": self._recovery_metrics.steps_skipped,
+                    "approval_requests_total": self._recovery_metrics.approval_requests_total,
+                    "approvals_granted": self._recovery_metrics.approvals_granted,
+                    "approvals_rejected": self._recovery_metrics.approvals_rejected,
+                    "frozen_incidents": self._recovery_metrics.frozen_incidents,
+                    "rolled_back_runs": self._recovery_metrics.rolled_back_runs,
+                    "mttr_seconds_avg": self._recovery_metrics.mttr_seconds_avg,
+                    "mttr_count": self._recovery_metrics.mttr_count,
+                    "incident_handoff_timeout": self._recovery_metrics.incident_handoff_timeout,
+                    "incident_approval_sla_breach": self._recovery_metrics.incident_approval_sla_breach,
+                    "incident_quality_regression": self._recovery_metrics.incident_quality_regression,
+                    "incident_system_failure": self._recovery_metrics.incident_system_failure,
+                    "active_runs": self._recovery_metrics.active_runs,
+                    "pending_approvals": self._recovery_metrics.pending_approvals,
+                    "last_run_at": self._recovery_metrics.last_run_at,
+                    "last_successful_run_at": self._recovery_metrics.last_successful_run_at,
+                    "last_failed_run_at": self._recovery_metrics.last_failed_run_at,
+                    "last_approval_at": self._recovery_metrics.last_approval_at,
+                    "last_rejection_at": self._recovery_metrics.last_rejection_at,
+                    "last_freeze_at": self._recovery_metrics.last_freeze_at,
+                    "last_rollback_at": self._recovery_metrics.last_rollback_at,
                 },
             }
 

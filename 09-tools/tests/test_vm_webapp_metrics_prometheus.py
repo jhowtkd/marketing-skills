@@ -1,6 +1,6 @@
-"""Tests for v27 Predictive Resilience Prometheus Metrics.
+"""Tests for v28 Recovery Orchestration Prometheus Metrics.
 
-TDD: Testes para cycles/alerts/false-positives/mitigations/rollbacks/time metrics.
+TDD: Testes para runs/steps/failed/auto/manual/mttr metrics.
 """
 
 from __future__ import annotations
@@ -12,315 +12,205 @@ sys.path.insert(0, "09-tools")
 
 from vm_webapp.observability import (
     MetricsCollector,
-    PredictiveResilienceMetrics,
+    RecoveryOrchestrationMetrics,
     render_prometheus,
 )
 
 
-class TestPredictiveResilienceMetrics:
-    """Testes para métricas preditivas v27."""
+class TestRecoveryOrchestrationMetrics:
+    """Testes para métricas de recovery v28."""
 
-    def test_collector_initializes_predictive_metrics(self):
-        """Collector deve inicializar métricas preditivas."""
+    def test_collector_initializes_recovery_metrics(self):
+        """Collector deve inicializar métricas de recovery."""
         collector = MetricsCollector()
-        metrics = collector.get_predictive_metrics()
+        metrics = collector.get_recovery_metrics()
         
-        assert isinstance(metrics, PredictiveResilienceMetrics)
-        assert metrics.cycles_total == 0
-        assert metrics.alerts_total == 0
+        assert isinstance(metrics, RecoveryOrchestrationMetrics)
+        assert metrics.runs_total == 0
+        assert metrics.steps_total == 0
 
-    def test_record_predictive_cycle(self):
-        """Deve registrar ciclo preditivo."""
-        collector = MetricsCollector()
-        
-        collector.record_predictive_cycle()
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.cycles_total == 1
-        assert metrics.active_cycles == 1
-        assert metrics.last_cycle_at is not None
-
-    def test_record_predictive_alert(self):
-        """Deve registrar alerta preditivo."""
+    def test_record_recovery_run(self):
+        """Deve registrar recovery run."""
         collector = MetricsCollector()
         
-        collector.record_predictive_alert()
+        collector.record_recovery_run(auto=False)
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.alerts_total == 1
-        assert metrics.last_alert_at is not None
+        metrics = collector.get_recovery_metrics()
+        assert metrics.runs_total == 1
+        assert metrics.runs_manual == 1
+        assert metrics.runs_auto == 0
+        assert metrics.active_runs == 1
+        assert metrics.last_run_at is not None
 
-    def test_record_predictive_mitigation_applied(self):
-        """Deve registrar mitigação aplicada."""
+    def test_record_recovery_run_auto(self):
+        """Deve registrar recovery run auto."""
         collector = MetricsCollector()
         
-        collector.record_predictive_mitigation_applied()
+        collector.record_recovery_run(auto=True)
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.mitigations_applied_total == 1
-        assert metrics.last_mitigation_applied_at is not None
+        metrics = collector.get_recovery_metrics()
+        assert metrics.runs_total == 1
+        assert metrics.runs_auto == 1
+        assert metrics.runs_manual == 0
 
-    def test_record_predictive_mitigation_blocked(self):
-        """Deve registrar mitigação bloqueada."""
+    def test_record_recovery_run_success(self):
+        """Deve registrar sucesso de recovery."""
         collector = MetricsCollector()
         
-        collector.record_predictive_mitigation_blocked()
+        collector.record_recovery_run()
+        collector.record_recovery_run_success(duration_seconds=45.5)
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.mitigations_blocked_total == 1
+        metrics = collector.get_recovery_metrics()
+        assert metrics.runs_successful == 1
+        assert metrics.active_runs == 0
+        assert metrics.mttr_count == 1
+        assert metrics.mttr_seconds_avg == 45.5
+        assert metrics.last_successful_run_at is not None
 
-    def test_record_predictive_mitigation_rejected(self):
-        """Deve registrar mitigação rejeitada."""
+    def test_record_recovery_run_failure(self):
+        """Deve registrar falha de recovery."""
         collector = MetricsCollector()
         
-        collector.record_predictive_mitigation_rejected()
+        collector.record_recovery_run()
+        collector.record_recovery_run_failure()
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.mitigations_rejected_total == 1
-        assert metrics.last_mitigation_rejected_at is not None
+        metrics = collector.get_recovery_metrics()
+        assert metrics.runs_failed == 1
+        assert metrics.active_runs == 0
+        assert metrics.last_failed_run_at is not None
 
-    def test_record_predictive_rollback(self):
-        """Deve registrar rollback."""
+    def test_record_recovery_step(self):
+        """Deve registrar step de recovery."""
         collector = MetricsCollector()
         
-        collector.record_predictive_rollback()
+        collector.record_recovery_step("success")
+        collector.record_recovery_step("success")
+        collector.record_recovery_step("failed")
+        collector.record_recovery_step("skipped")
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.rollbacks_total == 1
+        metrics = collector.get_recovery_metrics()
+        assert metrics.steps_total == 4
+        assert metrics.steps_successful == 2
+        assert metrics.steps_failed == 1
+        assert metrics.steps_skipped == 1
+
+    def test_record_approval_requested(self):
+        """Deve registrar requisição de aprovação."""
+        collector = MetricsCollector()
+        
+        collector.record_approval_requested()
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.approval_requests_total == 1
+        assert metrics.pending_approvals == 1
+
+    def test_record_approval_granted(self):
+        """Deve registrar aprovação concedida."""
+        collector = MetricsCollector()
+        
+        collector.record_approval_requested()
+        collector.record_approval_granted()
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.approvals_granted == 1
+        assert metrics.pending_approvals == 0
+        assert metrics.last_approval_at is not None
+
+    def test_record_approval_rejected(self):
+        """Deve registrar aprovação rejeitada."""
+        collector = MetricsCollector()
+        
+        collector.record_approval_requested()
+        collector.record_approval_rejected()
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.approvals_rejected == 1
+        assert metrics.pending_approvals == 0
+        assert metrics.last_rejection_at is not None
+
+    def test_record_recovery_frozen(self):
+        """Deve registrar freeze de recovery."""
+        collector = MetricsCollector()
+        
+        collector.record_recovery_frozen()
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.frozen_incidents == 1
+        assert metrics.last_freeze_at is not None
+
+    def test_record_recovery_rollback(self):
+        """Deve registrar rollback de recovery."""
+        collector = MetricsCollector()
+        
+        collector.record_recovery_rollback()
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.rolled_back_runs == 1
         assert metrics.last_rollback_at is not None
 
-    def test_record_predictive_false_positive(self):
-        """Deve registrar falso positivo."""
+    def test_record_incident_classified(self):
+        """Deve registrar classificação de incidente."""
         collector = MetricsCollector()
         
-        collector.record_predictive_false_positive()
+        collector.record_incident_classified("handoff_timeout")
+        collector.record_incident_classified("handoff_timeout")
+        collector.record_incident_classified("approval_sla_breach")
+        collector.record_incident_classified("quality_regression")
+        collector.record_incident_classified("system_failure")
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.false_positives_total == 1
-        assert metrics.last_false_positive_at is not None
+        metrics = collector.get_recovery_metrics()
+        assert metrics.incident_handoff_timeout == 2
+        assert metrics.incident_approval_sla_breach == 1
+        assert metrics.incident_quality_regression == 1
+        assert metrics.incident_system_failure == 1
 
-    def test_record_predictive_score(self):
-        """Deve registrar score de resiliência."""
+    def test_mttr_calculation(self):
+        """Deve calcular MTTR corretamente."""
         collector = MetricsCollector()
         
-        collector.record_predictive_score(0.85, "low")
-        collector.record_predictive_score(0.75, "medium")
-        collector.record_predictive_score(0.85, "low")
+        collector.record_recovery_run()
+        collector.record_recovery_run_success(duration_seconds=30.0)
         
-        metrics = collector.get_predictive_metrics()
-        assert metrics.score_measurements == 3
-        assert metrics.composite_score_avg == pytest.approx(0.82, abs=0.01)
-        assert metrics.composite_score_min == 0.75
-        assert metrics.composite_score_max == 0.85
-        assert metrics.risk_low_count == 2
-        assert metrics.risk_medium_count == 1
+        collector.record_recovery_run()
+        collector.record_recovery_run_success(duration_seconds=60.0)
+        
+        collector.record_recovery_run()
+        collector.record_recovery_run_success(duration_seconds=90.0)
+        
+        metrics = collector.get_recovery_metrics()
+        assert metrics.mttr_count == 3
+        assert metrics.mttr_seconds_avg == 60.0  # (30+60+90)/3
 
-    def test_record_predictive_time_to_detect(self):
-        """Deve registrar tempo para detectar."""
+    def test_recovery_metrics_in_snapshot(self):
+        """Métricas de recovery devem estar no snapshot."""
         collector = MetricsCollector()
         
-        collector.record_predictive_time_to_detect(5.0)
-        collector.record_predictive_time_to_detect(15.0)
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.time_to_detect_count == 2
-        assert metrics.time_to_detect_seconds == pytest.approx(10.0, abs=0.1)
-
-    def test_record_predictive_time_to_mitigate(self):
-        """Deve registrar tempo para mitigar."""
-        collector = MetricsCollector()
-        
-        collector.record_predictive_time_to_mitigate(30.0)
-        collector.record_predictive_time_to_mitigate(60.0)
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.time_to_mitigate_count == 2
-        assert metrics.time_to_mitigate_seconds == pytest.approx(45.0, abs=0.1)
-
-    def test_update_predictive_active_cycles(self):
-        """Deve atualizar contagem de ciclos ativos."""
-        collector = MetricsCollector()
-        
-        collector.update_predictive_active_cycles(5)
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.active_cycles == 5
-
-    def test_update_predictive_frozen_brands(self):
-        """Deve atualizar contagem de brands congeladas."""
-        collector = MetricsCollector()
-        
-        collector.update_predictive_frozen_brands(3)
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.frozen_brands == 3
-
-    def test_update_predictive_pending_proposals(self):
-        """Deve atualizar contagem de propostas pendentes."""
-        collector = MetricsCollector()
-        
-        collector.update_predictive_pending_proposals(7)
-        
-        metrics = collector.get_predictive_metrics()
-        assert metrics.pending_proposals == 7
-
-
-class TestPredictiveMetricsSnapshot:
-    """Testes para snapshot de métricas preditivas."""
-
-    def test_snapshot_includes_predictive_resilience_v27(self):
-        """Snapshot deve incluir seção predictive_resilience_v27."""
-        collector = MetricsCollector()
-        
-        # Record some metrics
-        collector.record_predictive_cycle()
-        collector.record_predictive_alert()
-        collector.record_predictive_mitigation_applied()
-        collector.record_predictive_false_positive()
-        collector.record_predictive_score(0.82, "medium")
+        collector.record_recovery_run(auto=True)
+        collector.record_recovery_step("success")
+        collector.record_approval_requested()
         
         snapshot = collector.snapshot()
         
-        assert "predictive_resilience_v27" in snapshot
-        v27 = snapshot["predictive_resilience_v27"]
-        assert v27["cycles_total"] == 1
-        assert v27["alerts_total"] == 1
-        assert v27["mitigations_applied_total"] == 1
-        assert v27["false_positives_total"] == 1
-        assert v27["composite_score_avg"] == pytest.approx(0.82, abs=0.01)
+        assert "recovery_orchestration_v28" in snapshot
+        recovery = snapshot["recovery_orchestration_v28"]
+        assert recovery["runs_total"] == 1
+        assert recovery["runs_auto"] == 1
+        assert recovery["steps_total"] == 1
+        assert recovery["steps_successful"] == 1
+        assert recovery["approval_requests_total"] == 1
 
-    def test_snapshot_predictive_risk_counts(self):
-        """Snapshot deve incluir contagens de classificação de risco."""
+
+class TestRecoveryPrometheusRendering:
+    """Testes para renderização Prometheus de recovery."""
+
+    def test_render_recovery_counts(self):
+        """Deve renderizar métricas de recovery no formato Prometheus."""
         collector = MetricsCollector()
-        
-        collector.record_predictive_score(0.90, "low")
-        collector.record_predictive_score(0.75, "medium")
-        collector.record_predictive_score(0.50, "high")
-        collector.record_predictive_score(0.20, "critical")
+        collector.record_count("recovery_runs_total", 5)
+        collector.record_count("recovery_steps_total", 20)
         
         snapshot = collector.snapshot()
-        v27 = snapshot["predictive_resilience_v27"]
+        output = render_prometheus(snapshot)
         
-        assert v27["risk_low_count"] == 1
-        assert v27["risk_medium_count"] == 1
-        assert v27["risk_high_count"] == 1
-        assert v27["risk_critical_count"] == 1
-
-    def test_snapshot_predictive_time_metrics(self):
-        """Snapshot deve incluir métricas de tempo."""
-        collector = MetricsCollector()
-        
-        collector.record_predictive_time_to_detect(10.0)
-        collector.record_predictive_time_to_mitigate(45.0)
-        
-        snapshot = collector.snapshot()
-        v27 = snapshot["predictive_resilience_v27"]
-        
-        assert v27["time_to_detect_seconds"] == pytest.approx(10.0, abs=0.1)
-        assert v27["time_to_mitigate_seconds"] == pytest.approx(45.0, abs=0.1)
-
-
-class TestPredictiveMetricsPrometheusFormat:
-    """Testes para formato Prometheus das métricas preditivas."""
-
-    def test_prometheus_includes_predictive_alerts_total(self):
-        """Prometheus deve incluir predictive_alerts_total."""
-        snapshot = {
-            "predictive_resilience_v27": {
-                "alerts_total": 10,
-                "mitigations_applied_total": 5,
-                "mitigations_blocked_total": 2,
-                "mitigations_rejected_total": 1,
-                "false_positives_total": 1,
-                "rollbacks_total": 1,
-            }
-        }
-        
-        # Criar formato Prometheus customizado para v27
-        lines = [
-            f"# HELP predictive_alerts_total Total number of predictive alerts",
-            f"# TYPE predictive_alerts_total counter",
-            f"predictive_alerts_total 10",
-            f"# HELP predictive_mitigations_applied_total Total mitigations applied",
-            f"# TYPE predictive_mitigations_applied_total counter",
-            f"predictive_mitigations_applied_total 5",
-            f"# HELP predictive_false_positives_total Total false positive alerts",
-            f"# TYPE predictive_false_positives_total counter",
-            f"predictive_false_positives_total 1",
-            f"# HELP predictive_time_to_detect_seconds Time to detect degradation",
-            f"# TYPE predictive_time_to_detect_seconds gauge",
-            f"predictive_time_to_detect_seconds 5.0",
-            f"# HELP predictive_time_to_mitigate_seconds Time to mitigate degradation",
-            f"# TYPE predictive_time_to_mitigate_seconds gauge",
-            f"predictive_time_to_mitigate_seconds 30.0",
-        ]
-        output = "\n".join(lines)
-        
-        assert "predictive_alerts_total" in output
-        assert "predictive_mitigations_applied_total" in output
-        assert "predictive_false_positives_total" in output
-        assert "predictive_time_to_detect_seconds" in output
-        assert "predictive_time_to_mitigate_seconds" in output
-
-    def test_prometheus_predictive_metrics_have_correct_types(self):
-        """Métricas preditivas devem ter tipos corretos."""
-        # Counters
-        counters = [
-            "predictive_alerts_total",
-            "predictive_mitigations_applied_total",
-            "predictive_mitigations_blocked_total",
-            "predictive_mitigations_rejected_total",
-            "predictive_false_positives_total",
-            "predictive_rollbacks_total",
-        ]
-        
-        for metric in counters:
-            assert "_total" in metric, f"Counter {metric} should have _total suffix"
-        
-        # Gauges (time-based)
-        gauges = [
-            "predictive_time_to_detect_seconds",
-            "predictive_time_to_mitigate_seconds",
-        ]
-        
-        for metric in gauges:
-            assert "_seconds" in metric, f"Time metric {metric} should have _seconds suffix"
-
-
-class TestPredictiveMetricsGoals:
-    """Testes para metas de métricas preditivas (6 weeks goals)."""
-
-    def test_incident_rate_reduction_goal(self):
-        """Meta: incident_rate -20%."""
-        # Este teste documenta a meta
-        # Em produção, este valor viria de métricas históricas
-        baseline_incident_rate = 0.15
-        target_incident_rate = baseline_incident_rate * 0.80  # -20%
-        
-        assert target_incident_rate == pytest.approx(0.12, abs=0.01)
-
-    def test_handoff_timeout_reduction_goal(self):
-        """Meta: handoff_timeout_failures -25%."""
-        baseline_handoff_rate = 0.08
-        target_handoff_rate = baseline_handoff_rate * 0.75  # -25%
-        
-        assert target_handoff_rate == pytest.approx(0.06, abs=0.01)
-
-    def test_approval_sla_breach_reduction_goal(self):
-        """Meta: approval_sla_breach_rate -30%."""
-        baseline_approval_rate = 0.05
-        target_approval_rate = baseline_approval_rate * 0.70  # -30%
-        
-        assert target_approval_rate == pytest.approx(0.035, abs=0.01)
-
-    def test_false_positive_rate_goal(self):
-        """Meta: false_positive_predictive_alerts <= 15%."""
-        max_false_positive_rate = 0.15
-        
-        # Simular cenário com 100 alertas e 15 falsos positivos
-        total_alerts = 100
-        false_positives = 15
-        
-        false_positive_rate = false_positives / total_alerts
-        
-        assert false_positive_rate <= max_false_positive_rate
+        assert "vm_recovery_runs_total" in output
+        assert "vm_recovery_steps_total" in output
