@@ -3738,3 +3738,10 @@ from vm_webapp.api_predictive_resilience import router as predictive_resilience_
 
 # Include predictive resilience routes
 router.include_router(predictive_resilience_router)
+
+
+# Import v30 onboarding routes
+from vm_webapp.api_onboarding import router as onboarding_router
+
+# Include v30 onboarding routes
+router.include_router(onboarding_router, prefix="/v2/onboarding")
