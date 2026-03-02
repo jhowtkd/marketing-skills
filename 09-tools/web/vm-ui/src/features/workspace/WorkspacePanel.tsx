@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import TaskRail, { type Task, type NavigationEvent, type TaskTimeUpdate } from "./components/TaskRail";
 import GuidedRegenerateModal from "../quality/GuidedRegenerateModal";
 import QualityScoreCard from "../quality/QualityScoreCard";
 import VersionDiffPanel from "../quality/VersionDiffPanel";
@@ -138,6 +139,57 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   const [goldenModalOpen, setGoldenModalOpen] = useState(false);
   const [goldenModalScope, setGoldenModalScope] = useState<"global" | "objective">("global");
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
+
+  // v29: Task-first navigation state
+  const [activeTaskId, setActiveTaskId] = useState<string>("studio");
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
+  const [taskTimes, setTaskTimes] = useState<Record<string, number>>({});
+
+  // Define available tasks for task-first workflow
+  const tasks: Task[] = useMemo(() => [
+    { id: "studio", label: "Studio", icon: "edit", order: 1 },
+    { id: "inbox", label: "Inbox", icon: "inbox", order: 2 },
+    { id: "timeline", label: "Timeline", icon: "clock", order: 3 },
+    { id: "settings", label: "Settings", icon: "settings", order: 4 },
+  ], []);
+
+  // Determine next recommended task based on completion
+  const nextRecommendedTaskId = useMemo(() => {
+    for (const task of tasks) {
+      if (!completedTaskIds.includes(task.id) && task.id !== activeTaskId) {
+        return task.id;
+      }
+    }
+    return undefined;
+  }, [tasks, completedTaskIds, activeTaskId]);
+
+  // Handle task navigation
+  const handleTaskSelect = useCallback((taskId: string) => {
+    setActiveTaskId(taskId);
+  }, []);
+
+  // Handle task completion
+  const handleTaskComplete = useCallback((taskId: string) => {
+    setCompletedTaskIds((prev) => 
+      prev.includes(taskId) ? prev : [...prev, taskId]
+    );
+  }, []);
+
+  // Track navigation for UX telemetry
+  const handleNavigate = useCallback((event: NavigationEvent) => {
+    // Integration point for v29 UX telemetry
+    if (typeof window !== "undefined" && (window as unknown as { v29Telemetry?: { trackNavigation?: (e: NavigationEvent) => void } }).v29Telemetry?.trackNavigation) {
+      (window as unknown as { v29Telemetry: { trackNavigation: (e: NavigationEvent) => void } }).v29Telemetry.trackNavigation(event);
+    }
+  }, []);
+
+  // Track task time for UX telemetry
+  const handleTaskTimeUpdate = useCallback((update: TaskTimeUpdate) => {
+    setTaskTimes((prev) => ({
+      ...prev,
+      [update.taskId]: (prev[update.taskId] || 0) + update.timeSpent,
+    }));
+  }, []);
 
   useEffect(() => {
     setActiveView(readWorkspaceView(activeThreadId));
@@ -1409,7 +1461,21 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
   );
 
   return (
-    <div className="space-y-4">
+    <div className="flex gap-4 h-full">
+      {/* v29: Task Rail Navigation */}
+      <TaskRail
+        tasks={tasks}
+        activeTaskId={activeTaskId}
+        completedTaskIds={completedTaskIds}
+        nextRecommendedTaskId={nextRecommendedTaskId}
+        onTaskSelect={handleTaskSelect}
+        onTaskComplete={handleTaskComplete}
+        onNavigate={handleNavigate}
+        onTaskTimeUpdate={handleTaskTimeUpdate}
+      />
+      
+      {/* Main Content */}
+      <div className="flex-1 space-y-4 overflow-auto">
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-slate-600">
@@ -1561,6 +1627,7 @@ export default function WorkspacePanel({ activeThreadId, activeRunId, onSelectRu
           </pre>
         </section>
       ) : null}
+      </div>
     </div>
   );
 }
