@@ -413,6 +413,61 @@ class OnboardingContinuityMetrics:
     last_context_loss_at: Optional[str] = None
 
 
+@dataclass
+class OutcomeAttributionMetrics:
+    """v36 Outcome Attribution and Hybrid ROI Loop metrics."""
+    # Attribution metrics
+    outcomes_attributed: int = 0
+    attribution_methods: Dict[str, int] = field(default_factory=lambda: {
+        "linear": 0, "first_touch": 0, "last_touch": 0, "time_decay": 0
+    })
+    
+    # Proposal metrics
+    proposals_generated: int = 0
+    proposals_auto_applied: int = 0
+    proposals_pending_approval: int = 0
+    proposals_approved: int = 0
+    proposals_rejected: int = 0
+    proposals_blocked: int = 0
+    
+    # Risk level distribution
+    by_risk_level: Dict[str, int] = field(default_factory=lambda: {
+        "low": 0, "medium": 0, "high": 0
+    })
+    
+    # Block reasons
+    block_reasons: Dict[str, int] = field(default_factory=dict)
+    
+    # Guardrail metrics
+    guardrail_violations: int = 0
+    guardrail_violation_types: Dict[str, int] = field(default_factory=dict)
+    
+    # Hybrid ROI index tracking
+    hybrid_roi_index_values: List[float] = field(default_factory=list)
+    hybrid_roi_index_avg: float = 0.0
+    hybrid_roi_index_min: float = 0.0
+    hybrid_roi_index_max: float = 0.0
+    
+    # Payback time tracking
+    payback_time_values: List[float] = field(default_factory=list)
+    payback_time_avg_days: float = 0.0
+    
+    # Quality penalties
+    quality_penalties_applied: int = 0
+    quality_penalty_types: Dict[str, int] = field(default_factory=dict)
+    
+    # Rollback tracking
+    rollbacks_executed: int = 0
+    rolled_back_proposals: int = 0
+    rollback_reasons: Dict[str, int] = field(default_factory=dict)
+    
+    # Timestamps
+    last_outcome_attributed_at: Optional[str] = None
+    last_proposal_generated_at: Optional[str] = None
+    last_proposal_applied_at: Optional[str] = None
+    last_rollback_at: Optional[str] = None
+
+
 class MetricsCollector:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -430,6 +485,7 @@ class MetricsCollector:
         self._onboarding_personalization_metrics = OnboardingPersonalizationMetrics()  # v33
         self._onboarding_recovery_metrics = OnboardingRecoveryMetrics()  # v34
         self._onboarding_continuity_metrics = OnboardingContinuityMetrics()  # v35
+        self._outcome_roi_metrics = OutcomeAttributionMetrics()  # v36
     
     # v24: Approval Learning Loop metrics
     def record_learning_cycle(self) -> None:
@@ -1282,6 +1338,46 @@ class MetricsCollector:
                         "last_context_loss": self._onboarding_continuity_metrics.last_context_loss_at,
                     },
                 },
+                "outcome_roi_v36": {
+                    "attribution": {
+                        "outcomes_attributed": self._outcome_roi_metrics.outcomes_attributed,
+                        "methods": self._outcome_roi_metrics.attribution_methods,
+                    },
+                    "proposals": {
+                        "generated": self._outcome_roi_metrics.proposals_generated,
+                        "auto_applied": self._outcome_roi_metrics.proposals_auto_applied,
+                        "pending_approval": self._outcome_roi_metrics.proposals_pending_approval,
+                        "approved": self._outcome_roi_metrics.proposals_approved,
+                        "rejected": self._outcome_roi_metrics.proposals_rejected,
+                        "blocked": self._outcome_roi_metrics.proposals_blocked,
+                        "by_risk_level": self._outcome_roi_metrics.by_risk_level,
+                    },
+                    "guardrails": {
+                        "violations": self._outcome_roi_metrics.guardrail_violations,
+                        "violation_types": self._outcome_roi_metrics.guardrail_violation_types,
+                    },
+                    "hybrid_roi": {
+                        "index_avg": round(self._outcome_roi_metrics.hybrid_roi_index_avg, 4),
+                        "index_min": round(self._outcome_roi_metrics.hybrid_roi_index_min, 4),
+                        "index_max": round(self._outcome_roi_metrics.hybrid_roi_index_max, 4),
+                        "payback_time_avg_days": round(self._outcome_roi_metrics.payback_time_avg_days, 2),
+                    },
+                    "quality": {
+                        "penalties_applied": self._outcome_roi_metrics.quality_penalties_applied,
+                        "penalty_types": self._outcome_roi_metrics.quality_penalty_types,
+                    },
+                    "rollbacks": {
+                        "executed": self._outcome_roi_metrics.rollbacks_executed,
+                        "rolled_back_proposals": self._outcome_roi_metrics.rolled_back_proposals,
+                        "reasons": self._outcome_roi_metrics.rollback_reasons,
+                    },
+                    "timestamps": {
+                        "last_outcome_attributed": self._outcome_roi_metrics.last_outcome_attributed_at,
+                        "last_proposal_generated": self._outcome_roi_metrics.last_proposal_generated_at,
+                        "last_proposal_applied": self._outcome_roi_metrics.last_proposal_applied_at,
+                        "last_rollback": self._outcome_roi_metrics.last_rollback_at,
+                    },
+                },
             }
 
     # v31: Onboarding Activation Learning Loop metrics
@@ -1804,6 +1900,138 @@ class MetricsCollector:
                 last_resume_completed_at=self._onboarding_continuity_metrics.last_resume_completed_at,
                 last_context_loss_at=self._onboarding_continuity_metrics.last_context_loss_at,
             )
+
+    # v36: Outcome Attribution and Hybrid ROI metrics
+    def record_outcome_attributed(self, outcome_type: str, method: str) -> None:
+        """v36: Record an attributed outcome."""
+        with self._lock:
+            self._outcome_roi_metrics.outcomes_attributed += 1
+            if method in self._outcome_roi_metrics.attribution_methods:
+                self._outcome_roi_metrics.attribution_methods[method] += 1
+            self._outcome_roi_metrics.last_outcome_attributed_at = datetime.now(timezone.utc).isoformat()
+
+    def record_proposal_generated(self, risk_level: str, hybrid_index: float) -> None:
+        """v36: Record a generated proposal."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_generated += 1
+            if risk_level in self._outcome_roi_metrics.by_risk_level:
+                self._outcome_roi_metrics.by_risk_level[risk_level] += 1
+            self._outcome_roi_metrics.hybrid_roi_index_values.append(hybrid_index)
+            self._outcome_roi_metrics.last_proposal_generated_at = datetime.now(timezone.utc).isoformat()
+
+    def record_proposal_auto_applied(self, hybrid_index: float) -> None:
+        """v36: Record an auto-applied proposal."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_auto_applied += 1
+            self._outcome_roi_metrics.last_proposal_applied_at = datetime.now(timezone.utc).isoformat()
+
+    def record_proposal_needing_approval(self, hybrid_index: float) -> None:
+        """v36: Record a proposal needing approval."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_pending_approval += 1
+
+    def record_proposal_approved(self, hybrid_index: float) -> None:
+        """v36: Record an approved proposal."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_approved += 1
+            self._outcome_roi_metrics.proposals_pending_approval = max(
+                0, self._outcome_roi_metrics.proposals_pending_approval - 1
+            )
+
+    def record_proposal_rejected(self, hybrid_index: float, reason: str) -> None:
+        """v36: Record a rejected proposal."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_rejected += 1
+            self._outcome_roi_metrics.proposals_pending_approval = max(
+                0, self._outcome_roi_metrics.proposals_pending_approval - 1
+            )
+
+    def record_proposal_blocked(self, block_type: str, reason: str) -> None:
+        """v36: Record a blocked proposal."""
+        with self._lock:
+            self._outcome_roi_metrics.proposals_blocked += 1
+            if block_type not in self._outcome_roi_metrics.block_reasons:
+                self._outcome_roi_metrics.block_reasons[block_type] = 0
+            self._outcome_roi_metrics.block_reasons[block_type] += 1
+
+    def record_guardrail_violation(self, violation_type: str) -> None:
+        """v36: Record a guardrail violation."""
+        with self._lock:
+            self._outcome_roi_metrics.guardrail_violations += 1
+            if violation_type not in self._outcome_roi_metrics.guardrail_violation_types:
+                self._outcome_roi_metrics.guardrail_violation_types[violation_type] = 0
+            self._outcome_roi_metrics.guardrail_violation_types[violation_type] += 1
+
+    def record_hybrid_roi_index(self, index: float) -> None:
+        """v36: Record a hybrid ROI index value."""
+        with self._lock:
+            values = self._outcome_roi_metrics.hybrid_roi_index_values
+            values.append(index)
+            # Keep last 1000 values for rolling average
+            if len(values) > 1000:
+                values.pop(0)
+            self._outcome_roi_metrics.hybrid_roi_index_avg = sum(values) / len(values)
+            self._outcome_roi_metrics.hybrid_roi_index_min = min(values)
+            self._outcome_roi_metrics.hybrid_roi_index_max = max(values)
+
+    def record_payback_time(self, days: float) -> None:
+        """v36: Record a payback time value."""
+        with self._lock:
+            values = self._outcome_roi_metrics.payback_time_values
+            values.append(days)
+            # Keep last 1000 values
+            if len(values) > 1000:
+                values.pop(0)
+            self._outcome_roi_metrics.payback_time_avg_days = sum(values) / len(values)
+
+    def record_quality_penalty(self, penalty_type: str, factor: float) -> None:
+        """v36: Record a quality penalty."""
+        with self._lock:
+            self._outcome_roi_metrics.quality_penalties_applied += 1
+            if penalty_type not in self._outcome_roi_metrics.quality_penalty_types:
+                self._outcome_roi_metrics.quality_penalty_types[penalty_type] = 0
+            self._outcome_roi_metrics.quality_penalty_types[penalty_type] += 1
+
+    def record_roi_rollback(self, proposal_count: int, reason: str) -> None:
+        """v36: Record an ROI rollback."""
+        with self._lock:
+            self._outcome_roi_metrics.rollbacks_executed += 1
+            self._outcome_roi_metrics.rolled_back_proposals += proposal_count
+            if reason not in self._outcome_roi_metrics.rollback_reasons:
+                self._outcome_roi_metrics.rollback_reasons[reason] = 0
+            self._outcome_roi_metrics.rollback_reasons[reason] += 1
+            self._outcome_roi_metrics.last_rollback_at = datetime.now(timezone.utc).isoformat()
+
+    def get_outcome_roi_metrics(self) -> Dict[str, Any]:
+        """v36: Get current outcome ROI metrics."""
+        with self._lock:
+            return {
+                "outcomes_attributed": self._outcome_roi_metrics.outcomes_attributed,
+                "attribution_methods": self._outcome_roi_metrics.attribution_methods.copy(),
+                "proposals_generated": self._outcome_roi_metrics.proposals_generated,
+                "proposals_auto_applied": self._outcome_roi_metrics.proposals_auto_applied,
+                "proposals_pending_approval": self._outcome_roi_metrics.proposals_pending_approval,
+                "proposals_approved": self._outcome_roi_metrics.proposals_approved,
+                "proposals_rejected": self._outcome_roi_metrics.proposals_rejected,
+                "proposals_blocked": self._outcome_roi_metrics.proposals_blocked,
+                "by_risk_level": self._outcome_roi_metrics.by_risk_level.copy(),
+                "block_reasons": self._outcome_roi_metrics.block_reasons.copy(),
+                "guardrail_violations": self._outcome_roi_metrics.guardrail_violations,
+                "guardrail_violation_types": self._outcome_roi_metrics.guardrail_violation_types.copy(),
+                "hybrid_roi_index_avg": self._outcome_roi_metrics.hybrid_roi_index_avg,
+                "hybrid_roi_index_min": self._outcome_roi_metrics.hybrid_roi_index_min,
+                "hybrid_roi_index_max": self._outcome_roi_metrics.hybrid_roi_index_max,
+                "payback_time_avg_days": self._outcome_roi_metrics.payback_time_avg_days,
+                "quality_penalties_applied": self._outcome_roi_metrics.quality_penalties_applied,
+                "quality_penalty_types": self._outcome_roi_metrics.quality_penalty_types.copy(),
+                "rollbacks_executed": self._outcome_roi_metrics.rollbacks_executed,
+                "rolled_back_proposals": self._outcome_roi_metrics.rolled_back_proposals,
+                "rollback_reasons": self._outcome_roi_metrics.rollback_reasons.copy(),
+                "last_outcome_attributed_at": self._outcome_roi_metrics.last_outcome_attributed_at,
+                "last_proposal_generated_at": self._outcome_roi_metrics.last_proposal_generated_at,
+                "last_proposal_applied_at": self._outcome_roi_metrics.last_proposal_applied_at,
+                "last_rollback_at": self._outcome_roi_metrics.last_rollback_at,
+            }
 
 
 def _normalize_metric_name(name: str) -> str:
