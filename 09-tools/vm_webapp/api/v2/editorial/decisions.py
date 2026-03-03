@@ -65,43 +65,33 @@ async def list_editorial_decisions_v2(
 
 @router.post(
     "",
-    response_model=EditorialDecision,
     summary="Create editorial decision",
-    description="Creates a new editorial decision. In the event-sourced architecture, decisions are typically created via commands. This endpoint provides a simplified interface for manual decisions.",
+    description="Creates a new editorial decision. Not implemented - decisions should be created via command events.",
     responses={
-        status.HTTP_201_CREATED: {"description": "Decision created successfully"},
-        status.HTTP_400_BAD_REQUEST: {"description": "Invalid decision data"},
+        status.HTTP_501_NOT_IMPLEMENTED: {"description": "Not implemented - use command events"},
         status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized - editor role required"},
-        status.HTTP_403_FORBIDDEN: {"description": "Forbidden - insufficient permissions"},
     },
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
 )
 async def create_editorial_decision_v2(
     request: Request,
-) -> EditorialDecision:
+) -> dict:
     """Create a new editorial decision.
     
-    Note: In the event-sourced architecture, decisions are typically
-    created via commands. This endpoint provides a simplified interface.
+    Note: This endpoint is not implemented. In the event-sourced architecture,
+    decisions should be created via commands (mark_editorial_golden_command, etc.)
+    rather than direct API calls.
     
-    Requires editor or admin role.
+    Use the appropriate command workflow for creating editorial decisions.
     
     Returns:
-        The newly created editorial decision
+        501 Not Implemented error with guidance
     """
-    from vm_webapp.db import session_scope
+    from fastapi import HTTPException
     
-    # Placeholder implementation
-    # Real implementation would use mark_editorial_golden_command or similar
-    decision_id = _auto_id("dec")
-    
-    return EditorialDecision(
-        decision_id=decision_id,
-        thread_id="placeholder",
-        decision_type="manual",
-        rationale="Created via API",
-        made_at=datetime.now(),
-        made_by="api",
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Direct editorial decision creation is not implemented. Use command events (mark_editorial_golden_command, etc.) instead."
     )
 
 
