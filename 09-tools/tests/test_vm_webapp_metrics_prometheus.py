@@ -13,6 +13,7 @@ sys.path.insert(0, "09-tools")
 from vm_webapp.observability import (
     MetricsCollector,
     RecoveryOrchestrationMetrics,
+    OnboardingRecoveryMetrics,
     OnboardingExperimentationMetrics,
     OnboardingPersonalizationMetrics,
     render_prometheus,
@@ -20,16 +21,51 @@ from vm_webapp.observability import (
 
 
 class TestRecoveryOrchestrationMetrics:
-    """Testes para métricas de recovery v28."""
+    """Testes para métricas de recovery v28 (orchestration domain)."""
 
     def test_collector_initializes_recovery_metrics(self):
-        """Collector deve inicializar métricas de recovery."""
+        """Collector deve inicializar métricas de recovery orchestration."""
         collector = MetricsCollector()
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         
         assert isinstance(metrics, RecoveryOrchestrationMetrics)
         assert metrics.runs_total == 0
         assert metrics.steps_total == 0
+
+    def test_backward_compatible_alias(self):
+        """get_recovery_metrics deve retornar orchestration metrics (backward compatibility)."""
+        collector = MetricsCollector()
+        metrics = collector.get_recovery_metrics()
+        
+        assert isinstance(metrics, RecoveryOrchestrationMetrics)
+
+    def test_domains_dont_collide(self):
+        """Métricas de orchestration e onboarding devem ser independentes."""
+        collector = MetricsCollector()
+        
+        # Record v28 orchestration metrics
+        collector.record_recovery_run(auto=True)
+        collector.record_recovery_step("success")
+        
+        # Record v34 onboarding metrics
+        collector.record_recovery_case_detected("abandoned_step", "high")
+        collector.record_recovery_case_recovered()
+        
+        # Get both metric types
+        orch_metrics = collector.get_orchestration_recovery_metrics()
+        onboarding_metrics = collector.get_onboarding_recovery_metrics()
+        
+        # Verify they are different types
+        assert isinstance(orch_metrics, RecoveryOrchestrationMetrics)
+        assert isinstance(onboarding_metrics, OnboardingRecoveryMetrics)
+        
+        # Verify v28 data is in orchestration
+        assert orch_metrics.runs_total == 1
+        assert orch_metrics.steps_total == 1
+        
+        # Verify v34 data is in onboarding
+        assert onboarding_metrics.cases_detected == 1
+        assert onboarding_metrics.cases_recovered == 1
 
     def test_record_recovery_run(self):
         """Deve registrar recovery run."""
@@ -37,7 +73,7 @@ class TestRecoveryOrchestrationMetrics:
         
         collector.record_recovery_run(auto=False)
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.runs_total == 1
         assert metrics.runs_manual == 1
         assert metrics.runs_auto == 0
@@ -50,7 +86,7 @@ class TestRecoveryOrchestrationMetrics:
         
         collector.record_recovery_run(auto=True)
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.runs_total == 1
         assert metrics.runs_auto == 1
         assert metrics.runs_manual == 0
@@ -62,7 +98,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_recovery_run()
         collector.record_recovery_run_success(duration_seconds=45.5)
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.runs_successful == 1
         assert metrics.active_runs == 0
         assert metrics.mttr_count == 1
@@ -76,7 +112,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_recovery_run()
         collector.record_recovery_run_failure()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.runs_failed == 1
         assert metrics.active_runs == 0
         assert metrics.last_failed_run_at is not None
@@ -90,7 +126,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_recovery_step("failed")
         collector.record_recovery_step("skipped")
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.steps_total == 4
         assert metrics.steps_successful == 2
         assert metrics.steps_failed == 1
@@ -102,7 +138,7 @@ class TestRecoveryOrchestrationMetrics:
         
         collector.record_approval_requested()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.approval_requests_total == 1
         assert metrics.pending_approvals == 1
 
@@ -113,7 +149,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_approval_requested()
         collector.record_approval_granted()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.approvals_granted == 1
         assert metrics.pending_approvals == 0
         assert metrics.last_approval_at is not None
@@ -125,7 +161,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_approval_requested()
         collector.record_approval_rejected()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.approvals_rejected == 1
         assert metrics.pending_approvals == 0
         assert metrics.last_rejection_at is not None
@@ -136,7 +172,7 @@ class TestRecoveryOrchestrationMetrics:
         
         collector.record_recovery_frozen()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.frozen_incidents == 1
         assert metrics.last_freeze_at is not None
 
@@ -146,7 +182,7 @@ class TestRecoveryOrchestrationMetrics:
         
         collector.record_recovery_rollback()
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.rolled_back_runs == 1
         assert metrics.last_rollback_at is not None
 
@@ -160,7 +196,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_incident_classified("quality_regression")
         collector.record_incident_classified("system_failure")
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.incident_handoff_timeout == 2
         assert metrics.incident_approval_sla_breach == 1
         assert metrics.incident_quality_regression == 1
@@ -179,7 +215,7 @@ class TestRecoveryOrchestrationMetrics:
         collector.record_recovery_run()
         collector.record_recovery_run_success(duration_seconds=90.0)
         
-        metrics = collector.get_recovery_metrics()
+        metrics = collector.get_orchestration_recovery_metrics()
         assert metrics.mttr_count == 3
         assert metrics.mttr_seconds_avg == 60.0  # (30+60+90)/3
 
