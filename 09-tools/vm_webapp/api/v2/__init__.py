@@ -14,6 +14,9 @@ from .core import (
 # Editorial
 from .editorial import editorial_decisions_router
 
+# Insights
+from .insights import health_router
+
 # Optimizer
 from .optimizer import optimizer_router
 
@@ -33,6 +36,9 @@ v2_router.include_router(threads_router)
 
 # Editorial
 v2_router.include_router(editorial_decisions_router)
+
+# Insights
+v2_router.include_router(health_router)
 
 # Optimizer
 v2_router.include_router(optimizer_router)
