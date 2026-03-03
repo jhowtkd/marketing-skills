@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, status
 
 from vm_webapp.schemas.copilot import (
     CopilotSuggestion,
@@ -19,12 +19,30 @@ def _auto_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
 
 
-@router.get("/suggestions", response_model=CopilotSuggestionsListResponse)
+@router.get(
+    "/suggestions",
+    response_model=CopilotSuggestionsListResponse,
+    summary="Get AI-powered suggestions",
+    description="Returns AI-generated suggestions for a thread based on its context, timeline items, and current state. Suggestions include optimizations and workflow recommendations.",
+    responses={
+        status.HTTP_200_OK: {"description": "Successful response with suggestions list"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Missing required thread_id parameter"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
+    },
+)
 async def get_copilot_suggestions_v2(
     request: Request,
     thread_id: str,
 ) -> CopilotSuggestionsListResponse:
-    """Get AI-powered suggestions for a thread."""
+    """Get AI-powered suggestions for a thread.
+    
+    Args:
+        thread_id: The unique identifier of the thread to get suggestions for
+        
+    Returns:
+        A list of contextual suggestions including optimization tips and workflow recommendations
+    """
     from vm_webapp.db import session_scope
     from vm_webapp.repo import get_thread_view, list_timeline_items_view
     
@@ -67,12 +85,30 @@ async def get_copilot_suggestions_v2(
     return CopilotSuggestionsListResponse(suggestions=suggestions)
 
 
-@router.post("/feedback", response_model=CopilotFeedbackResponse)
+@router.post(
+    "/feedback",
+    response_model=CopilotFeedbackResponse,
+    summary="Submit copilot feedback",
+    description="Submits user feedback on a copilot suggestion. Feedback is used to improve future AI recommendations.",
+    responses={
+        status.HTTP_201_CREATED: {"description": "Feedback received successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid feedback data"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+    },
+    status_code=status.HTTP_201_CREATED,
+)
 async def submit_copilot_feedback_v2(
     data: CopilotFeedback,
     request: Request,
 ) -> CopilotFeedbackResponse:
-    """Submit feedback on a copilot suggestion."""
+    """Submit feedback on a copilot suggestion.
+    
+    Args:
+        data: Feedback data including suggestion_id, rating, and optional comment
+        
+    Returns:
+        Confirmation of feedback receipt with generated feedback_id
+    """
     # Placeholder implementation
     # Real implementation would store feedback for model improvement
     

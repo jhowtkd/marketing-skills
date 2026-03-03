@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, status
 
 from vm_webapp.schemas.optimizer import (
     OptimizerQueueItem,
@@ -20,12 +20,29 @@ def _auto_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
 
 
-@router.get("/queue", response_model=OptimizerQueueListResponse)
+@router.get(
+    "/queue",
+    response_model=OptimizerQueueListResponse,
+    summary="List optimizer queue",
+    description="Returns the current state of the optimization queue. Shows pending and processing optimization requests. Can be filtered by brand_id.",
+    responses={
+        status.HTTP_200_OK: {"description": "Successful response with queue items"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid parameters"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+    },
+)
 async def list_optimizer_queue_v2(
     request: Request,
     brand_id: Optional[str] = None,
 ) -> OptimizerQueueListResponse:
-    """List optimizer queue items."""
+    """List optimizer queue items.
+    
+    Args:
+        brand_id: Optional brand ID to filter queue items
+        
+    Returns:
+        List of queue items with counts for total, processing, and queued items
+    """
     from vm_webapp.db import session_scope
     from vm_webapp.repo import list_runs_by_thread, get_thread_view
     
@@ -46,12 +63,31 @@ async def list_optimizer_queue_v2(
     )
 
 
-@router.post("/request", response_model=OptimizerRequestResponse)
+@router.post(
+    "/request",
+    response_model=OptimizerRequestResponse,
+    summary="Create optimization request",
+    description="Submits a new optimization request for a thread. Requests are queued and processed based on priority. Higher priority values are processed first.",
+    responses={
+        status.HTTP_201_CREATED: {"description": "Optimization request queued successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid request data or thread not found"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
+    },
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_optimizer_request_v2(
     data: OptimizerRequest,
     request: Request,
 ) -> OptimizerRequestResponse:
-    """Create a new optimizer request."""
+    """Create a new optimizer request.
+    
+    Args:
+        data: Optimization request including thread_id, request_type, and priority
+        
+    Returns:
+        Confirmation with request_id, queue position, and estimated wait time
+    """
     from vm_webapp.db import session_scope
     from vm_webapp.repo import get_thread_view
     

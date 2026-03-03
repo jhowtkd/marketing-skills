@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, status
 
 from vm_webapp.schemas.editorial import (
     EditorialDecision,
@@ -19,12 +19,30 @@ def _auto_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
 
 
-@router.get("", response_model=EditorialDecisionsListResponse)
+@router.get(
+    "",
+    response_model=EditorialDecisionsListResponse,
+    summary="List editorial decisions",
+    description="Returns all editorial decisions for a specific thread. Editorial decisions track content approvals, golden markings, and policy enforcements.",
+    responses={
+        status.HTTP_200_OK: {"description": "Successful response with decisions list"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Missing required thread_id parameter"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
+    },
+)
 async def list_editorial_decisions_v2(
     request: Request,
     thread_id: str,
 ) -> EditorialDecisionsListResponse:
-    """List all editorial decisions for a thread."""
+    """List all editorial decisions for a thread.
+    
+    Args:
+        thread_id: The unique identifier of the thread to list decisions for
+        
+    Returns:
+        A list of editorial decisions including type, rationale, and timestamp
+    """
     from vm_webapp.repo import list_editorial_decisions_view
     from vm_webapp.db import session_scope
     
@@ -44,7 +62,19 @@ async def list_editorial_decisions_v2(
         return EditorialDecisionsListResponse(decisions=decisions)
 
 
-@router.post("", response_model=EditorialDecision)
+@router.post(
+    "",
+    response_model=EditorialDecision,
+    summary="Create editorial decision",
+    description="Creates a new editorial decision. In the event-sourced architecture, decisions are typically created via commands. This endpoint provides a simplified interface for manual decisions.",
+    responses={
+        status.HTTP_201_CREATED: {"description": "Decision created successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid decision data"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized - editor role required"},
+        status.HTTP_403_FORBIDDEN: {"description": "Forbidden - insufficient permissions"},
+    },
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_editorial_decision_v2(
     request: Request,
 ) -> EditorialDecision:
@@ -52,6 +82,11 @@ async def create_editorial_decision_v2(
     
     Note: In the event-sourced architecture, decisions are typically
     created via commands. This endpoint provides a simplified interface.
+    
+    Requires editor or admin role.
+    
+    Returns:
+        The newly created editorial decision
     """
     from vm_webapp.db import session_scope
     
@@ -69,12 +104,29 @@ async def create_editorial_decision_v2(
     )
 
 
-@router.get("/insights", response_model=EditorialInsightsListResponse)
+@router.get(
+    "/insights",
+    response_model=EditorialInsightsListResponse,
+    summary="Get editorial insights",
+    description="Returns AI-generated insights about editorial decisions for a thread or globally. Insights include volume analysis and quality metrics.",
+    responses={
+        status.HTTP_200_OK: {"description": "Successful response with insights list"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid parameters"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+    },
+)
 async def get_editorial_insights_v2(
     request: Request,
     thread_id: str | None = None,
 ) -> EditorialInsightsListResponse:
-    """Get editorial insights for a thread or globally."""
+    """Get editorial insights for a thread or globally.
+    
+    Args:
+        thread_id: Optional thread ID to filter insights. If not provided, returns global insights.
+        
+    Returns:
+        A list of insights including volume and quality metrics
+    """
     from vm_webapp.db import session_scope
     from vm_webapp.repo import list_editorial_decisions_view
     

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, status
 
 from vm_webapp.schemas.core import (
     CampaignCreate,
@@ -18,12 +18,30 @@ def _auto_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
 
 
-@router.get("", response_model=CampaignsListResponse)
+@router.get(
+    "",
+    response_model=CampaignsListResponse,
+    summary="List all campaigns",
+    description="Returns a list of all campaigns for a specific project. Campaigns organize marketing activities within projects.",
+    responses={
+        status.HTTP_200_OK: {"description": "Successful response with list of campaigns"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Missing required project_id parameter"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Project not found"},
+    },
+)
 async def list_campaigns_v2(
     request: Request,
     project_id: str,
 ) -> CampaignsListResponse:
-    """List all campaigns for a project."""
+    """List all campaigns for a project.
+    
+    Args:
+        project_id: The unique identifier of the project to list campaigns for
+        
+    Returns:
+        A list of campaigns belonging to the specified project
+    """
     from vm_webapp.repo import list_campaigns_view
     from vm_webapp.db import session_scope
     
@@ -44,9 +62,29 @@ async def list_campaigns_v2(
         return CampaignsListResponse(campaigns=campaigns)
 
 
-@router.post("", response_model=CampaignResponse)
+@router.post(
+    "",
+    response_model=CampaignResponse,
+    summary="Create a new campaign",
+    description="Creates a new campaign within a project. Campaigns represent marketing initiatives that can contain multiple workflow runs.",
+    responses={
+        status.HTTP_201_CREATED: {"description": "Campaign created successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid request data"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Project or brand not found"},
+        status.HTTP_409_CONFLICT: {"description": "Campaign with this title already exists"},
+    },
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_campaign_v2(data: CampaignCreate, request: Request) -> CampaignResponse:
-    """Create a new campaign."""
+    """Create a new campaign.
+    
+    Args:
+        data: Campaign creation data including brand_id, project_id, and title
+        
+    Returns:
+        The newly created campaign with generated campaign_id
+    """
     from vm_webapp.commands_v2 import create_campaign_command
     from vm_webapp.db import session_scope
     
@@ -75,13 +113,33 @@ async def create_campaign_v2(data: CampaignCreate, request: Request) -> Campaign
         )
 
 
-@router.patch("/{campaign_id}", response_model=CampaignResponse)
+@router.patch(
+    "/{campaign_id}",
+    response_model=CampaignResponse,
+    summary="Update a campaign",
+    description="Updates an existing campaign. Currently supports updating the campaign title.",
+    responses={
+        status.HTTP_200_OK: {"description": "Campaign updated successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid request data"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
+        status.HTTP_404_NOT_FOUND: {"description": "Campaign not found"},
+        status.HTTP_409_CONFLICT: {"description": "Campaign update conflict"},
+    },
+)
 async def update_campaign_v2(
     campaign_id: str,
     data: CampaignUpdate,
     request: Request,
 ) -> CampaignResponse:
-    """Update a campaign (partial update)."""
+    """Update a campaign (partial update).
+    
+    Args:
+        campaign_id: The unique identifier of the campaign to update
+        data: Campaign update data (currently supports title only)
+        
+    Returns:
+        The updated campaign
+    """
     from vm_webapp.db import session_scope
     from vm_webapp.models import CampaignView
     
