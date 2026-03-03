@@ -9,6 +9,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from vm_webapp.models import Base
+from vm_webapp.models_onboarding import OnboardingBase
 
 
 def build_engine(db_path: Path | None = None, *, db_url: str | None = None) -> Engine:
@@ -25,7 +26,11 @@ def build_engine(db_path: Path | None = None, *, db_url: str | None = None) -> E
 
 
 def init_db(engine: Engine) -> None:
+    """Initialize database tables."""
+    # Create existing tables
     Base.metadata.create_all(engine)
+    # Create onboarding tables
+    OnboardingBase.metadata.create_all(engine)
 
 
 @contextmanager
