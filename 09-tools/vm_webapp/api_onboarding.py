@@ -36,6 +36,19 @@ from vm_webapp.onboarding_first_run import (
     VALID_TEMPLATES,
 )
 
+# v38: Import experiment governance functionality
+from vm_webapp.onboarding_ttfv_experiments import (
+    assign_user_to_variant,
+    evaluate_experiment,
+    make_experiment_decision,
+    check_guardrails,
+    calculate_guardrail_status,
+    get_active_experiments,
+    Experiment,
+    ExperimentStatus,
+    ExperimentDecision,
+)
+
 router = APIRouter()
 
 
@@ -722,4 +735,167 @@ async def get_first_run_templates(
     return {
         "templates": templates,
         "count": len(templates),
+    }
+
+
+# v38: Experiment Governance endpoint schemas
+class ExperimentAssignRequest(BaseModel):
+    user_id: str
+    experiment_id: str = "v38-onboarding-ttfv-acceleration"
+
+
+class ExperimentAssignResponse(BaseModel):
+    user_id: str
+    experiment_id: str
+    variant: str
+    assigned_at: str
+
+
+class GuardrailCheckRequest(BaseModel):
+    metrics: Dict[str, float]
+
+
+class GuardrailCheckResponse(BaseModel):
+    all_passed: bool
+    violations: List[str]
+    activation_rate_d1_ok: bool
+    onboarding_completion_rate_ok: bool
+    incident_rate_ok: bool
+    activation_rate_d1_delta_pp: float = 0.0
+    onboarding_completion_rate_delta_pp: float = 0.0
+    incident_rate_delta: float = 0.0
+
+
+class GuardrailStatusResponse(BaseModel):
+    timestamp: str
+    activation_rate_d1: Dict[str, Any]
+    onboarding_completion_rate: Dict[str, Any]
+    incident_rate: Dict[str, Any]
+    overall_status: str
+
+
+class ExperimentDecisionRequest(BaseModel):
+    experiment_id: str
+    metrics: Dict[str, float]
+
+
+class ExperimentDecisionResponse(BaseModel):
+    experiment_id: str
+    decision: str
+    reason: str
+    confidence: float
+    recommended_action: str
+
+
+@router.post("/experiments/assign")
+async def assign_experiment_variant(
+    request_data: ExperimentAssignRequest,
+    request: Request = None
+) -> ExperimentAssignResponse:
+    """Assign user to experiment variant deterministically.
+    
+    v38: Experiment Governance - deterministic variant assignment.
+    """
+    assignment = assign_user_to_variant(
+        user_id=request_data.user_id,
+        experiment_id=request_data.experiment_id,
+    )
+    
+    return ExperimentAssignResponse(
+        user_id=assignment.user_id,
+        experiment_id=assignment.experiment_id,
+        variant=assignment.variant,
+        assigned_at=assignment.assigned_at.isoformat(),
+    )
+
+
+@router.post("/experiments/guardrails/check")
+async def check_experiment_guardrails(
+    request_data: GuardrailCheckRequest,
+    request: Request = None
+) -> GuardrailCheckResponse:
+    """Check experiment metrics against guardrails.
+    
+    Guardrails:
+    - activation_rate_d1 >= -2 p.p.
+    - onboarding_completion_rate >= -3 p.p.
+    - incident_rate: no increase
+    """
+    result = check_guardrails(request_data.metrics)
+    
+    return GuardrailCheckResponse(
+        all_passed=result["all_passed"],
+        violations=result["violations"],
+        activation_rate_d1_ok=result["activation_rate_d1_ok"],
+        onboarding_completion_rate_ok=result["onboarding_completion_rate_ok"],
+        incident_rate_ok=result["incident_rate_ok"],
+        activation_rate_d1_delta_pp=result.get("activation_rate_d1_delta_pp", 0.0),
+        onboarding_completion_rate_delta_pp=result.get("onboarding_completion_rate_delta_pp", 0.0),
+        incident_rate_delta=result.get("incident_rate_delta", 0.0),
+    )
+
+
+@router.get("/experiments/guardrails/status")
+async def get_guardrail_status(
+    request: Request = None
+) -> GuardrailStatusResponse:
+    """Get current guardrail status for monitoring."""
+    status = calculate_guardrail_status()
+    
+    return GuardrailStatusResponse(
+        timestamp=status["timestamp"],
+        activation_rate_d1=status["activation_rate_d1"],
+        onboarding_completion_rate=status["onboarding_completion_rate"],
+        incident_rate=status["incident_rate"],
+        overall_status=status["overall_status"],
+    )
+
+
+@router.post("/experiments/decision")
+async def make_experiment_decision_endpoint(
+    request_data: ExperimentDecisionRequest,
+    request: Request = None
+) -> ExperimentDecisionResponse:
+    """Make experiment decision based on metrics and guardrails.
+    
+    Decisions: promote, hold, rollback
+    """
+    experiment = Experiment(
+        experiment_id=request_data.experiment_id,
+        name=request_data.experiment_id,
+        status=ExperimentStatus.RUNNING,
+    )
+    
+    decision = make_experiment_decision(experiment, request_data.metrics)
+    
+    return ExperimentDecisionResponse(
+        experiment_id=decision.experiment_id,
+        decision=decision.decision.value,
+        reason=decision.reason,
+        confidence=decision.confidence,
+        recommended_action=decision.recommended_action,
+    )
+
+
+@router.get("/experiments/active")
+async def get_active_experiments_endpoint(
+    request: Request = None
+) -> Dict[str, Any]:
+    """Get list of active experiments."""
+    experiments = get_active_experiments()
+    
+    return {
+        "experiments": [
+            {
+                "experiment_id": e.experiment_id,
+                "name": e.name,
+                "status": e.status.value,
+                "start_date": e.start_date.isoformat() if e.start_date else None,
+                "variants": e.variants,
+                "description": e.description,
+                "owner": e.owner,
+            }
+            for e in experiments
+        ],
+        "count": len(experiments),
     }
