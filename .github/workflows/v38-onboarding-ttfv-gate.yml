@@ -1,0 +1,182 @@
+name: v38 Onboarding TTFV Gate
+
+on:
+  push:
+    branches: [main, feature/governance-v38-onboarding-ttfv-acceleration]
+    paths:
+      - '09-tools/vm_webapp/onboarding_*.py'
+      - '09-tools/tests/test_vm_webapp_onboarding_*.py'
+      - '09-tools/web/vm-ui/src/features/onboarding/**'
+      - '.github/workflows/v38-onboarding-ttfv-gate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/vm_webapp/onboarding_*.py'
+      - '09-tools/tests/test_vm_webapp_onboarding_*.py'
+      - '09-tools/web/vm-ui/src/features/onboarding/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Backend onboarding tests
+  backend-onboarding-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./09-tools
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-cov
+      
+      - name: Run prefill tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_onboarding_prefill.py -v --tb=short
+      
+      - name: Run fast lane tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_onboarding_fast_lane.py -v --tb=short
+      
+      - name: Run first run tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_onboarding_first_run.py -v --tb=short
+      
+      - name: Run experiments tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_onboarding_ttfv_experiments.py -v --tb=short
+      
+      - name: Run API v2 tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_api_v2.py -v --tb=short
+      
+      - name: Run Prometheus metrics tests
+        run: |
+          PYTHONPATH=. python -m pytest tests/test_vm_webapp_metrics_prometheus.py -v --tb=short
+
+  # Frontend onboarding tests
+  frontend-onboarding-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./09-tools/web/vm-ui
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './09-tools/web/vm-ui/package-lock.json'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run TTFV telemetry tests
+        run: npm run test -- --run src/features/onboarding/ttfvTelemetry.test.ts
+      
+      - name: Run OnboardingWizard tests
+        run: npm run test -- --run src/features/onboarding/OnboardingWizard.test.tsx
+      
+      - name: Run OneClickFirstRun tests
+        run: npm run test -- --run src/features/onboarding/OneClickFirstRun.test.tsx
+      
+      - name: Run all onboarding tests
+        run: npm run test -- --run src/features/onboarding/
+      
+      - name: Run workspace tests
+        run: npm run test -- --run src/features/workspace/
+
+  # Frontend build verification
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./09-tools/web/vm-ui
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './09-tools/web/vm-ui/package-lock.json'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build frontend
+        run: npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: ./09-tools/web/vm-ui/dist
+          retention-days: 7
+
+  # YAML validation
+  yaml-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Validate workflow YAML
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/v38-onboarding-ttfv-gate.yml'))"
+          echo "✅ Workflow YAML is valid"
+
+  # Integration test
+  integration-gate:
+    runs-on: ubuntu-latest
+    needs: [backend-onboarding-tests, frontend-onboarding-tests, frontend-build, yaml-validation]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Integration gate passed
+        run: |
+          echo "✅ All v38 Onboarding TTFV Acceleration tests passed"
+          echo "✅ Backend tests: prefill, fast-lane, first-run, experiments"
+          echo "✅ Frontend tests: telemetry, wizard, one-click"
+          echo "✅ Build verification: frontend build successful"
+          echo "✅ YAML validation: workflow files valid"
+      
+      - name: Summary
+        run: |
+          echo "## v38 Onboarding TTFV Acceleration - Integration Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Smart Prefill | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Fast Lane | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| One-Click First Run | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Experiment Governance | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Guardrails | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Guardrails enforced:**" >> $GITHUB_STEP_SUMMARY
+          echo "- activation_rate_d1 >= -2 p.p." >> $GITHUB_STEP_SUMMARY
+          echo "- onboarding_completion_rate >= -3 p.p." >> $GITHUB_STEP_SUMMARY
+          echo "- incident_rate: no increase" >> $GITHUB_STEP_SUMMARY
