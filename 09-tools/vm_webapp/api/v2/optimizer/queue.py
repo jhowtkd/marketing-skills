@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, HTTPException, status
 
 from vm_webapp.schemas.optimizer import (
     OptimizerQueueItem,
@@ -23,13 +23,7 @@ def _auto_id(prefix: str) -> str:
 @router.get(
     "/queue",
     response_model=OptimizerQueueListResponse,
-    summary="List optimizer queue",
-    description="Returns the current state of the optimization queue. Shows pending and processing optimization requests. Can be filtered by brand_id.",
-    responses={
-        status.HTTP_200_OK: {"description": "Successful response with queue items"},
-        status.HTTP_400_BAD_REQUEST: {"description": "Invalid parameters"},
-        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
-    },
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
 )
 async def list_optimizer_queue_v2(
     request: Request,
@@ -37,44 +31,19 @@ async def list_optimizer_queue_v2(
 ) -> OptimizerQueueListResponse:
     """List optimizer queue items.
     
-    Args:
-        brand_id: Optional brand ID to filter queue items
-        
-    Returns:
-        List of queue items with counts for total, processing, and queued items
+    **Note:** This endpoint is not yet fully implemented.
+    Returns 501 Not Implemented.
     """
-    from vm_webapp.db import session_scope
-    from vm_webapp.repo import list_runs_by_thread, get_thread_view
-    
-    items = []
-    
-    # This is a simplified implementation
-    # Real implementation would query a dedicated queue table
-    with session_scope(request.app.state.engine) as session:
-        # Get runs that are in pending/running status as proxy for queue
-        # In a real implementation, this would be a proper queue system
-        pass
-    
-    return OptimizerQueueListResponse(
-        items=items,
-        total_count=len(items),
-        processing_count=sum(1 for i in items if i.status == "processing"),
-        queued_count=sum(1 for i in items if i.status == "queued"),
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Optimizer queue listing not yet implemented",
     )
 
 
 @router.post(
     "/request",
     response_model=OptimizerRequestResponse,
-    summary="Create optimization request",
-    description="Submits a new optimization request for a thread. Requests are queued and processed based on priority. Higher priority values are processed first.",
-    responses={
-        status.HTTP_201_CREATED: {"description": "Optimization request queued successfully"},
-        status.HTTP_400_BAD_REQUEST: {"description": "Invalid request data or thread not found"},
-        status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
-        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
-    },
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
 )
 async def create_optimizer_request_v2(
     data: OptimizerRequest,
@@ -82,27 +51,10 @@ async def create_optimizer_request_v2(
 ) -> OptimizerRequestResponse:
     """Create a new optimizer request.
     
-    Args:
-        data: Optimization request including thread_id, request_type, and priority
-        
-    Returns:
-        Confirmation with request_id, queue position, and estimated wait time
+    **Note:** This endpoint is not yet fully implemented.
+    Returns 501 Not Implemented.
     """
-    from vm_webapp.db import session_scope
-    from vm_webapp.repo import get_thread_view
-    
-    request_id = _auto_id("opt")
-    
-    with session_scope(request.app.state.engine) as session:
-        thread = get_thread_view(session, data.thread_id)
-        if thread is None:
-            raise ValueError(f"Thread not found: {data.thread_id}")
-        
-        # In a real implementation, this would add to a queue
-        # For now, we return a placeholder response
-        return OptimizerRequestResponse(
-            request_id=request_id,
-            status="queued",
-            estimated_wait_seconds=data.priority * 10,
-            queue_position=1,
-        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Optimizer request creation not yet implemented",
+    )
