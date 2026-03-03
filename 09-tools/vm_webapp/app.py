@@ -90,6 +90,22 @@ def create_app(
     app.state.event_worker = event_worker
     app.state.worker_mode = "in_process" if event_worker is not None else "external"
 
+    # Routers faltantes - Phase 0 Hotfix
+    app.include_router(onboarding_experiments_router, prefix="/api/v2")
+    app.include_router(onboarding_personalization_router, prefix="/api/v2")
+    app.include_router(onboarding_recovery_router, prefix="/api/v2")
+    app.include_router(onboarding_activation_router, prefix="/api/v2")
+    app.include_router(onboarding_continuity_router, prefix="/api/v2")
+    app.include_router(onboarding_base_router, prefix="/api/v2")
+    app.include_router(predictive_resilience_router, prefix="/api/v2")
+    app.include_router(outcome_roi_router, prefix="/api/v2")
+    app.include_router(copilot_router, prefix="/api/v2")
+    app.include_router(safety_tuning_router, prefix="/api/v2")
+    app.include_router(adaptive_escalation_router, prefix="/api/v2")
+    app.include_router(control_loop_router, prefix="/api/v2")
+    app.include_router(recovery_router, prefix="/api/v2")
+    app.include_router(approval_learning_router, prefix="/api/v2")
+
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router, prefix="/api")
     app.include_router(dag_api_router)
