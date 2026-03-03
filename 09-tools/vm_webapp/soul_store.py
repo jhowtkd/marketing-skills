@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
+import tempfile
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from vm_webapp.soul_parser import parse_and_validate
 from vm_webapp.soul_templates import (
@@ -26,20 +31,92 @@ class SoulDocument:
     recovered: bool
 
 
+class SoulVersionConflictError(ValueError):
+    """Raised when the provided version hash does not match current persisted hash."""
+
+
+_SOUL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_PATH_LOCK_GUARD = threading.Lock()
+_PATH_LOCKS: dict[str, threading.Lock] = {}
+
+
 def _sha256_markdown(markdown: str) -> str:
     return hashlib.sha256(markdown.encode("utf-8")).hexdigest()
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    tmp.replace(path)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(str(tmp_path), str(path))
+    except Exception:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def _updated_at_iso(path: Path) -> str:
     mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     return mtime.isoformat()
+
+
+def _validate_identifier(identifier_name: str, identifier_value: str) -> str:
+    if not identifier_value:
+        raise ValueError(f"{identifier_name} is required.")
+    if (
+        "/" in identifier_value
+        or "\\" in identifier_value
+        or ".." in identifier_value
+        or Path(identifier_value).is_absolute()
+    ):
+        raise ValueError(
+            f"Invalid {identifier_name} '{identifier_value}': "
+            "path separators, '..' and absolute paths are not allowed."
+        )
+    if not _SOUL_ID_PATTERN.fullmatch(identifier_value):
+        raise ValueError(
+            f"Invalid {identifier_name} '{identifier_value}': "
+            "use alphanumeric characters plus '-' and '_' only."
+        )
+    return identifier_value
+
+
+def _ensure_path_within_base(base_dir: Path, target_path: Path) -> Path:
+    resolved_base = base_dir.resolve()
+    resolved_target = target_path.resolve(strict=False)
+    try:
+        resolved_target.relative_to(resolved_base)
+    except ValueError as exc:
+        raise ValueError(
+            f"Resolved soul path escapes runtime root: '{resolved_target}'."
+        ) from exc
+    return resolved_target
+
+
+@contextmanager
+def _lock_for_path(path: Path) -> Iterator[None]:
+    path_key = str(path.resolve(strict=False))
+    with _PATH_LOCK_GUARD:
+        lock = _PATH_LOCKS.get(path_key)
+        if lock is None:
+            lock = threading.Lock()
+            _PATH_LOCKS[path_key] = lock
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def resolve_soul_path(
@@ -50,27 +127,42 @@ def resolve_soul_path(
     project_id: Optional[str] = None,
     thread_id: Optional[str] = None,
 ) -> Path:
+    safe_brand_id = _validate_identifier("brand_id", brand_id)
+    base_dir = runtime_root.resolve()
     if level == SOUL_LEVEL_BRAND:
-        return runtime_root / "brands" / brand_id / "brand.md"
+        path = base_dir / "brands" / safe_brand_id / "brand.md"
+        return _ensure_path_within_base(base_dir, path)
     if level == SOUL_LEVEL_PROJECT:
         if not project_id:
             raise ValueError("project_id is required for level 'project'.")
-        return runtime_root / "brands" / brand_id / "projects" / project_id / "project.md"
+        safe_project_id = _validate_identifier("project_id", project_id)
+        path = (
+            base_dir
+            / "brands"
+            / safe_brand_id
+            / "projects"
+            / safe_project_id
+            / "project.md"
+        )
+        return _ensure_path_within_base(base_dir, path)
     if level == SOUL_LEVEL_THREAD:
         if not project_id:
             raise ValueError("project_id is required for level 'thread'.")
         if not thread_id:
             raise ValueError("thread_id is required for level 'thread'.")
-        return (
-            runtime_root
+        safe_project_id = _validate_identifier("project_id", project_id)
+        safe_thread_id = _validate_identifier("thread_id", thread_id)
+        path = (
+            base_dir
             / "brands"
-            / brand_id
+            / safe_brand_id
             / "projects"
-            / project_id
+            / safe_project_id
             / "threads"
-            / thread_id
+            / safe_thread_id
             / "thread.md"
         )
+        return _ensure_path_within_base(base_dir, path)
     raise ValueError(
         f"Unsupported soul level '{level}'. Expected one of: "
         f"{SOUL_LEVEL_BRAND}, {SOUL_LEVEL_PROJECT}, {SOUL_LEVEL_THREAD}"
@@ -124,12 +216,13 @@ class SoulStore:
             project_id=project_id,
             thread_id=thread_id,
         )
-        recovered = False
-        if not path.exists():
-            recovered = True
-            _write_text_atomic(path, template_for(level))
-        markdown = path.read_text(encoding="utf-8")
-        return _build_document(level=level, path=path, markdown=markdown, recovered=recovered)
+        with _lock_for_path(path):
+            recovered = False
+            if not path.exists():
+                recovered = True
+                _write_text_atomic(path, template_for(level))
+            markdown = path.read_text(encoding="utf-8")
+            return _build_document(level=level, path=path, markdown=markdown, recovered=recovered)
 
     def _save(
         self,
@@ -147,23 +240,22 @@ class SoulStore:
             project_id=project_id,
             thread_id=thread_id,
         )
+        with _lock_for_path(path):
+            if path.exists():
+                current_markdown = path.read_text(encoding="utf-8")
+            else:
+                current_markdown = template_for(level)
 
-        if path.exists():
-            current_markdown = path.read_text(encoding="utf-8")
-        else:
-            current_markdown = template_for(level)
-            _write_text_atomic(path, current_markdown)
+            current_hash = _sha256_markdown(current_markdown)
+            if version_hash != current_hash:
+                raise SoulVersionConflictError(
+                    "version_hash mismatch: "
+                    f"expected={version_hash} current={current_hash}"
+                )
 
-        current_hash = _sha256_markdown(current_markdown)
-        if version_hash != current_hash:
-            raise ValueError(
-                "version_hash mismatch: "
-                f"expected={version_hash} current={current_hash}"
-            )
-
-        parse_and_validate(level=level, markdown=markdown)
-        _write_text_atomic(path, markdown)
-        return _build_document(level=level, path=path, markdown=markdown, recovered=False)
+            parse_and_validate(level=level, markdown=markdown)
+            _write_text_atomic(path, markdown)
+            return _build_document(level=level, path=path, markdown=markdown, recovered=False)
 
     def get_brand_soul(self, brand_id: str) -> SoulDocument:
         return self._load(level=SOUL_LEVEL_BRAND, brand_id=brand_id)
