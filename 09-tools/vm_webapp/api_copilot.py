@@ -9,7 +9,7 @@ Provides:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional, List, Dict
 
 from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel, field_validator
@@ -51,7 +51,7 @@ class CopilotFeedbackRequest(BaseModel):
     suggestion_id: str
     phase: str
     action: str
-    edited_content: str | None = None
+    edited_content: Optional[str] = None
     
     @field_validator("phase")
     @classmethod
@@ -68,7 +68,7 @@ class CopilotFeedbackRequest(BaseModel):
         return v
 
 
-def _convert_outcomes_to_dict(outcomes: list) -> list[dict]:
+def _convert_outcomes_to_dict(outcomes: List) -> List[Dict]:
     """Convert FirstRunOutcomeView objects to dict format for suggestion engine."""
     return [
         {
@@ -87,7 +87,7 @@ def _convert_outcomes_to_dict(outcomes: list) -> list[dict]:
 def _get_or_create_segment(
     session,
     brand_id: str,
-    objective_key: str | None,
+    objective_key: Optional[str],
 ) -> CopilotSegmentView:
     """Get or create a segment view for the given brand + objective.
     
@@ -115,7 +115,7 @@ def get_copilot_suggestions(
     thread_id: str,
     request: Request,
     phase: str = "initial",
-) -> dict[str, object]:
+) -> Dict[str, object]:
     """Get editorial copilot suggestions for a specific phase.
     
     Args:
@@ -238,7 +238,7 @@ def _get_adjustment_bucket(adjustment_factor: float) -> str:
 def get_copilot_segment_status(
     thread_id: str,
     request: Request,
-) -> dict[str, object]:
+) -> Dict[str, object]:
     """Get copilot segment status for personalization eligibility.
     
     v14 endpoint to inspect segment eligibility and metrics.
@@ -294,7 +294,7 @@ def submit_copilot_feedback(
     request: Request,
     body: CopilotFeedbackRequest,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-) -> dict[str, object]:
+) -> Dict[str, object]:
     """Submit feedback on a copilot suggestion.
     
     Args:

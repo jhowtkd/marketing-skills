@@ -252,3 +252,76 @@ CHANGELOG.md
 ## Previous Versions
 
 See git history for versions prior to v23.
+
+## [2.0.1] - 2026-03-03
+
+### Fixed
+- Register 14 missing API routers (previously 107+ endpoints returning 404)
+- Add missing router imports for: onboarding-experiments, predictive-resilience, copilot, safety-tuning, etc.
+- Add onboarding telemetry endpoints:
+  - POST /api/v2/onboarding/events
+  - GET /api/v2/onboarding/metrics  
+  - GET /api/v2/onboarding/friction-metrics
+- Fix Python 3.9 compatibility issues in api_copilot.py
+
+### Added
+- Onboarding experiments endpoints now accessible
+- Predictive resilience endpoints now accessible
+- Copilot suggestions endpoints now accessible
+- Safety tuning endpoints now accessible
+- Control loop endpoints now accessible
+- Recovery endpoints now accessible
+- Approval learning endpoints now accessible
+
+
+## [2.0.2] - 2026-03-05
+
+### Changed
+- Remove duplicate copilot endpoints from api.py (consolidated in api_copilot.py)
+- Standardize all v2 endpoints with `/api/v2/` prefix
+- 58 endpoints migrated from `/v2/` to `/api/v2/` for consistency
+
+### Fixed
+- Fix 404 errors on `/api/v2/threads/{id}/alerts` and other thread sub-resources
+- Remove 320 lines of duplicate code from api.py
+
+
+## [2.1.0] - 2026-03-15
+
+### Added
+- New `api/v2/` directory structure organized by domain (core, workflow, editorial, copilot, optimizer, onboarding, resilience, insights, ops)
+- Pydantic schemas with validation:
+  - `schemas/base.py` - BaseModel, PaginatedResponse, ActionResponse
+  - `schemas/core.py` - Brand, Project, Thread schemas
+  - `schemas/workflow.py` - WorkflowRun, Task, Approval schemas
+  - `schemas/editorial.py` - EditorialDecision, SLO, Policy schemas
+- Auto-generated TypeScript API client via openapi-typescript (21,148 lines!)
+- Onboarding telemetry endpoints:
+  - `POST /api/v2/onboarding/events`
+  - `GET /api/v2/onboarding/metrics`
+  - `GET /api/v2/onboarding/friction-metrics`
+- New v2 brands router with typed schemas
+- Deprecation strategy documentation
+
+### Changed
+- Consolidate all copilot endpoints into `api_copilot.py` (removed from api.py)
+- Standardize all v2 endpoints with `/api/v2/` prefix
+- Reorganize 22+ api modules into structured `v2/` subdirectories
+- Reduce api.py by 320 lines through deduplication
+
+### Fixed
+- Register 14 missing API routers (previously 107+ endpoints returning 404)
+- Fix 404 errors for: onboarding-experiments, predictive-resilience, copilot, safety-tuning, etc.
+- Fix prefix mismatch on thread endpoints (`/v2/` → `/api/v2/`)
+- Python 3.9 compatibility fixes in `api_copilot.py`
+
+### Deprecated
+- Legacy v1 endpoints marked for removal in v2.2.0
+- See `api/v1/DEPRECATION.md` for migration guide
+
+### Stats
+- Total endpoints: 337
+- Backend routers: 17 (all registered)
+- TypeScript client: 21,148 lines
+- Schemas: 4 files, 30+ classes
+

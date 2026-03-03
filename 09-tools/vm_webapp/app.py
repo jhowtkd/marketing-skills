@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -22,6 +22,21 @@ from vm_webapp.settings import Settings
 from vm_webapp.startup_checks import validate_startup_contract
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
+from vm_webapp.api_onboarding_experiments import router as onboarding_experiments_router
+from vm_webapp.api_onboarding_personalization import router as onboarding_personalization_router
+from vm_webapp.api_onboarding_recovery import router as onboarding_recovery_router
+from vm_webapp.api_onboarding_activation import router as onboarding_activation_router
+from vm_webapp.api_onboarding_continuity import router as onboarding_continuity_router
+from vm_webapp.api_onboarding import router as onboarding_base_router
+from vm_webapp.api_predictive_resilience import router as predictive_resilience_router
+from vm_webapp.api_outcome_roi import router as outcome_roi_router
+from vm_webapp.api_copilot import router as copilot_router
+from vm_webapp.api_safety_tuning import router as safety_tuning_router
+from vm_webapp.api_adaptive_escalation import router as adaptive_escalation_router
+from vm_webapp.api_control_loop import router as control_loop_router
+from vm_webapp.api_recovery import router as recovery_router
+from vm_webapp.api_approval_learning import router as approval_learning_router
+from vm_webapp.api.v2 import v2_router
 
 
 async def value_error_to_http(_request: Request, exc: ValueError) -> JSONResponse:
@@ -76,8 +91,56 @@ def create_app(
     app.state.event_worker = event_worker
     app.state.worker_mode = "in_process" if event_worker is not None else "external"
 
+    # ============================================================================
+    # V2 Onboarding Telemetry Endpoints (must be before api_router)
+    # ============================================================================
+    # Note: These are placeholder implementations that return empty/mock data
+    
+    @app.post("/api/v2/onboarding/events")
+    async def _track_onboarding_event(request: Request):
+        from uuid import uuid4
+        body = await request.json()
+        return {"success": True, "event_id": str(uuid4())}
+
+    @app.get("/api/v2/onboarding/metrics")
+    async def _get_onboarding_metrics(brand_id: Optional[str] = None, days: int = 30):
+        from datetime import datetime
+        now = datetime.now()
+        return {
+            "total_events": 0,
+            "events_by_type": {},
+            "period_start": now.isoformat(),
+            "period_end": now.isoformat()
+        }
+
+    @app.get("/api/v2/onboarding/friction-metrics")
+    async def _get_friction_metrics(brand_id: Optional[str] = None):
+        return {
+            "friction_points": [],
+            "dropoff_rates": {}
+        }
+
+    # Routers faltantes - Phase 0 Hotfix
+    app.include_router(onboarding_experiments_router, prefix="/api/v2")
+    app.include_router(onboarding_personalization_router, prefix="/api/v2")
+    app.include_router(onboarding_recovery_router, prefix="/api/v2")
+    app.include_router(onboarding_activation_router, prefix="/api/v2")
+    app.include_router(onboarding_continuity_router, prefix="/api/v2")
+    # Note: onboarding_base_router is included in api.py with prefix /v2/onboarding
+    app.include_router(predictive_resilience_router, prefix="/api/v2")
+    app.include_router(outcome_roi_router, prefix="/api/v2")
+    app.include_router(copilot_router, prefix="/api/v2")
+    app.include_router(safety_tuning_router, prefix="/api/v2")
+    app.include_router(adaptive_escalation_router, prefix="/api/v2")
+    app.include_router(control_loop_router, prefix="/api/v2")
+    app.include_router(recovery_router, prefix="/api/v2")
+    app.include_router(approval_learning_router, prefix="/api/v2")
+
+    # New v2 API structure (Phase 2)
+    app.include_router(v2_router)
+
     app.include_router(api_router, prefix="/api/v1")
-    app.include_router(api_router, prefix="/api")
+    app.include_router(api_router)  # Routes include /api/v2/ prefix directly
     app.include_router(dag_api_router)
     app.include_router(optimizer_api_router)
     app.include_router(quality_optimizer_api_router)
