@@ -240,3 +240,4 @@ async def get_metrics() -> OnboardingMetrics:
         average_time_to_first_value_ms=round(avg_ttfv, 2),
         dropoff_by_step=dropoff_by_step,
     )
+

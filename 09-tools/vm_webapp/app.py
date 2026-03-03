@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -90,13 +90,42 @@ def create_app(
     app.state.event_worker = event_worker
     app.state.worker_mode = "in_process" if event_worker is not None else "external"
 
+    # ============================================================================
+    # V2 Onboarding Telemetry Endpoints (must be before api_router)
+    # ============================================================================
+    # Note: These are placeholder implementations that return empty/mock data
+    
+    @app.post("/api/v2/onboarding/events")
+    async def _track_onboarding_event(request: Request):
+        from uuid import uuid4
+        body = await request.json()
+        return {"success": True, "event_id": str(uuid4())}
+
+    @app.get("/api/v2/onboarding/metrics")
+    async def _get_onboarding_metrics(brand_id: Optional[str] = None, days: int = 30):
+        from datetime import datetime
+        now = datetime.now()
+        return {
+            "total_events": 0,
+            "events_by_type": {},
+            "period_start": now.isoformat(),
+            "period_end": now.isoformat()
+        }
+
+    @app.get("/api/v2/onboarding/friction-metrics")
+    async def _get_friction_metrics(brand_id: Optional[str] = None):
+        return {
+            "friction_points": [],
+            "dropoff_rates": {}
+        }
+
     # Routers faltantes - Phase 0 Hotfix
     app.include_router(onboarding_experiments_router, prefix="/api/v2")
     app.include_router(onboarding_personalization_router, prefix="/api/v2")
     app.include_router(onboarding_recovery_router, prefix="/api/v2")
     app.include_router(onboarding_activation_router, prefix="/api/v2")
     app.include_router(onboarding_continuity_router, prefix="/api/v2")
-    app.include_router(onboarding_base_router, prefix="/api/v2")
+    # Note: onboarding_base_router is included in api.py with prefix /v2/onboarding
     app.include_router(predictive_resilience_router, prefix="/api/v2")
     app.include_router(outcome_roi_router, prefix="/api/v2")
     app.include_router(copilot_router, prefix="/api/v2")
