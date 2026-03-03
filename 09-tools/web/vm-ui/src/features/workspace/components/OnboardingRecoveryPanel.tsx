@@ -56,7 +56,7 @@ function CaseCard({
         <div>
           <h4 className="font-medium text-gray-900">{caseItem.user_id}</h4>
           <p className="text-sm text-gray-500">
-            Step {caseItem.current_step} of {case_item.total_steps} ({Math.round(caseItem.progress_percentage)}%)
+            Step {caseItem.current_step} of {caseItem.total_steps} ({Math.round(caseItem.progress_percentage)}%)
           </p>
         </div>
         <span className={`px-2 py-1 rounded text-xs font-medium border ${priorityColors[caseItem.priority] || 'bg-gray-100'}`}>
