@@ -17,6 +17,15 @@ from vm_webapp.onboarding_prefill import (
     PrefillSource,
 )
 
+# v38: Import fast lane functionality
+from vm_webapp.onboarding_fast_lane import (
+    determine_fast_lane_eligibility,
+    get_fast_lane_path,
+    get_fast_lane_for_user,
+    RiskLevel,
+    MINIMUM_CHECKLIST,
+)
+
 router = APIRouter()
 
 
@@ -426,4 +435,99 @@ async def get_prefill_for_user_endpoint(
         confidence=payload["confidence"],
         fields=payload["fields"],
         context=payload["context"],
+    )
+
+
+# v38: Fast Lane endpoint schemas
+class FastLaneRequest(BaseModel):
+    user_id: str
+    email_domain: Optional[str] = None
+    signup_source: Optional[str] = None
+    has_payment_method: bool = False
+    ip_reputation_score: float = 0.5
+    segment: Optional[str] = None
+    previous_completions: int = 0
+    checklist: Dict[str, bool] = {}
+
+
+class FastLaneResponse(BaseModel):
+    user_id: str
+    is_fast_lane: bool
+    original_steps: List[str]
+    remaining_steps: List[str]
+    skipped_steps: List[str]
+    required_checklist: Dict[str, bool]
+    checklist_complete: bool
+    estimated_time_saved_minutes: float
+    reason: Optional[str] = None
+    justification: Optional[str] = None
+    risk_level: Optional[str] = None
+
+
+@router.post("/fast-lane")
+async def evaluate_fast_lane(
+    request_data: FastLaneRequest,
+    request: Request = None
+) -> FastLaneResponse:
+    """Evaluate and return fast lane path for user.
+    
+    v38: Friction Killer #2 - eligible users skip non-essential steps
+    to reduce TTFV while maintaining required minimum checklist.
+    """
+    # Build context from request
+    context = {
+        "email_domain": request_data.email_domain or "",
+        "signup_source": request_data.signup_source or "unknown",
+        "has_payment_method": request_data.has_payment_method,
+        "ip_reputation_score": request_data.ip_reputation_score,
+        "segment": request_data.segment,
+        "previous_completions": request_data.previous_completions,
+    }
+    
+    # Ensure all required checklist items are present
+    checklist = {item: request_data.checklist.get(item, False) for item in MINIMUM_CHECKLIST}
+    
+    # Determine eligibility and get path
+    eligibility = determine_fast_lane_eligibility(
+        user_id=request_data.user_id,
+        context=context,
+        checklist=checklist,
+    )
+    path = get_fast_lane_path(request_data.user_id, eligibility)
+    
+    return FastLaneResponse(
+        user_id=path["user_id"],
+        is_fast_lane=path["is_fast_lane"],
+        original_steps=path["original_steps"],
+        remaining_steps=path["remaining_steps"],
+        skipped_steps=path["skipped_steps"],
+        required_checklist=path["required_checklist"],
+        checklist_complete=path["checklist_complete"],
+        estimated_time_saved_minutes=path["estimated_time_saved_minutes"],
+        reason=path.get("reason"),
+        justification=path.get("justification"),
+        risk_level=path.get("risk_level"),
+    )
+
+
+@router.get("/fast-lane/{user_id}")
+async def get_fast_lane_for_user_endpoint(
+    user_id: str,
+    request: Request = None
+) -> FastLaneResponse:
+    """Get fast lane configuration for an existing user."""
+    path = get_fast_lane_for_user(user_id)
+    
+    return FastLaneResponse(
+        user_id=path["user_id"],
+        is_fast_lane=path["is_fast_lane"],
+        original_steps=path["original_steps"],
+        remaining_steps=path["remaining_steps"],
+        skipped_steps=path["skipped_steps"],
+        required_checklist=path["required_checklist"],
+        checklist_complete=path["checklist_complete"],
+        estimated_time_saved_minutes=path["estimated_time_saved_minutes"],
+        reason=path.get("reason"),
+        justification=path.get("justification"),
+        risk_level=path.get("risk_level"),
     )
