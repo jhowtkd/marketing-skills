@@ -8,6 +8,9 @@ from .core import (
     threads_router,
 )
 
+# Editorial
+from .editorial import editorial_decisions_router
+
 # Workflow
 from .workflow import workflow_runs_router
 
@@ -18,6 +21,9 @@ v2_router.include_router(brands_router)
 v2_router.include_router(campaigns_router)
 v2_router.include_router(projects_router)
 v2_router.include_router(threads_router)
+
+# Editorial
+v2_router.include_router(editorial_decisions_router)
 
 # Workflow
 v2_router.include_router(workflow_runs_router)
