@@ -9,7 +9,7 @@ Provides:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional, List, Dict
 
 from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel, field_validator
