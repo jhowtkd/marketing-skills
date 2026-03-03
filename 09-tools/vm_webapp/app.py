@@ -36,6 +36,7 @@ from vm_webapp.api_adaptive_escalation import router as adaptive_escalation_rout
 from vm_webapp.api_control_loop import router as control_loop_router
 from vm_webapp.api_recovery import router as recovery_router
 from vm_webapp.api_approval_learning import router as approval_learning_router
+from vm_webapp.api.v2 import v2_router
 
 
 async def value_error_to_http(_request: Request, exc: ValueError) -> JSONResponse:
@@ -134,6 +135,9 @@ def create_app(
     app.include_router(control_loop_router, prefix="/api/v2")
     app.include_router(recovery_router, prefix="/api/v2")
     app.include_router(approval_learning_router, prefix="/api/v2")
+
+    # New v2 API structure (Phase 2)
+    app.include_router(v2_router)
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(api_router)  # Routes include /api/v2/ prefix directly

@@ -26,7 +26,7 @@ async def list_brands_v2(request: Request) -> BrandsListResponse:
                 name=r.name,
                 description=None,
                 status="active",
-                created_at=r.created_at,
+                created_at=r.updated_at,
                 updated_at=None,
             )
             for r in rows
