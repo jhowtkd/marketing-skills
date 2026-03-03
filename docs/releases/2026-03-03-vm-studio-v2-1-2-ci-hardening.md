@@ -102,4 +102,4 @@ If issues arise:
 
 2. Contact: Platform Team
 
-3. Runbook: `docs/runbooks/ci-hardening-v2.1.2.md`
+3. Runbook: [docs/runbooks/ci-hardening-v2.1.2.md](../runbooks/ci-hardening-v2.1.2.md)
