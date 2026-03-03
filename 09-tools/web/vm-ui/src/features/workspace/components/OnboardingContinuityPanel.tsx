@@ -18,6 +18,13 @@ const statusColors: Record<string, string> = {
   failed: 'bg-red-100 text-red-800 border-red-200',
 };
 
+const statusLabels: Record<string, string> = {
+  pending: 'PENDENTE',
+  in_progress: 'EM PROGRESSO',
+  completed: 'COMPLETED',
+  failed: 'FALHO',
+};
+
 const priorityLabels: Record<string, string> = {
   session: 'Sessão Ativa',
   recovery: 'Recuperação',
@@ -53,7 +60,7 @@ function HandoffCard({
           </p>
         </div>
         <span className={`px-2 py-1 rounded text-xs font-medium border ${statusColors[handoff.status] || 'bg-gray-100'}`}>
-          {handoff.status.toUpperCase()}
+          {statusLabels[handoff.status] || handoff.status.toUpperCase()}
         </span>
       </div>
 
