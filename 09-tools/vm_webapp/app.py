@@ -136,7 +136,7 @@ def create_app(
     app.include_router(approval_learning_router, prefix="/api/v2")
 
     app.include_router(api_router, prefix="/api/v1")
-    app.include_router(api_router, prefix="/api")
+    app.include_router(api_router)  # Routes include /api/v2/ prefix directly
     app.include_router(dag_api_router)
     app.include_router(optimizer_api_router)
     app.include_router(quality_optimizer_api_router)

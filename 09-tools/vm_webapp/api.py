@@ -126,7 +126,7 @@ def _worker_dependency_status(request: Request) -> dict[str, str]:
     return {"status": status, "mode": str(mode)}
 
 
-@router.get("/v2/health/live")
+@router.get("/api/v2/health/live")
 def health_live(request: Request) -> dict[str, str]:
     request_id = getattr(request.state, "request_id", "")
     correlation_id = getattr(request.state, "correlation_id", "")
@@ -139,7 +139,7 @@ def health_live(request: Request) -> dict[str, str]:
     return {"status": "live"}
 
 
-@router.get("/v2/health/ready")
+@router.get("/api/v2/health/ready")
 def health_ready(request: Request) -> dict[str, object]:
     dependencies = {
         "database": _database_dependency_status(request),
@@ -480,7 +480,7 @@ class EditorialSLOUpdateRequest(BaseModel):
     auto_remediation_enabled: bool = False
 
 
-@router.post("/v2/brands")
+@router.post("/api/v2/brands")
 def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -496,7 +496,7 @@ def create_brand_v2(payload: BrandCreateRequest, request: Request) -> dict[str, 
     return {"event_id": result.event_id, "brand_id": str(response_payload["brand_id"])}
 
 
-@router.get("/v2/brands")
+@router.get("/api/v2/brands")
 def list_brands_v2(request: Request) -> dict[str, list[dict[str, str]]]:
     with session_scope(request.app.state.engine) as session:
         rows = list_brands_view(session)
@@ -505,7 +505,7 @@ def list_brands_v2(request: Request) -> dict[str, list[dict[str, str]]]:
     }
 
 
-@router.patch("/v2/brands/{brand_id}")
+@router.patch("/api/v2/brands/{brand_id}")
 def update_brand_v2(
     brand_id: str, payload: BrandUpdateRequest, request: Request
 ) -> dict[str, str]:
@@ -527,7 +527,7 @@ def update_brand_v2(
     return {"event_id": result.event_id, "brand_id": updated.brand_id, "name": updated.name}
 
 
-@router.post("/v2/projects")
+@router.post("/api/v2/projects")
 def create_project_v2(payload: ProjectCreateRequest, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -547,7 +547,7 @@ def create_project_v2(payload: ProjectCreateRequest, request: Request) -> dict[s
     return {"event_id": result.event_id, "project_id": str(response_payload["project_id"])}
 
 
-@router.patch("/v2/projects/{project_id}")
+@router.patch("/api/v2/projects/{project_id}")
 def update_project_v2(
     project_id: str, payload: ProjectUpdateRequest, request: Request
 ) -> dict[str, object]:
@@ -582,7 +582,7 @@ def update_project_v2(
     }
 
 
-@router.get("/v2/projects")
+@router.get("/api/v2/projects")
 def list_projects_v2(
     brand_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -603,7 +603,7 @@ def list_projects_v2(
     }
 
 
-@router.post("/v2/campaigns")
+@router.post("/api/v2/campaigns")
 def create_campaign_v2(payload: CampaignCreateRequest, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -625,7 +625,7 @@ def create_campaign_v2(payload: CampaignCreateRequest, request: Request) -> dict
     }
 
 
-@router.get("/v2/campaigns")
+@router.get("/api/v2/campaigns")
 def list_campaigns_v2(
     project_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -647,7 +647,7 @@ def list_campaigns_v2(
     }
 
 
-@router.post("/v2/tasks")
+@router.post("/api/v2/tasks")
 def create_task_v2(payload: TaskCreateRequest, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -670,7 +670,7 @@ def create_task_v2(payload: TaskCreateRequest, request: Request) -> dict[str, st
     }
 
 
-@router.post("/v2/threads")
+@router.post("/api/v2/threads")
 def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -688,7 +688,7 @@ def create_thread_v2(payload: ThreadCreateV2Request, request: Request) -> dict[s
     return {"event_id": result.event_id, "thread_id": str(response_payload["thread_id"])}
 
 
-@router.get("/v2/threads")
+@router.get("/api/v2/threads")
 def list_threads_v2(
     project_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -710,7 +710,7 @@ def list_threads_v2(
     }
 
 
-@router.patch("/v2/threads/{thread_id}")
+@router.patch("/api/v2/threads/{thread_id}")
 def update_thread_v2(
     thread_id: str, payload: ThreadUpdateRequest, request: Request
 ) -> dict[str, str]:
@@ -732,7 +732,7 @@ def update_thread_v2(
     return {"event_id": result.event_id, "thread_id": updated.thread_id, "title": updated.title}
 
 
-@router.post("/v2/threads/{thread_id}/modes")
+@router.post("/api/v2/threads/{thread_id}/modes")
 def add_thread_mode_v2(
     thread_id: str, payload: ThreadModeAddRequest, request: Request
 ) -> dict[str, str]:
@@ -749,7 +749,7 @@ def add_thread_mode_v2(
     return {"event_id": result.event_id, "thread_id": thread_id}
 
 
-@router.post("/v2/threads/{thread_id}/modes/{mode}/remove")
+@router.post("/api/v2/threads/{thread_id}/modes/{mode}/remove")
 def remove_thread_mode_v2(
     thread_id: str, mode: str, request: Request
 ) -> dict[str, str]:
@@ -768,18 +768,18 @@ def remove_thread_mode_v2(
     return {"event_id": result.event_id, "thread_id": thread_id, "mode": mode}
 
 
-@router.get("/v2/workflow-profiles")
+@router.get("/api/v2/workflow-profiles")
 def list_workflow_profiles_v2(request: Request) -> dict[str, list[dict[str, object]]]:
     payload = request.app.state.workflow_runtime.list_profiles()
     return {"profiles": payload}
 
 
-@router.get("/v2/metrics")
+@router.get("/api/v2/metrics")
 def metrics_v2(request: Request) -> dict[str, object]:
     return request.app.state.workflow_runtime.metrics.snapshot()
 
 
-@router.get("/v2/metrics/prometheus")
+@router.get("/api/v2/metrics/prometheus")
 def metrics_prometheus(request: Request) -> PlainTextResponse:
     metrics = request.app.state.workflow_runtime.metrics
     metrics.record_count("http_request_total:metrics_prometheus")
@@ -787,7 +787,7 @@ def metrics_prometheus(request: Request) -> PlainTextResponse:
     return PlainTextResponse(payload, media_type="text/plain; version=0.0.4")
 
 
-@router.post("/v2/threads/{thread_id}/workflow-runs")
+@router.post("/api/v2/threads/{thread_id}/workflow-runs")
 def start_workflow_run_v2(
     thread_id: str, payload: WorkflowRunRequest, request: Request
 ) -> dict[str, str]:
@@ -830,7 +830,7 @@ def start_workflow_run_v2(
     }
 
 
-@router.get("/v2/threads/{thread_id}/workflow-runs")
+@router.get("/api/v2/threads/{thread_id}/workflow-runs")
 def list_workflow_runs_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -880,7 +880,7 @@ def list_workflow_runs_v2(
     }
 
 
-@router.get("/v2/workflow-runs/{run_id}/artifacts")
+@router.get("/api/v2/workflow-runs/{run_id}/artifacts")
 def list_workflow_run_artifacts_v2(run_id: str, request: Request) -> dict[str, object]:
     pump_event_worker(request, max_events=20)
     root = Path(request.app.state.workspace.root) / "runs" / run_id / "stages"
@@ -895,7 +895,7 @@ def list_workflow_run_artifacts_v2(run_id: str, request: Request) -> dict[str, o
     return {"run_id": run_id, "stages": stages}
 
 
-@router.get("/v2/workflow-runs/{run_id}")
+@router.get("/api/v2/workflow-runs/{run_id}")
 def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
     pump_event_worker(request, max_events=30)
     with session_scope(request.app.state.engine) as session:
@@ -1005,7 +1005,7 @@ def get_workflow_run_v2(run_id: str, request: Request) -> dict[str, object]:
     }
 
 
-@router.get("/v2/workflow-runs/{run_id}/baseline")
+@router.get("/api/v2/workflow-runs/{run_id}/baseline")
 def get_workflow_run_baseline_v2(run_id: str, request: Request) -> dict[str, object]:
     pump_event_worker(request, max_events=20)
     with session_scope(request.app.state.engine) as session:
@@ -1068,7 +1068,7 @@ def get_workflow_run_baseline_v2(run_id: str, request: Request) -> dict[str, obj
     }
 
 
-@router.post("/v2/workflow-runs/{run_id}/quality-evaluation")
+@router.post("/api/v2/workflow-runs/{run_id}/quality-evaluation")
 def evaluate_workflow_run_quality_v2(
     run_id: str, payload: QualityEvaluationRequest, request: Request
 ) -> dict[str, object]:
@@ -1090,7 +1090,7 @@ def evaluate_workflow_run_quality_v2(
     )
 
 
-@router.post("/v2/workflow-runs/{run_id}/resume")
+@router.post("/api/v2/workflow-runs/{run_id}/resume")
 def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -1109,7 +1109,7 @@ def resume_workflow_run_v2(run_id: str, request: Request) -> dict[str, str]:
     }
 
 
-@router.get("/v2/workflow-runs/{run_id}/artifact-content")
+@router.get("/api/v2/workflow-runs/{run_id}/artifact-content")
 def get_workflow_artifact_content_v2(
     run_id: str, stage_dir: str, artifact_path: str, request: Request
 ) -> dict[str, str]:
@@ -1130,7 +1130,7 @@ def get_workflow_artifact_content_v2(
     }
 
 
-@router.get("/v2/threads/{thread_id}/timeline")
+@router.get("/api/v2/threads/{thread_id}/timeline")
 def list_thread_timeline_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -1153,7 +1153,7 @@ def list_thread_timeline_v2(
     }
 
 
-@router.get("/v2/threads/{thread_id}/tasks")
+@router.get("/api/v2/threads/{thread_id}/tasks")
 def list_thread_tasks_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -1174,7 +1174,7 @@ def list_thread_tasks_v2(
     }
 
 
-@router.get("/v2/threads/{thread_id}/approvals")
+@router.get("/api/v2/threads/{thread_id}/approvals")
 def list_thread_approvals_v2(
     thread_id: str, request: Request
 ) -> dict[str, list[dict[str, object]]]:
@@ -1196,7 +1196,7 @@ def list_thread_approvals_v2(
     }
 
 
-@router.post("/v2/tasks/{task_id}/comment")
+@router.post("/api/v2/tasks/{task_id}/comment")
 def comment_task_v2(
     task_id: str, payload: TaskCommentRequest, request: Request
 ) -> dict[str, str]:
@@ -1213,7 +1213,7 @@ def comment_task_v2(
     return {"event_id": result.event_id, "task_id": task_id}
 
 
-@router.post("/v2/tasks/{task_id}/complete")
+@router.post("/api/v2/tasks/{task_id}/complete")
 def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -1227,7 +1227,7 @@ def complete_task_v2(task_id: str, request: Request) -> dict[str, str]:
     return {"event_id": result.event_id, "task_id": task_id}
 
 
-@router.post("/v2/approvals/{approval_id}/grant")
+@router.post("/api/v2/approvals/{approval_id}/grant")
 def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -1247,7 +1247,7 @@ def grant_approval_v2(approval_id: str, request: Request) -> dict[str, str]:
     return {"event_id": result.event_id, "approval_id": approval_id}
 
 
-@router.post("/v2/threads/{thread_id}/agent-plan/start")
+@router.post("/api/v2/threads/{thread_id}/agent-plan/start")
 def start_agent_plan_v2(thread_id: str, request: Request) -> dict[str, str]:
     idem = require_idempotency(request)
     with session_scope(request.app.state.engine) as session:
@@ -1261,7 +1261,7 @@ def start_agent_plan_v2(thread_id: str, request: Request) -> dict[str, str]:
     return {"event_id": result.event_id, "thread_id": thread_id}
 
 
-@router.post("/v2/test/force-conflict")
+@router.post("/api/v2/test/force-conflict")
 def force_conflict_v2(payload: ForceConflictRequest, request: Request) -> dict[str, str]:
     stream_id = f"thread:{payload.thread_id}"
     with session_scope(request.app.state.engine) as session:
@@ -1588,7 +1588,7 @@ def chat(payload: ChatRequest, request: Request) -> dict[str, str]:
     return {"assistant_message": assistant_message}
 
 
-@router.post("/v2/threads/{thread_id}/editorial-decisions/golden")
+@router.post("/api/v2/threads/{thread_id}/editorial-decisions/golden")
 def mark_editorial_golden_v2(
     thread_id: str, payload: EditorialGoldenMarkRequest, request: Request
 ) -> dict[str, object]:
@@ -1667,7 +1667,7 @@ def mark_editorial_golden_v2(
     }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions")
 def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, object]:
     with session_scope(request.app.state.engine) as session:
         # Verify thread exists
@@ -1701,7 +1701,7 @@ def list_editorial_decisions_v2(thread_id: str, request: Request) -> dict[str, o
     }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions/audit")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions/audit")
 def get_editorial_audit_v2(
     thread_id: str, 
     request: Request,
@@ -1769,7 +1769,7 @@ def get_editorial_audit_v2(
         }
 
 
-@router.get("/v2/brands/{brand_id}/editorial-policy")
+@router.get("/api/v2/brands/{brand_id}/editorial-policy")
 def get_editorial_policy_v2(brand_id: str, request: Request) -> dict[str, object]:
     """Get editorial policy for a brand.
     
@@ -1791,7 +1791,7 @@ def get_editorial_policy_v2(brand_id: str, request: Request) -> dict[str, object
     }
 
 
-@router.put("/v2/brands/{brand_id}/editorial-policy")
+@router.put("/api/v2/brands/{brand_id}/editorial-policy")
 def update_editorial_policy_v2(
     brand_id: str, 
     payload: EditorialPolicyUpdateRequest, 
@@ -1853,7 +1853,7 @@ def update_editorial_policy_v2(
         }
 
 
-@router.get("/v2/brands/{brand_id}/editorial-slo")
+@router.get("/api/v2/brands/{brand_id}/editorial-slo")
 def get_editorial_slo_v2(brand_id: str, request: Request) -> dict[str, object]:
     """Get editorial SLO configuration for a brand.
     
@@ -1877,7 +1877,7 @@ def get_editorial_slo_v2(brand_id: str, request: Request) -> dict[str, object]:
     }
 
 
-@router.put("/v2/brands/{brand_id}/editorial-slo")
+@router.put("/api/v2/brands/{brand_id}/editorial-slo")
 def update_editorial_slo_v2(
     brand_id: str, 
     payload: EditorialSLOUpdateRequest, 
@@ -1947,7 +1947,7 @@ def update_editorial_slo_v2(
         }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions/insights")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions/insights")
 def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, object]:
     """Get editorial governance insights for a thread.
     
@@ -2044,7 +2044,7 @@ def get_editorial_insights_v2(thread_id: str, request: Request) -> dict[str, obj
         }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions/recommendations")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions/recommendations")
 def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[str, object]:
     """Get automated operational recommendations for editorial governance.
     
@@ -2158,7 +2158,7 @@ def get_editorial_recommendations_v2(thread_id: str, request: Request) -> dict[s
         }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions/forecast")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions/forecast")
 def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, object]:
     """Get predictive editorial risk forecast for a thread.
     
@@ -2281,7 +2281,7 @@ def get_editorial_forecast_v2(thread_id: str, request: Request) -> dict[str, obj
         }
 
 
-@router.get("/v2/threads/{thread_id}/editorial-decisions/drift")
+@router.get("/api/v2/threads/{thread_id}/editorial-decisions/drift")
 def get_editorial_drift_v2(thread_id: str, request: Request) -> dict[str, object]:
     """Get editorial drift detection analysis for a thread.
     
@@ -2464,7 +2464,7 @@ class PlaybookChainExecuteRequest(BaseModel):
     chain_options: PlaybookChainOptions
 
 
-@router.post("/v2/threads/{thread_id}/playbooks/execute")
+@router.post("/api/v2/threads/{thread_id}/playbooks/execute")
 def execute_playbook_chain_v2(
     thread_id: str,
     request: Request,
@@ -2687,7 +2687,7 @@ def execute_playbook_chain_v2(
         return chain_result_to_dict(result)
 
 
-@router.post("/v2/threads/{thread_id}/editorial-decisions/playbook/execute")
+@router.post("/api/v2/threads/{thread_id}/editorial-decisions/playbook/execute")
 def execute_editorial_playbook_v2(
     thread_id: str,
     request: Request,
@@ -2743,7 +2743,7 @@ def execute_editorial_playbook_v2(
         }
 
 
-@router.post("/v2/threads/{thread_id}/editorial-decisions/auto-remediate")
+@router.post("/api/v2/threads/{thread_id}/editorial-decisions/auto-remediate")
 def auto_remediate_editorial_v2(
     thread_id: str,
     request: Request,
@@ -2937,7 +2937,7 @@ def auto_remediate_editorial_v2(
 # SLO Alerts Hub - Task A: Agregador determinístico de alertas editoriais
 # ============================================================================
 
-@router.get("/v2/threads/{thread_id}/alerts")
+@router.get("/api/v2/threads/{thread_id}/alerts")
 def get_thread_alerts_v2(
     thread_id: str,
     request: Request,
@@ -3145,7 +3145,7 @@ class FirstRunOutcomesResponse(BaseModel):
     aggregates: list[FirstRunOutcomeAggregateResponse]
 
 
-@router.get("/v2/threads/{thread_id}/first-run-recommendation")
+@router.get("/api/v2/threads/{thread_id}/first-run-recommendation")
 def get_first_run_recommendation(thread_id: str, request: Request) -> FirstRunRecommendationListResponse:
     """Get first-run recommendations for a thread.
     
@@ -3244,7 +3244,7 @@ def get_first_run_recommendation(thread_id: str, request: Request) -> FirstRunRe
         )
 
 
-@router.get("/v2/threads/{thread_id}/first-run-outcomes")
+@router.get("/api/v2/threads/{thread_id}/first-run-outcomes")
 def get_first_run_outcomes(thread_id: str, request: Request) -> FirstRunOutcomesResponse:
     """Get first-run outcomes aggregate for a thread.
     
@@ -3292,7 +3292,7 @@ def get_first_run_outcomes(thread_id: str, request: Request) -> FirstRunOutcomes
 
 
 # ROI Optimizer v19 endpoints
-@router.get("/v2/roi/status")
+@router.get("/api/v2/roi/status")
 def get_roi_status():
     """Get ROI optimizer status and current score."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3309,7 +3309,7 @@ def get_roi_status():
     }
 
 
-@router.get("/v2/roi/proposals")
+@router.get("/api/v2/roi/proposals")
 def list_roi_proposals(status: Optional[str] = None):
     """List ROI optimization proposals."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3333,7 +3333,7 @@ class RunRoiRequest(BaseModel):
     target_improvement: Optional[float] = None
 
 
-@router.post("/v2/roi/run")
+@router.post("/api/v2/roi/run")
 def run_roi_optimization(request: RunRoiRequest):
     """Run ROI optimization and generate proposals."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3348,7 +3348,7 @@ def run_roi_optimization(request: RunRoiRequest):
     return result
 
 
-@router.post("/v2/roi/proposals/{proposal_id}/apply")
+@router.post("/api/v2/roi/proposals/{proposal_id}/apply")
 def apply_roi_proposal(proposal_id: str):
     """Apply an ROI proposal."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3367,7 +3367,7 @@ class RejectProposalRequest(BaseModel):
     reason: str = "Rejected by user"
 
 
-@router.post("/v2/roi/proposals/{proposal_id}/reject")
+@router.post("/api/v2/roi/proposals/{proposal_id}/reject")
 def reject_roi_proposal(proposal_id: str, request: RejectProposalRequest):
     """Reject an ROI proposal."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3381,7 +3381,7 @@ def reject_roi_proposal(proposal_id: str, request: RejectProposalRequest):
     return proposal.__dict__
 
 
-@router.post("/v2/roi/rollback")
+@router.post("/api/v2/roi/rollback")
 def rollback_roi_proposal():
     """Rollback the last applied ROI proposal."""
     from vm_webapp.roi_operations import get_roi_service
@@ -3424,11 +3424,11 @@ router.include_router(predictive_resilience_router)
 from vm_webapp.api_onboarding import router as onboarding_router
 
 # Include v30 onboarding routes
-router.include_router(onboarding_router, prefix="/v2/onboarding")
+router.include_router(onboarding_router, prefix="/api/v2/onboarding")
 
 
 # Import v31 onboarding activation routes
 from vm_webapp.api_onboarding_activation import router as onboarding_activation_router
 
 # Include v31 onboarding activation routes
-router.include_router(onboarding_activation_router, prefix="/v2/brands/{brand_id}/onboarding-activation")
+router.include_router(onboarding_activation_router, prefix="/api/v2/brands/{brand_id}/onboarding-activation")
