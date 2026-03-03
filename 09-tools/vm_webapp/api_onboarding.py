@@ -9,6 +9,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from vm_webapp.db import session_scope
 from vm_webapp.models_onboarding import OnboardingEvent, OnboardingFrictionPoint, OnboardingState
 
+# v38: Import prefill functionality
+from vm_webapp.onboarding_prefill import (
+    UserContext,
+    generate_prefill_payload,
+    get_prefill_for_user,
+    PrefillSource,
+)
+
 router = APIRouter()
 
 
@@ -347,3 +355,75 @@ async def get_friction_metrics(
         "friction_points": friction_points,
         "dropoff_rates": dropoff_rates,
     }
+
+
+# v38: Prefill endpoint schemas
+class PrefillRequest(BaseModel):
+    user_id: str
+    utm_campaign: Optional[str] = None
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    referrer: Optional[str] = None
+    email: Optional[str] = None
+
+
+class PrefillResponse(BaseModel):
+    user_id: str
+    prefill_source: str
+    confidence: str
+    fields: Dict[str, str]
+    context: Dict[str, bool]
+
+
+@router.post("/prefill")
+async def get_prefill(
+    request_data: PrefillRequest,
+    request: Request = None
+) -> PrefillResponse:
+    """Get smart prefill suggestions based on user context.
+    
+    v38: Friction Killer #1 - reduces onboarding setup time by inferring
+    user intent from UTM params, referrer, email domain, or segment.
+    """
+    # Build user context from request data
+    utm_params = {}
+    if request_data.utm_campaign:
+        utm_params["campaign"] = request_data.utm_campaign
+    if request_data.utm_source:
+        utm_params["source"] = request_data.utm_source
+    if request_data.utm_medium:
+        utm_params["medium"] = request_data.utm_medium
+    
+    context = UserContext(
+        user_id=request_data.user_id,
+        email=request_data.email,
+        utm_params=utm_params,
+        referrer=request_data.referrer,
+    )
+    
+    payload = generate_prefill_payload(context)
+    
+    return PrefillResponse(
+        user_id=payload["user_id"],
+        prefill_source=payload["prefill_source"],
+        confidence=payload["confidence"],
+        fields=payload["fields"],
+        context=payload["context"],
+    )
+
+
+@router.get("/prefill/{user_id}")
+async def get_prefill_for_user_endpoint(
+    user_id: str,
+    request: Request = None
+) -> PrefillResponse:
+    """Get prefill for an existing user from database."""
+    payload = get_prefill_for_user(user_id)
+    
+    return PrefillResponse(
+        user_id=payload["user_id"],
+        prefill_source=payload["prefill_source"],
+        confidence=payload["confidence"],
+        fields=payload["fields"],
+        context=payload["context"],
+    )

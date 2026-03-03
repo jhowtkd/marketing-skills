@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   trackOnboardingStarted,
   trackOnboardingCompleted,
@@ -7,6 +7,52 @@ import {
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
 import { ContextualTour } from './ContextualTour';
 import type { TourStep } from './ContextualTour';
+
+// v38: Smart prefill integration
+interface PrefillData {
+  fields: Record<string, string>;
+  source: string;
+  confidence: string;
+}
+
+const fetchPrefillData = async (userId: string): Promise<PrefillData | null> => {
+  try {
+    // Parse UTM params from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const utmCampaign = urlParams.get('utm_campaign') || undefined;
+    const utmSource = urlParams.get('utm_source') || undefined;
+    const utmMedium = urlParams.get('utm_medium') || undefined;
+    
+    // Get referrer
+    const referrer = document.referrer || undefined;
+    
+    const response = await fetch('/api/v2/onboarding/prefill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        utm_campaign: utmCampaign,
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        referrer,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return {
+      fields: data.fields || {},
+      source: data.prefill_source,
+      confidence: data.confidence,
+    };
+  } catch (error) {
+    console.warn('Failed to fetch prefill data:', error);
+    return null;
+  }
+};
 
 export { OnboardingStep };
 
@@ -21,6 +67,12 @@ interface WizardState {
   workspaceName: string;
   selectedTemplate: string | null;
   startedAt: number;
+}
+
+// v38: Track which fields have been explicitly modified by user
+interface ExplicitFields {
+  workspaceName: boolean;
+  selectedTemplate: boolean;
 }
 
 const TOTAL_STEPS = 5;
@@ -44,6 +96,17 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     selectedTemplate: null,
     startedAt: Date.now(),
   });
+
+  // v38: Prefill state
+  const [prefill, setPrefill] = useState<PrefillData | null>(null);
+  const [explicitFields, setExplicitFields] = useState<ExplicitFields>({
+    workspaceName: false,
+    selectedTemplate: false,
+  });
+  const [prefillApplied, setPrefillApplied] = useState(false);
+  
+  // Refs to track if prefill fetch is in progress
+  const prefillFetchedRef = useRef(false);
 
   // v30: Contextual tour state
   const [showTour, setShowTour] = useState(false);
@@ -79,6 +142,35 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   useEffect(() => {
     trackOnboardingStarted(userId);
   }, [userId]);
+
+  // v38: Fetch and apply smart prefill
+  useEffect(() => {
+    if (prefillFetchedRef.current) return;
+    prefillFetchedRef.current = true;
+
+    const loadPrefill = async () => {
+      const prefillData = await fetchPrefillData(userId);
+      if (prefillData) {
+        setPrefill(prefillData);
+        
+        // Apply prefill only for fields not explicitly set by user
+        setState((prev) => {
+          const updates: Partial<WizardState> = {};
+          
+          // Apply template prefill if not explicitly selected
+          if (!explicitFields.selectedTemplate && prefillData.fields.template_id) {
+            updates.selectedTemplate = prefillData.fields.template_id;
+          }
+          
+          return { ...prev, ...updates };
+        });
+        
+        setPrefillApplied(true);
+      }
+    };
+
+    loadPrefill();
+  }, [userId, explicitFields.selectedTemplate]);
 
   useEffect(() => {
     saveFunnelState({
@@ -129,12 +221,14 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
 
   const handleWorkspaceNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      setExplicitFields((prev) => ({ ...prev, workspaceName: true }));
       setState((prev) => ({ ...prev, workspaceName: e.target.value }));
     },
     []
   );
 
   const handleTemplateSelect = useCallback((templateId: string) => {
+    setExplicitFields((prev) => ({ ...prev, selectedTemplate: true }));
     setState((prev) => ({ ...prev, selectedTemplate: templateId }));
   }, []);
 
@@ -176,11 +270,27 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       case OnboardingStep.TEMPLATE_SELECTION:
         return (
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Escolha um Template
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Escolha um Template
+              </h2>
+              {/* v38: Prefill indicator */}
+              {prefillApplied && prefill?.fields.template_id && !explicitFields.selectedTemplate && (
+                <span 
+                  className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
+                  data-testid="prefill-indicator"
+                >
+                  Sugerido ✨
+                </span>
+              )}
+            </div>
             <p className="text-gray-600">
               Selecione um template para começar rápido:
+              {prefillApplied && prefill?.confidence === 'high' && (
+                <span className="block text-sm text-green-600 mt-1">
+                  Detectamos que você veio de uma campanha de {prefill.fields.template_id?.replace('-', ' ') || 'conteúdo'}.
+                </span>
+              )}
             </p>
             <div className="grid grid-cols-2 gap-3">
               {['blog-post', 'landing-page', 'social-media', 'email'].map(
@@ -193,6 +303,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
+                    data-testid={`template-${template}`}
                   >
                     <span className="font-medium capitalize">
                       {template.replace('-', ' ')}
