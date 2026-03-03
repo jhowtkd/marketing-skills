@@ -1,8 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { fetchJson, postJson, patchJson } from "../../api/client";
-import { ENDPOINT_BRANDS, ENDPOINT_PROJECTS, ENDPOINT_THREADS } from "../../api/endpoints";
-import type { Brand, BrandsResponse, Project, ProjectsResponse, Thread, ThreadsResponse } from "../../api/types";
+import { BrandApi, ProjectApi, ThreadApi } from "../../api/typed-client";
+import type { Brand, Project, Thread } from "../../types/api";
 
 type MaybeId = string | null;
 
@@ -32,8 +31,8 @@ export default function NavigationPanel({
   const [threads, setThreads] = useState<Thread[]>([]);
 
   async function loadBrands(): Promise<void> {
-    const body = await fetchJson<BrandsResponse>(ENDPOINT_BRANDS);
-    const nextBrands = Array.isArray(body.brands) ? body.brands : [];
+    const response = await BrandApi.listBrands();
+    const nextBrands = Array.isArray(response.brands) ? response.brands : [];
     setBrands(nextBrands);
     const nextActive =
       activeBrandId && nextBrands.some((b) => b.brand_id === activeBrandId)
@@ -43,10 +42,8 @@ export default function NavigationPanel({
   }
 
   async function loadProjects(brandId: string): Promise<void> {
-    const body = await fetchJson<ProjectsResponse>(
-      `${ENDPOINT_PROJECTS}?brand_id=${encodeURIComponent(brandId)}`
-    );
-    const nextProjects = Array.isArray(body.projects) ? body.projects : [];
+    const response = await ProjectApi.listProjects(brandId);
+    const nextProjects = Array.isArray(response.projects) ? response.projects : [];
     setProjects(nextProjects);
     const nextActive =
       activeProjectId && nextProjects.some((p) => p.project_id === activeProjectId)
@@ -56,10 +53,8 @@ export default function NavigationPanel({
   }
 
   async function loadThreads(projectId: string): Promise<void> {
-    const body = await fetchJson<ThreadsResponse>(
-      `${ENDPOINT_THREADS}?project_id=${encodeURIComponent(projectId)}`
-    );
-    const nextThreads = Array.isArray(body.threads) ? body.threads : [];
+    const response = await ThreadApi.listThreads(projectId);
+    const nextThreads = Array.isArray(response.threads) ? response.threads : [];
     setThreads(nextThreads);
     const nextActive =
       activeThreadId && nextThreads.some((t) => t.thread_id === activeThreadId)
@@ -136,7 +131,7 @@ export default function NavigationPanel({
     if (!name) return;
     try {
       setError(null);
-      await postJson<{ brand_id: string; name: string }>(ENDPOINT_BRANDS, { name }, "brand-create");
+      await BrandApi.createBrand({ name });
       setNewBrandName("");
       await loadBrands();
     } catch (err) {
@@ -150,7 +145,7 @@ export default function NavigationPanel({
     if (!name) return;
     try {
       setError(null);
-      await patchJson(`${ENDPOINT_BRANDS}/${brandId}`, { name }, "brand-edit");
+      await BrandApi.updateBrand(brandId, { name });
       setEditingBrandId(null);
       await loadBrands();
     } catch (err) {
@@ -169,7 +164,12 @@ export default function NavigationPanel({
     if (!name || !activeBrandId) return;
     try {
       setError(null);
-      await postJson(ENDPOINT_PROJECTS, { name, brand_id: activeBrandId }, "project-create");
+      await ProjectApi.createProject({ 
+        name, 
+        brand_id: activeBrandId,
+        objective: "",
+        channels: [],
+      });
       setNewProjectName("");
       await loadProjects(activeBrandId);
     } catch (err) {
@@ -184,11 +184,11 @@ export default function NavigationPanel({
     try {
       setError(null);
       const p = projects.find((x) => x.project_id === projectId);
-      await patchJson(`${ENDPOINT_PROJECTS}/${projectId}`, { 
+      await ProjectApi.updateProject(projectId, { 
         name,
         objective: p?.objective || "",
-        channels: p?.channels || []
-      }, "project-edit");
+        channels: p?.channels || [],
+      });
       setEditingProjectId(null);
       await loadProjects(activeBrandId);
     } catch (err) {
@@ -207,7 +207,11 @@ export default function NavigationPanel({
     if (!title || !activeBrandId || !activeProjectId) return;
     try {
       setError(null);
-      await postJson(ENDPOINT_THREADS, { title, brand_id: activeBrandId, project_id: activeProjectId }, "thread-create");
+      await ThreadApi.createThread({ 
+        title, 
+        brand_id: activeBrandId, 
+        project_id: activeProjectId 
+      });
       setNewThreadTitle("");
       await loadThreads(activeProjectId);
     } catch (err) {
@@ -221,7 +225,7 @@ export default function NavigationPanel({
     if (!title || !activeProjectId) return;
     try {
       setError(null);
-      await patchJson(`${ENDPOINT_THREADS}/${threadId}`, { title }, "thread-edit");
+      await ThreadApi.updateThread(threadId, { title });
       setEditingThreadId(null);
       await loadThreads(activeProjectId);
     } catch (err) {
@@ -238,7 +242,7 @@ export default function NavigationPanel({
     if (!mode || !activeProjectId) return;
     try {
       setError(null);
-      await postJson(`${ENDPOINT_THREADS}/${threadId}/modes`, { mode }, "mode-add");
+      await ThreadApi.addMode(threadId, mode);
       setNewModeName("");
       await loadThreads(activeProjectId);
     } catch (err) {
@@ -250,7 +254,7 @@ export default function NavigationPanel({
     if (!activeProjectId) return;
     try {
       setError(null);
-      await postJson(`${ENDPOINT_THREADS}/${threadId}/modes/${encodeURIComponent(mode)}/remove`, {}, "mode-remove");
+      await ThreadApi.removeMode(threadId, mode);
       await loadThreads(activeProjectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
