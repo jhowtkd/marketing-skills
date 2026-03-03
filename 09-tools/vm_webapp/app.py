@@ -22,6 +22,20 @@ from vm_webapp.settings import Settings
 from vm_webapp.startup_checks import validate_startup_contract
 from vm_webapp.workflow_runtime_v2 import WorkflowRuntimeV2
 from vm_webapp.workspace import Workspace
+from vm_webapp.api_onboarding_experiments import router as onboarding_experiments_router
+from vm_webapp.api_onboarding_personalization import router as onboarding_personalization_router
+from vm_webapp.api_onboarding_recovery import router as onboarding_recovery_router
+from vm_webapp.api_onboarding_activation import router as onboarding_activation_router
+from vm_webapp.api_onboarding_continuity import router as onboarding_continuity_router
+from vm_webapp.api_onboarding import router as onboarding_base_router
+from vm_webapp.api_predictive_resilience import router as predictive_resilience_router
+from vm_webapp.api_outcome_roi import router as outcome_roi_router
+from vm_webapp.api_copilot import router as copilot_router
+from vm_webapp.api_safety_tuning import router as safety_tuning_router
+from vm_webapp.api_adaptive_escalation import router as adaptive_escalation_router
+from vm_webapp.api_control_loop import router as control_loop_router
+from vm_webapp.api_recovery import router as recovery_router
+from vm_webapp.api_approval_learning import router as approval_learning_router
 
 
 async def value_error_to_http(_request: Request, exc: ValueError) -> JSONResponse:
