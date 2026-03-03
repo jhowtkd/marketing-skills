@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -101,14 +103,14 @@ async def create_campaign_v2(data: CampaignCreate, request: Request) -> Campaign
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
-        response = dedup.response
+        response = json.loads(dedup.response_json)
         return CampaignResponse(
             campaign_id=response["campaign_id"],
             brand_id=data.brand_id,
             project_id=data.project_id,
             title=data.title,
             status="active",
-            created_at=None,
+            created_at=datetime.now(),
             updated_at=None,
         )
 
