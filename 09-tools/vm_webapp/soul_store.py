@@ -15,10 +15,6 @@ from vm_webapp.soul_templates import (
 )
 
 
-class OptimisticConcurrencyError(RuntimeError):
-    """Raised when the expected version hash does not match persisted content."""
-
-
 @dataclass(frozen=True)
 class SoulDocument:
     level: str
@@ -98,7 +94,7 @@ class SoulStore:
     def __init__(self, runtime_root: Path) -> None:
         self.runtime_root = runtime_root
 
-    def path_for(
+    def _path_for(
         self,
         *,
         level: str,
@@ -114,7 +110,7 @@ class SoulStore:
             thread_id=thread_id,
         )
 
-    def load(
+    def _load(
         self,
         *,
         level: str,
@@ -122,7 +118,7 @@ class SoulStore:
         project_id: Optional[str] = None,
         thread_id: Optional[str] = None,
     ) -> SoulDocument:
-        path = self.path_for(
+        path = self._path_for(
             level=level,
             brand_id=brand_id,
             project_id=project_id,
@@ -135,17 +131,17 @@ class SoulStore:
         markdown = path.read_text(encoding="utf-8")
         return _build_document(level=level, path=path, markdown=markdown, recovered=recovered)
 
-    def save(
+    def _save(
         self,
         *,
         level: str,
         brand_id: str,
         markdown: str,
+        version_hash: str,
         project_id: Optional[str] = None,
         thread_id: Optional[str] = None,
-        expected_version_hash: Optional[str] = None,
     ) -> SoulDocument:
-        path = self.path_for(
+        path = self._path_for(
             level=level,
             brand_id=brand_id,
             project_id=project_id,
@@ -159,15 +155,73 @@ class SoulStore:
             _write_text_atomic(path, current_markdown)
 
         current_hash = _sha256_markdown(current_markdown)
-        if expected_version_hash is not None and expected_version_hash != current_hash:
-            raise OptimisticConcurrencyError(
+        if version_hash != current_hash:
+            raise ValueError(
                 "version_hash mismatch: "
-                f"expected={expected_version_hash} current={current_hash}"
+                f"expected={version_hash} current={current_hash}"
             )
 
         parse_and_validate(level=level, markdown=markdown)
         _write_text_atomic(path, markdown)
         return _build_document(level=level, path=path, markdown=markdown, recovered=False)
+
+    def get_brand_soul(self, brand_id: str) -> SoulDocument:
+        return self._load(level=SOUL_LEVEL_BRAND, brand_id=brand_id)
+
+    def get_project_soul(self, brand_id: str, project_id: str) -> SoulDocument:
+        return self._load(
+            level=SOUL_LEVEL_PROJECT,
+            brand_id=brand_id,
+            project_id=project_id,
+        )
+
+    def get_thread_soul(self, brand_id: str, project_id: str, thread_id: str) -> SoulDocument:
+        return self._load(
+            level=SOUL_LEVEL_THREAD,
+            brand_id=brand_id,
+            project_id=project_id,
+            thread_id=thread_id,
+        )
+
+    def save_brand_soul(self, brand_id: str, markdown: str, version_hash: str) -> SoulDocument:
+        return self._save(
+            level=SOUL_LEVEL_BRAND,
+            brand_id=brand_id,
+            markdown=markdown,
+            version_hash=version_hash,
+        )
+
+    def save_project_soul(
+        self,
+        brand_id: str,
+        project_id: str,
+        markdown: str,
+        version_hash: str,
+    ) -> SoulDocument:
+        return self._save(
+            level=SOUL_LEVEL_PROJECT,
+            brand_id=brand_id,
+            project_id=project_id,
+            markdown=markdown,
+            version_hash=version_hash,
+        )
+
+    def save_thread_soul(
+        self,
+        brand_id: str,
+        project_id: str,
+        thread_id: str,
+        markdown: str,
+        version_hash: str,
+    ) -> SoulDocument:
+        return self._save(
+            level=SOUL_LEVEL_THREAD,
+            brand_id=brand_id,
+            project_id=project_id,
+            thread_id=thread_id,
+            markdown=markdown,
+            version_hash=version_hash,
+        )
 
 
 def load_soul_document(
@@ -178,7 +232,7 @@ def load_soul_document(
     project_id: Optional[str] = None,
     thread_id: Optional[str] = None,
 ) -> SoulDocument:
-    return SoulStore(runtime_root=runtime_root).load(
+    return SoulStore(runtime_root=runtime_root)._load(
         level=level,
         brand_id=brand_id,
         project_id=project_id,
@@ -192,15 +246,15 @@ def save_soul_document(
     level: str,
     brand_id: str,
     markdown: str,
+    version_hash: str,
     project_id: Optional[str] = None,
     thread_id: Optional[str] = None,
-    expected_version_hash: Optional[str] = None,
 ) -> SoulDocument:
-    return SoulStore(runtime_root=runtime_root).save(
+    return SoulStore(runtime_root=runtime_root)._save(
         level=level,
         brand_id=brand_id,
         project_id=project_id,
         thread_id=thread_id,
         markdown=markdown,
-        expected_version_hash=expected_version_hash,
+        version_hash=version_hash,
     )

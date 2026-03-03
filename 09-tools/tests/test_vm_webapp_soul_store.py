@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from vm_webapp.soul_parser import SoulParseError, parse_and_validate
-from vm_webapp.soul_store import OptimisticConcurrencyError, SoulStore
+from vm_webapp.soul_store import SoulStore
 from vm_webapp.soul_templates import required_sections, template_for
 
 
@@ -20,7 +20,7 @@ def _markdown_with_sections(title: str, sections: list[str]) -> str:
 def test_load_bootstraps_brand_template_when_missing(tmp_path: Path) -> None:
     store = SoulStore(runtime_root=tmp_path)
 
-    doc = store.load(level="brand", brand_id="brand-001")
+    doc = store.get_brand_soul("brand-001")
 
     assert doc.path == tmp_path / "brands" / "brand-001" / "brand.md"
     assert doc.path.exists()
@@ -46,17 +46,16 @@ def test_parser_reports_missing_required_sections_with_clear_error() -> None:
 
 def test_save_and_reload_roundtrip_for_project_document(tmp_path: Path) -> None:
     store = SoulStore(runtime_root=tmp_path)
-    initial = store.load(level="project", brand_id="brand-001", project_id="proj-001")
+    initial = store.get_project_soul("brand-001", "proj-001")
     markdown = _markdown_with_sections("Project Soul", required_sections("project"))
 
-    saved = store.save(
-        level="project",
+    saved = store.save_project_soul(
         brand_id="brand-001",
         project_id="proj-001",
         markdown=markdown,
-        expected_version_hash=initial.version_hash,
+        version_hash=initial.version_hash,
     )
-    reloaded = store.load(level="project", brand_id="brand-001", project_id="proj-001")
+    reloaded = store.get_project_soul("brand-001", "proj-001")
 
     assert saved.recovered is False
     assert saved.markdown == markdown
@@ -67,26 +66,20 @@ def test_save_and_reload_roundtrip_for_project_document(tmp_path: Path) -> None:
 
 def test_save_rejects_version_hash_conflict(tmp_path: Path) -> None:
     store = SoulStore(runtime_root=tmp_path)
-    doc = store.load(
-        level="thread",
-        brand_id="brand-001",
-        project_id="proj-001",
-        thread_id="thread-001",
-    )
+    doc = store.get_thread_soul("brand-001", "proj-001", "thread-001")
 
     doc.path.write_text(
         _markdown_with_sections("Thread Soul Updated", required_sections("thread")),
         encoding="utf-8",
     )
 
-    with pytest.raises(OptimisticConcurrencyError) as exc_info:
-        store.save(
-            level="thread",
+    with pytest.raises(ValueError) as exc_info:
+        store.save_thread_soul(
             brand_id="brand-001",
             project_id="proj-001",
             thread_id="thread-001",
             markdown=_markdown_with_sections("Thread Soul Save", required_sections("thread")),
-            expected_version_hash=doc.version_hash,
+            version_hash=doc.version_hash,
         )
 
     message = str(exc_info.value)
@@ -98,14 +91,9 @@ def test_save_rejects_version_hash_conflict(tmp_path: Path) -> None:
 def test_store_paths_are_hierarchical_for_each_level(tmp_path: Path) -> None:
     store = SoulStore(runtime_root=tmp_path)
 
-    brand_doc = store.load(level="brand", brand_id="brand-001")
-    project_doc = store.load(level="project", brand_id="brand-001", project_id="proj-001")
-    thread_doc = store.load(
-        level="thread",
-        brand_id="brand-001",
-        project_id="proj-001",
-        thread_id="thread-001",
-    )
+    brand_doc = store.get_brand_soul("brand-001")
+    project_doc = store.get_project_soul("brand-001", "proj-001")
+    thread_doc = store.get_thread_soul("brand-001", "proj-001", "thread-001")
 
     assert brand_doc.path == tmp_path / "brands" / "brand-001" / "brand.md"
     assert project_doc.path == tmp_path / "brands" / "brand-001" / "projects" / "proj-001" / "project.md"
@@ -120,3 +108,11 @@ def test_store_paths_are_hierarchical_for_each_level(tmp_path: Path) -> None:
         / "thread-001"
         / "thread.md"
     )
+
+
+def test_save_api_requires_version_hash_argument(tmp_path: Path) -> None:
+    store = SoulStore(runtime_root=tmp_path)
+    markdown = _markdown_with_sections("Brand Soul", required_sections("brand"))
+
+    with pytest.raises(TypeError):
+        store.save_brand_soul("brand-001", markdown)  # type: ignore[misc]
