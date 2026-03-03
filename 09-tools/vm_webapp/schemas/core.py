@@ -72,3 +72,25 @@ class ThreadResponse(Timestamped):
 
 class ThreadsListResponse(VMBaseModel):
     threads: list[ThreadResponse]
+
+
+class CampaignCreate(VMBaseModel):
+    title: str
+    brand_id: str
+    project_id: str
+
+
+class CampaignUpdate(VMBaseModel):
+    title: Optional[str] = None
+
+
+class CampaignResponse(Timestamped):
+    campaign_id: str
+    brand_id: str
+    project_id: str
+    title: str
+    status: Literal["active", "archived"] = "active"
+
+
+class CampaignsListResponse(VMBaseModel):
+    campaigns: list[CampaignResponse]
