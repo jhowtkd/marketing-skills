@@ -14,6 +14,9 @@ from .core import (
 # Editorial
 from .editorial import editorial_decisions_router
 
+# Optimizer
+from .optimizer import optimizer_router
+
 # Workflow
 from .workflow import workflow_runs_router
 
@@ -30,6 +33,9 @@ v2_router.include_router(threads_router)
 
 # Editorial
 v2_router.include_router(editorial_decisions_router)
+
+# Optimizer
+v2_router.include_router(optimizer_router)
 
 # Workflow
 v2_router.include_router(workflow_runs_router)
