@@ -26,6 +26,16 @@ from vm_webapp.onboarding_fast_lane import (
     MINIMUM_CHECKLIST,
 )
 
+# v38: Import first run functionality
+from vm_webapp.onboarding_first_run import (
+    validate_template_selection,
+    generate_first_run_plan,
+    execute_first_run,
+    get_recommended_first_run,
+    get_one_click_first_run,
+    VALID_TEMPLATES,
+)
+
 router = APIRouter()
 
 
@@ -531,3 +541,185 @@ async def get_fast_lane_for_user_endpoint(
         justification=path.get("justification"),
         risk_level=path.get("risk_level"),
     )
+
+
+# v38: One-Click First Run endpoint schemas
+class FirstRunValidateRequest(BaseModel):
+    template_id: str
+    parameters: Dict[str, Any] = {}
+
+
+class FirstRunValidateResponse(BaseModel):
+    valid: bool
+    template_id: str
+    sanitized_params: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    template_info: Optional[Dict[str, Any]] = None
+
+
+class FirstRunPlanRequest(BaseModel):
+    user_id: str
+    template_id: str
+    parameters: Dict[str, Any] = {}
+
+
+class FirstRunPlanResponse(BaseModel):
+    user_id: str
+    template_id: str
+    status: str
+    execution_steps: List[str]
+    estimated_duration_ms: int
+    sanitized_params: Optional[Dict[str, Any]] = None
+    fallback_template: Optional[str] = None
+    fallback_action: Optional[str] = None
+    one_click_ready: bool = False
+
+
+class FirstRunExecuteRequest(BaseModel):
+    user_id: str
+    plan: Dict[str, Any]
+
+
+class FirstRunExecuteResponse(BaseModel):
+    success: bool
+    user_id: str
+    output: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    execution_time_ms: int = 0
+    fallback_options: List[str] = []
+    template_used: Optional[str] = None
+
+
+class FirstRunRecommendRequest(BaseModel):
+    user_id: str
+    selected_template: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+
+
+class FirstRunRecommendResponse(BaseModel):
+    user_id: str
+    recommended_template: str
+    one_click_ready: bool
+    context_applied: bool = False
+    contextualized_params: Dict[str, Any] = {}
+    template_info: Optional[Dict[str, Any]] = None
+    cta_text: str = "Criar meu primeiro conteúdo"
+    fallback_template: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@router.post("/first-run/validate")
+async def validate_first_run_template(
+    request_data: FirstRunValidateRequest,
+    request: Request = None
+) -> FirstRunValidateResponse:
+    """Validate template selection and sanitize parameters.
+    
+    v38: Friction Killer #3 - validates one-click first run input.
+    """
+    result = validate_template_selection(
+        template_id=request_data.template_id,
+        parameters=request_data.parameters,
+    )
+    
+    return FirstRunValidateResponse(
+        valid=result["valid"],
+        template_id=result.get("template_id", request_data.template_id),
+        sanitized_params=result.get("sanitized_params"),
+        error=result.get("error"),
+        template_info=result.get("template_info"),
+    )
+
+
+@router.post("/first-run/plan")
+async def plan_first_run(
+    request_data: FirstRunPlanRequest,
+    request: Request = None
+) -> FirstRunPlanResponse:
+    """Generate a first run execution plan."""
+    plan = generate_first_run_plan(
+        user_id=request_data.user_id,
+        template_id=request_data.template_id,
+        parameters=request_data.parameters,
+    )
+    
+    return FirstRunPlanResponse(
+        user_id=plan["user_id"],
+        template_id=plan["template_id"],
+        status=plan["status"],
+        execution_steps=plan["execution_steps"],
+        estimated_duration_ms=plan["estimated_duration_ms"],
+        sanitized_params=plan.get("sanitized_params"),
+        fallback_template=plan.get("fallback_template"),
+        fallback_action=plan.get("fallback_action"),
+        one_click_ready=plan.get("one_click_ready", False),
+    )
+
+
+@router.post("/first-run/execute")
+async def execute_first_run_endpoint(
+    request_data: FirstRunExecuteRequest,
+    request: Request = None
+) -> FirstRunExecuteResponse:
+    """Execute the first run plan."""
+    result = execute_first_run(
+        user_id=request_data.user_id,
+        plan=request_data.plan,
+    )
+    
+    return FirstRunExecuteResponse(
+        success=result["success"],
+        user_id=result["user_id"],
+        output=result.get("output"),
+        error=result.get("error"),
+        execution_time_ms=result["execution_time_ms"],
+        fallback_options=result.get("fallback_options", []),
+        template_used=result.get("template_used"),
+    )
+
+
+@router.post("/first-run/recommend")
+async def recommend_first_run(
+    request_data: FirstRunRecommendRequest,
+    request: Request = None
+) -> FirstRunRecommendResponse:
+    """Get recommended first run configuration for a user."""
+    recommendation = get_recommended_first_run(
+        user_id=request_data.user_id,
+        selected_template=request_data.selected_template,
+        user_context=request_data.context,
+    )
+    
+    return FirstRunRecommendResponse(
+        user_id=recommendation["user_id"],
+        recommended_template=recommendation["recommended_template"],
+        one_click_ready=recommendation["one_click_ready"],
+        context_applied=recommendation.get("context_applied", False),
+        contextualized_params=recommendation.get("contextualized_params", {}),
+        template_info=recommendation.get("template_info"),
+        cta_text=recommendation.get("cta_text", "Criar meu primeiro conteúdo"),
+        fallback_template=recommendation.get("fallback_template"),
+        reason=recommendation.get("reason"),
+    )
+
+
+@router.get("/first-run/templates")
+async def get_first_run_templates(
+    request: Request = None
+) -> Dict[str, Any]:
+    """Get available templates for one-click first run."""
+    templates = []
+    for template_id, template in VALID_TEMPLATES.items():
+        if template.is_active:
+            templates.append({
+                "id": template.template_id,
+                "name": template.name,
+                "category": template.category,
+                "description": template.description,
+                "safe_parameters": list(template.safe_parameters.keys()),
+            })
+    
+    return {
+        "templates": templates,
+        "count": len(templates),
+    }
