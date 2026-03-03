@@ -128,5 +128,6 @@ def create_app(
         app.mount("/studio", StaticFiles(directory=studio_static_dir, html=True), name="vm-studio")
 
     static_dir = Path(__file__).resolve().parents[1] / "web" / "vm-ui" / "dist"
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="vm-ui")
+    if static_dir.exists():
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="vm-ui")
     return app
