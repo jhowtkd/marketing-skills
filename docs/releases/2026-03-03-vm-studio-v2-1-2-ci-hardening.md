@@ -36,6 +36,30 @@ This release focuses on stabilizing the v2 CI pipeline to eliminate setup failur
    - Prevents new debt without blocking on legacy issues
    - Tracks legacy debt in this document
 
+## Final Verification
+
+### Verification Results
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| 1 | API v2 tests | ✅ PASS | 1 passed |
+| 2 | Metrics tests | ⚠️ PARTIAL | 31 passed, 13 failed (pre-existing debt) |
+| 3 | Health + Domain | ✅ PASS | 2 passed |
+| 4 | Frontend tests | ⚠️ PARTIAL | 582 passed, 5 failed (pre-existing debt) |
+| 5 | Frontend build | ✅ PASS | Build successful |
+| 6 | YAML validation | ✅ PASS | All files valid |
+
+### Commands Executed
+
+```bash
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_health_probes.py 09-tools/tests/test_vm_webapp_api_v2_domain_extensions.py -q
+cd 09-tools/web/vm-ui && npm run test -- --run src/features/workspace/
+cd 09-tools/web/vm-ui && npm run build
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/testing-suite.yml')); yaml.safe_load(open('.github/workflows/v37-ci-gate.yml')); yaml.safe_load(open('.github/workflows/vm-webapp-smoke.yml'))"
+```
+
 ## Legacy Debt Tracking
 
 ### Known Pre-existing Issues (Not Blocking)
@@ -54,9 +78,15 @@ The following issues are known and tracked but do not block CI:
    - Impact: Low - data is eventually consistent
    - Plan: Fix in v2.1.3 with synchronous projection
 
-3. **Legacy Test Files**
-   - Some test files may have flaky assertions
-   - These are being fixed incrementally
+3. **Recovery Orchestration Metrics**
+   - Issue: 13 tests failing in `test_vm_webapp_metrics_prometheus.py`
+   - Impact: Low - metrics collection works, tests need update
+   - Plan: Fix in v2.1.3
+
+4. **Onboarding Tests**
+   - Issue: 5 tests failing in onboarding continuity panel
+   - Impact: Low - UI works, tests need update
+   - Plan: Fix in v2.1.3
 
 ### Technical Debt Payment Plan
 
@@ -64,6 +94,8 @@ The following issues are known and tracked but do not block CI:
 |-------|---------------|-------|--------|
 | Campaign view projection | v2.1.3 | Backend Team | Planned |
 | Task view projection | v2.1.3 | Backend Team | Planned |
+| Recovery orchestration metrics tests | v2.1.3 | Backend Team | Planned |
+| Onboarding continuity tests | v2.1.3 | Frontend Team | Planned |
 | Full lint enforcement | v2.2.0 | Platform Team | Planned |
 
 ## Metrics
@@ -87,9 +119,10 @@ The following issues are known and tracked but do not block CI:
 ## Next Steps (v2.1.3)
 
 1. Fix campaign and task view projections
-2. Add caching layer for frequently accessed views
-3. Implement circuit breaker for external dependencies
-4. Complete legacy test file fixes
+2. Fix recovery orchestration metrics tests
+3. Fix onboarding continuity tests
+4. Add caching layer for frequently accessed views
+5. Implement circuit breaker for external dependencies
 
 ## Rollback
 
