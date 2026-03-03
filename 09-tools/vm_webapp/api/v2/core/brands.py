@@ -70,16 +70,29 @@ async def create_brand_v2(data: BrandCreate, request: Request) -> BrandResponse:
         The newly created brand with generated brand_id
     """
     from vm_webapp.commands_v2 import create_brand_command
+    from vm_webapp.db import session_scope
+    from uuid import uuid4
     
-    result = create_brand_command(
-        engine=request.app.state.engine,
-        name=data.name,
-    )
-    return BrandResponse(
-        brand_id=result["brand_id"],
-        name=data.name,
-        description=data.description,
-        status="active",
-        created_at=result["created_at"],
-        updated_at=None,
-    )
+    actor_id = getattr(request.state, 'actor_id', 'system')
+    idempotency_key = f"idem-{uuid4().hex[:10]}"
+    
+    from datetime import datetime
+    import json
+    
+    with session_scope(request.app.state.engine) as session:
+        dedup = create_brand_command(
+            session,
+            brand_id=None,
+            name=data.name,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+        )
+        response = json.loads(dedup.response_json)
+        return BrandResponse(
+            brand_id=response["brand_id"],
+            name=data.name,
+            description=data.description,
+            status="active",
+            created_at=datetime.now(),
+            updated_at=None,
+        )

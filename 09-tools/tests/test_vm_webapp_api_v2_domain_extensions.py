@@ -16,7 +16,7 @@ def test_v2_can_create_campaign_task_and_brand_rule_with_idempotency(client: Tes
         json={"name": "Acme Corp"},
         headers={"Idempotency-Key": "idem-b1"}
     )
-    assert brand_resp.status_code == 200
+    assert brand_resp.status_code == 201
     brand_id = brand_resp.json()["brand_id"]
 
     # 2. Create Project
