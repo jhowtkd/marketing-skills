@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -86,10 +88,10 @@ async def create_project_v2(data: ProjectCreate, request: Request) -> ProjectRes
     """
     from vm_webapp.commands_v2 import create_project_command
     from vm_webapp.db import session_scope
-    
+
     actor_id = getattr(request.state, 'actor_id', 'system')
     idempotency_key = _auto_id("idem")
-    
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_project_command(
             session,
@@ -102,13 +104,13 @@ async def create_project_v2(data: ProjectCreate, request: Request) -> ProjectRes
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
-        response = dedup.response
+        response = json.loads(dedup.response_json)
         return ProjectResponse(
             project_id=response["project_id"],
             brand_id=data.brand_id,
             name=data.name,
             description=data.description,
             status="active",
-            created_at=response.get("created_at"),
+            created_at=datetime.now(),
             updated_at=None,
         )

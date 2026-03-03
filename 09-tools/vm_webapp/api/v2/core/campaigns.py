@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -87,10 +89,10 @@ async def create_campaign_v2(data: CampaignCreate, request: Request) -> Campaign
     """
     from vm_webapp.commands_v2 import create_campaign_command
     from vm_webapp.db import session_scope
-    
+
     actor_id = getattr(request.state, 'actor_id', 'system')
     idempotency_key = _auto_id("idem")
-    
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_campaign_command(
             session,
@@ -101,14 +103,14 @@ async def create_campaign_v2(data: CampaignCreate, request: Request) -> Campaign
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
-        response = dedup.response
+        response = json.loads(dedup.response_json)
         return CampaignResponse(
             campaign_id=response["campaign_id"],
             brand_id=data.brand_id,
             project_id=data.project_id,
             title=data.title,
             status="active",
-            created_at=None,
+            created_at=datetime.now(),
             updated_at=None,
         )
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -87,10 +89,10 @@ async def create_thread_v2(data: ThreadCreate, request: Request) -> ThreadRespon
     """
     from vm_webapp.commands_v2 import create_thread_command
     from vm_webapp.db import session_scope
-    
+
     actor_id = getattr(request.state, 'actor_id', 'system')
     idempotency_key = _auto_id("idem")
-    
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_thread_command(
             session,
@@ -101,14 +103,14 @@ async def create_thread_v2(data: ThreadCreate, request: Request) -> ThreadRespon
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
-        response = dedup.response
+        response = json.loads(dedup.response_json)
         return ThreadResponse(
             thread_id=response["thread_id"],
             brand_id=data.brand_id,
             project_id=data.project_id,
             title=data.title,
             status="open",
-            created_at=response.get("created_at"),
+            created_at=datetime.now(),
             updated_at=None,
         )
 
@@ -152,7 +154,7 @@ async def update_thread_v2(
         thread_view = get_thread_view(session, thread_id)
         if thread_view is None:
             raise ValueError(f"Thread not found: {thread_id}")
-        
+
         if data.title:
             dedup = rename_thread_command(
                 session,
@@ -164,7 +166,7 @@ async def update_thread_v2(
             title = data.title
         else:
             title = thread_view.title
-        
+
         return ThreadResponse(
             thread_id=thread_id,
             brand_id=thread_view.brand_id,
