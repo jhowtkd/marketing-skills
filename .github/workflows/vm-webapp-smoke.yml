@@ -102,6 +102,7 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npm run test -- --run src/features/workspace/WorkspacePanel.test.tsx
 
+  # Job: Frontend Gate - Produz artifact vm-ui-dist
   frontend-gate:
     runs-on: ubuntu-latest
     steps:
@@ -121,6 +122,12 @@ jobs:
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-ui-dist-smoke
+          path: 09-tools/web/vm-ui/dist
+          retention-days: 1
 
   ux-task-first-redesign-gate-v29:
     runs-on: ubuntu-latest
