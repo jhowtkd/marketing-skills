@@ -254,4 +254,376 @@ describe('OnboardingWizard', () => {
       });
     });
   });
+
+  // v38: Smart prefill tests
+  describe('smart prefill', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should fetch prefill data on mount', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          user_id: 'user-123',
+          prefill_source: 'utm_campaign',
+          confidence: 'high',
+          fields: { template_id: 'blog-post' },
+          context: { has_utm: true, has_referrer: false, has_segment: false },
+        }),
+      });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          '/api/v2/onboarding/prefill',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: expect.stringContaining('user-123'),
+          })
+        );
+      });
+    });
+
+    it('should auto-select template from prefill without explicit input', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          user_id: 'user-123',
+          prefill_source: 'utm_campaign',
+          confidence: 'high',
+          fields: { template_id: 'landing-page' },
+          context: { has_utm: true, has_referrer: false, has_segment: false },
+        }),
+      });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Navigate to template selection step
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(/nome do workspace/i);
+      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
+      });
+
+      // Check that prefill indicator is shown
+      await waitFor(() => {
+        expect(screen.getByTestId('prefill-indicator')).toBeInTheDocument();
+      });
+    });
+
+    it('should not overwrite explicit template selection with prefill', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          user_id: 'user-123',
+          prefill_source: 'utm_campaign',
+          confidence: 'high',
+          fields: { template_id: 'landing-page' },
+          context: { has_utm: true, has_referrer: false, has_segment: false },
+        }),
+      });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Navigate to template selection step
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(/nome do workspace/i);
+      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
+      });
+
+      // User explicitly selects a different template
+      const emailTemplate = screen.getByTestId('template-email');
+      fireEvent.click(emailTemplate);
+
+      // The explicit selection should win
+      await waitFor(() => {
+        expect(emailTemplate).toHaveClass('border-blue-500');
+      });
+    });
+
+    it('should show campaign context message for high confidence prefill', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          user_id: 'user-123',
+          prefill_source: 'utm_campaign',
+          confidence: 'high',
+          fields: { template_id: 'blog-post' },
+          context: { has_utm: true, has_referrer: false, has_segment: false },
+        }),
+      });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Navigate to template selection step
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(/nome do workspace/i);
+      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
+      });
+
+      // Check for the campaign context message
+      await waitFor(() => {
+        expect(screen.getByText(/detectamos que você veio de uma campanha/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should gracefully handle prefill fetch failure', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'Failed to fetch prefill data:',
+          expect.any(Error)
+        );
+      });
+
+      // Wizard should still work normally
+      expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  // v38: Fast lane tests
+  describe('fast lane', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should fetch fast lane data on mount', async () => {
+      // Mock prefill first, then fast-lane
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: true,
+            skipped_steps: ['customization'],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'completion'],
+            estimated_time_saved_minutes: 4.0,
+            justification: 'Low risk user',
+            risk_level: 'low',
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          '/api/v2/onboarding/fast-lane',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: expect.stringContaining('user-123'),
+          })
+        );
+      });
+    });
+
+    it('should display fast lane badge for eligible users', async () => {
+      // Mock prefill first, then fast-lane
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: true,
+            skipped_steps: ['customization'],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'completion'],
+            estimated_time_saved_minutes: 4.0,
+            justification: 'Low risk user',
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-badge')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/fast lane ativado/i)).toBeInTheDocument();
+      expect(screen.getByText(/economize até 4 minutos/i)).toBeInTheDocument();
+    });
+
+    it('should not show fast lane badge for standard path users', async () => {
+      // Mock prefill first, then fast-lane
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+            reason: 'High risk user',
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Wait for any effects to complete
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      // Fast lane badge should not be present
+      expect(screen.queryByTestId('fast-lane-badge')).not.toBeInTheDocument();
+    });
+
+    it('should gracefully handle fast lane fetch failure', async () => {
+      // Mock prefill success, then fast-lane failure
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockRejectedValueOnce(new Error('Network error'));
+      
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'Failed to fetch fast lane data:',
+          expect.any(Error)
+        );
+      });
+
+      // Wizard should still work normally
+      expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+
+      consoleSpy.mockRestore();
+    });
+  });
 });

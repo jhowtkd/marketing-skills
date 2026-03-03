@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   trackOnboardingStarted,
   trackOnboardingCompleted,
@@ -7,6 +7,93 @@ import {
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
 import { ContextualTour } from './ContextualTour';
 import type { TourStep } from './ContextualTour';
+
+// v38: Smart prefill integration
+interface PrefillData {
+  fields: Record<string, string>;
+  source: string;
+  confidence: string;
+}
+
+const fetchPrefillData = async (userId: string): Promise<PrefillData | null> => {
+  try {
+    // Parse UTM params from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const utmCampaign = urlParams.get('utm_campaign') || undefined;
+    const utmSource = urlParams.get('utm_source') || undefined;
+    const utmMedium = urlParams.get('utm_medium') || undefined;
+    
+    // Get referrer
+    const referrer = document.referrer || undefined;
+    
+    const response = await fetch('/api/v2/onboarding/prefill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        utm_campaign: utmCampaign,
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        referrer,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return {
+      fields: data.fields || {},
+      source: data.prefill_source,
+      confidence: data.confidence,
+    };
+  } catch (error) {
+    console.warn('Failed to fetch prefill data:', error);
+    return null;
+  }
+};
+
+// v38: Fast lane integration
+interface FastLaneData {
+  isFastLane: boolean;
+  skippedSteps: string[];
+  remainingSteps: string[];
+  estimatedTimeSavedMinutes: number;
+  justification?: string;
+}
+
+const fetchFastLaneData = async (
+  userId: string,
+  checklist: Record<string, boolean>
+): Promise<FastLaneData | null> => {
+  try {
+    const response = await fetch('/api/v2/onboarding/fast-lane', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        checklist,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return {
+      isFastLane: data.is_fast_lane,
+      skippedSteps: data.skipped_steps || [],
+      remainingSteps: data.remaining_steps || [],
+      estimatedTimeSavedMinutes: data.estimated_time_saved_minutes || 0,
+      justification: data.justification,
+    };
+  } catch (error) {
+    console.warn('Failed to fetch fast lane data:', error);
+    return null;
+  }
+};
 
 export { OnboardingStep };
 
@@ -21,6 +108,12 @@ interface WizardState {
   workspaceName: string;
   selectedTemplate: string | null;
   startedAt: number;
+}
+
+// v38: Track which fields have been explicitly modified by user
+interface ExplicitFields {
+  workspaceName: boolean;
+  selectedTemplate: boolean;
 }
 
 const TOTAL_STEPS = 5;
@@ -44,6 +137,26 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     selectedTemplate: null,
     startedAt: Date.now(),
   });
+
+  // v38: Prefill state
+  const [prefill, setPrefill] = useState<PrefillData | null>(null);
+  const [explicitFields, setExplicitFields] = useState<ExplicitFields>({
+    workspaceName: false,
+    selectedTemplate: false,
+  });
+  const [prefillApplied, setPrefillApplied] = useState(false);
+  
+  // v38: Fast lane state
+  const [fastLane, setFastLane] = useState<FastLaneData | null>(null);
+  const [fastLaneChecklist, setFastLaneChecklist] = useState({
+    terms_accepted: true,  // Assumed accepted to proceed
+    email_verified: true,  // Assumed verified
+    privacy_policy: true,  // Assumed accepted
+  });
+  
+  // Refs to track if fetches are in progress
+  const prefillFetchedRef = useRef(false);
+  const fastLaneFetchedRef = useRef(false);
 
   // v30: Contextual tour state
   const [showTour, setShowTour] = useState(false);
@@ -79,6 +192,50 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   useEffect(() => {
     trackOnboardingStarted(userId);
   }, [userId]);
+
+  // v38: Fetch and apply smart prefill
+  useEffect(() => {
+    if (prefillFetchedRef.current) return;
+    prefillFetchedRef.current = true;
+
+    const loadPrefill = async () => {
+      const prefillData = await fetchPrefillData(userId);
+      if (prefillData) {
+        setPrefill(prefillData);
+        
+        // Apply prefill only for fields not explicitly set by user
+        setState((prev) => {
+          const updates: Partial<WizardState> = {};
+          
+          // Apply template prefill if not explicitly selected
+          if (!explicitFields.selectedTemplate && prefillData.fields.template_id) {
+            updates.selectedTemplate = prefillData.fields.template_id;
+          }
+          
+          return { ...prev, ...updates };
+        });
+        
+        setPrefillApplied(true);
+      }
+    };
+
+    loadPrefill();
+  }, [userId, explicitFields.selectedTemplate]);
+
+  // v38: Fetch fast lane configuration
+  useEffect(() => {
+    if (fastLaneFetchedRef.current) return;
+    fastLaneFetchedRef.current = true;
+
+    const loadFastLane = async () => {
+      const fastLaneData = await fetchFastLaneData(userId, fastLaneChecklist);
+      if (fastLaneData) {
+        setFastLane(fastLaneData);
+      }
+    };
+
+    loadFastLane();
+  }, [userId, fastLaneChecklist]);
 
   useEffect(() => {
     saveFunnelState({
@@ -129,12 +286,14 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
 
   const handleWorkspaceNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      setExplicitFields((prev) => ({ ...prev, workspaceName: true }));
       setState((prev) => ({ ...prev, workspaceName: e.target.value }));
     },
     []
   );
 
   const handleTemplateSelect = useCallback((templateId: string) => {
+    setExplicitFields((prev) => ({ ...prev, selectedTemplate: true }));
     setState((prev) => ({ ...prev, selectedTemplate: templateId }));
   }, []);
 
@@ -149,6 +308,22 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
             <p className="text-gray-600">
               Vamos configurar seu workspace em poucos passos simples.
             </p>
+            {/* v38: Fast lane indicator */}
+            {fastLane?.isFastLane && (
+              <div 
+                className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg"
+                data-testid="fast-lane-badge"
+              >
+                <p className="text-sm text-green-800">
+                  <span className="font-medium">🚀 Fast Lane ativado!</span>
+                  <br />
+                  Você foi selecionado para um onboarding acelerado.
+                  {fastLane.estimatedTimeSavedMinutes > 0 && (
+                    <span> Economize até {fastLane.estimatedTimeSavedMinutes} minutos.</span>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         );
 
@@ -176,11 +351,27 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       case OnboardingStep.TEMPLATE_SELECTION:
         return (
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Escolha um Template
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Escolha um Template
+              </h2>
+              {/* v38: Prefill indicator */}
+              {prefillApplied && prefill?.fields.template_id && !explicitFields.selectedTemplate && (
+                <span 
+                  className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"
+                  data-testid="prefill-indicator"
+                >
+                  Sugerido ✨
+                </span>
+              )}
+            </div>
             <p className="text-gray-600">
               Selecione um template para começar rápido:
+              {prefillApplied && prefill?.confidence === 'high' && (
+                <span className="block text-sm text-green-600 mt-1">
+                  Detectamos que você veio de uma campanha de {prefill.fields.template_id?.replace('-', ' ') || 'conteúdo'}.
+                </span>
+              )}
             </p>
             <div className="grid grid-cols-2 gap-3">
               {['blog-post', 'landing-page', 'social-media', 'email'].map(
@@ -193,6 +384,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
+                    data-testid={`template-${template}`}
                   >
                     <span className="font-medium capitalize">
                       {template.replace('-', ' ')}
@@ -205,11 +397,30 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
         );
 
       case OnboardingStep.CUSTOMIZATION:
+        // v38: Check if this step should be skipped due to fast lane
+        const shouldSkipCustomization = fastLane?.isFastLane && 
+          fastLane.skippedSteps.includes('customization');
+        
+        if (shouldSkipCustomization) {
+          // Auto-advance to next step after a brief delay
+          setTimeout(() => handleNext(), 100);
+        }
+        
         return (
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Personalização
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Personalização
+              </h2>
+              {fastLane?.isFastLane && (
+                <span 
+                  className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full"
+                  data-testid="fast-lane-skip-indicator"
+                >
+                  Pulado (Fast Lane)
+                </span>
+              )}
+            </div>
             <p className="text-gray-600">
               Quase lá! Suas configurações foram salvas.
             </p>

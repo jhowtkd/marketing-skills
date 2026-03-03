@@ -2110,3 +2110,98 @@ def render_prometheus(snapshot: dict[str, Any], *, prefix: str = "vm") -> str:
     if not lines:
         lines.append("# no metrics recorded")
     return "\n".join(lines) + "\n"
+
+
+@dataclass
+class OnboardingExperimentMetrics:
+    """v38 Onboarding TTFV Experiment metrics."""
+    # Experiment counters
+    experiments_total: int = 0
+    experiments_running: int = 0
+    experiments_completed: int = 0
+    experiments_rolled_back: int = 0
+    
+    # User assignments
+    users_assigned_control: int = 0
+    users_assigned_treatment: int = 0
+    
+    # Guardrail violations
+    guardrail_violations_total: int = 0
+    guardrail_violations_activation: int = 0
+    guardrail_violations_completion: int = 0
+    guardrail_violations_incident: int = 0
+    
+    # TTFV metrics (minutes)
+    ttfv_median_control: float = 0.0
+    ttfv_median_treatment: float = 0.0
+    ttfv_improvement_percent: float = 0.0
+    
+    # Guardrail metrics
+    activation_rate_d1_control: float = 0.0
+    activation_rate_d1_treatment: float = 0.0
+    onboarding_completion_rate_control: float = 0.0
+    onboarding_completion_rate_treatment: float = 0.0
+    incident_rate_control: float = 0.0
+    incident_rate_treatment: float = 0.0
+    
+    # Decision counts
+    decisions_promote: int = 0
+    decisions_hold: int = 0
+    decisions_rollback: int = 0
+    
+    # Timestamps
+    last_evaluation_at: Optional[str] = None
+    last_decision_at: Optional[str] = None
+    last_guardrail_violation_at: Optional[str] = None
+    
+    def to_prometheus_metrics(self) -> str:
+        """Export metrics in Prometheus format."""
+        lines = []
+        prefix = "vm_onboarding_experiment"
+        
+        # Counters
+        lines.append(f"# TYPE {prefix}_experiments_total gauge")
+        lines.append(f"{prefix}_experiments_total {self.experiments_total}")
+        lines.append(f"{prefix}_experiments_running {self.experiments_running}")
+        lines.append(f"{prefix}_experiments_completed {self.experiments_completed}")
+        lines.append(f"{prefix}_experiments_rolled_back {self.experiments_rolled_back}")
+        
+        # User assignments
+        lines.append(f"# TYPE {prefix}_users_assigned gauge")
+        lines.append(f'{prefix}_users_assigned{{variant="control"}} {self.users_assigned_control}')
+        lines.append(f'{prefix}_users_assigned{{variant="treatment"}} {self.users_assigned_treatment}')
+        
+        # Guardrail violations
+        lines.append(f"# TYPE {prefix}_guardrail_violations_total counter")
+        lines.append(f"{prefix}_guardrail_violations_total {self.guardrail_violations_total}")
+        lines.append(f'{prefix}_guardrail_violations{{type="activation"}} {self.guardrail_violations_activation}')
+        lines.append(f'{prefix}_guardrail_violations{{type="completion"}} {self.guardrail_violations_completion}')
+        lines.append(f'{prefix}_guardrail_violations{{type="incident"}} {self.guardrail_violations_incident}')
+        
+        # TTFV metrics
+        lines.append(f"# TYPE {prefix}_ttfv_median_minutes gauge")
+        lines.append(f'{prefix}_ttfv_median_minutes{{variant="control"}} {self.ttfv_median_control:.2f}')
+        lines.append(f'{prefix}_ttfv_median_minutes{{variant="treatment"}} {self.ttfv_median_treatment:.2f}')
+        lines.append(f"# TYPE {prefix}_ttfv_improvement_percent gauge")
+        lines.append(f"{prefix}_ttfv_improvement_percent {self.ttfv_improvement_percent:.2f}")
+        
+        # Guardrail metrics
+        lines.append(f"# TYPE {prefix}_activation_rate_d1 gauge")
+        lines.append(f'{prefix}_activation_rate_d1{{variant="control"}} {self.activation_rate_d1_control:.4f}')
+        lines.append(f'{prefix}_activation_rate_d1{{variant="treatment"}} {self.activation_rate_d1_treatment:.4f}')
+        
+        lines.append(f"# TYPE {prefix}_onboarding_completion_rate gauge")
+        lines.append(f'{prefix}_onboarding_completion_rate{{variant="control"}} {self.onboarding_completion_rate_control:.4f}')
+        lines.append(f'{prefix}_onboarding_completion_rate{{variant="treatment"}} {self.onboarding_completion_rate_treatment:.4f}')
+        
+        lines.append(f"# TYPE {prefix}_incident_rate gauge")
+        lines.append(f'{prefix}_incident_rate{{variant="control"}} {self.incident_rate_control:.4f}')
+        lines.append(f'{prefix}_incident_rate{{variant="treatment"}} {self.incident_rate_treatment:.4f}')
+        
+        # Decisions
+        lines.append(f"# TYPE {prefix}_decisions_total counter")
+        lines.append(f'{prefix}_decisions_total{{decision="promote"}} {self.decisions_promote}')
+        lines.append(f'{prefix}_decisions_total{{decision="hold"}} {self.decisions_hold}')
+        lines.append(f'{prefix}_decisions_total{{decision="rollback"}} {self.decisions_rollback}')
+        
+        return "\n".join(lines) + "\n"

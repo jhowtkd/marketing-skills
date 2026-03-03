@@ -1033,6 +1033,66 @@ def generate_github_step_summary(
     return "\n".join(lines)
 
 
+def export_onboarding_experiments() -> dict[str, Any]:
+    """Export v38 onboarding TTFV experiment data for nightly report.
+    
+    Returns experiment metrics, guardrail status, and decision recommendations.
+    """
+    try:
+        # Import here to avoid dependency issues if module not available
+        from vm_webapp.onboarding_ttfv_experiments import (
+            get_active_experiments,
+            evaluate_experiment,
+            calculate_guardrail_status,
+            ExperimentStatus,
+        )
+        
+        experiments = get_active_experiments()
+        experiment_data = []
+        
+        for exp in experiments:
+            try:
+                if exp.status == ExperimentStatus.RUNNING:
+                    result = evaluate_experiment(exp)
+                    experiment_data.append({
+                        "experiment_id": exp.experiment_id,
+                        "name": exp.name,
+                        "status": exp.status.value,
+                        "metrics": result.metrics,
+                        "guardrail_status": result.guardrail_status,
+                        "sample_sizes": {
+                            "control": result.sample_size_control,
+                            "treatment": result.sample_size_treatment,
+                        },
+                    })
+                else:
+                    experiment_data.append({
+                        "experiment_id": exp.experiment_id,
+                        "name": exp.name,
+                        "status": exp.status.value,
+                    })
+            except Exception as e:
+                experiment_data.append({
+                    "experiment_id": exp.experiment_id,
+                    "name": exp.name,
+                    "status": exp.status.value,
+                    "error": str(e),
+                })
+        
+        guardrail_status = calculate_guardrail_status()
+        
+        return {
+            "experiments": experiment_data,
+            "guardrail_status": guardrail_status,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except ImportError:
+        return {
+            "error": "Experiment module not available",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
 def main() -> int:
     args = parse_args()
     
