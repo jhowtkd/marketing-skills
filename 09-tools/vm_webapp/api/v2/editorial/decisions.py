@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, status
@@ -117,7 +118,7 @@ async def create_editorial_decision_v2(
 )
 async def get_editorial_insights_v2(
     request: Request,
-    thread_id: str | None = None,
+    thread_id: Optional[str] = None,
 ) -> EditorialInsightsListResponse:
     """Get editorial insights for a thread or globally.
     
