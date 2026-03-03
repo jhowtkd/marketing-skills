@@ -178,3 +178,34 @@ cd 09-tools/web/vm-ui && npm run build
 ## Authors
 
 - VM Studio Team
+
+---
+
+## Post-Review Hardening (v37.1)
+
+**Date:** 2026-03-03
+
+### Fixes Applied
+
+1. **Route Wiring Correction**
+   - Fixed duplicated `/api/v2/api/v2/*` routes caused by double prefix application
+   - Removed `prefix="/api/v2"` from router includes that already have full paths
+   - Added integration test to prevent regression
+
+2. **Python 3.12 Runtime Alignment**
+   - Updated CI gates from Python 3.9 to 3.12 baseline
+   - Fixed type annotation compatibility (`str | None` → `Optional[str]`)
+   - Consistent with project pyproject.toml requirement
+
+3. **Repository Hygiene**
+   - Stopped tracking local build artifacts (`.coverage`, `dist/`)
+   - Added ignore rules for `.claude/worktrees/*`
+   - Cleaner git history and smaller clones
+
+### Verification
+
+All hardening changes verified via:
+- `test_vm_webapp_route_wiring.py` - No duplicate routes
+- `test_vm_webapp_app_bootstrap.py` - Clean app startup
+- CI gates passing on Python 3.12
+

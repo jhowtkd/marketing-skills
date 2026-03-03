@@ -29,3 +29,9 @@ __pycache__/
 dist/
 .venv
 .venv*/
+
+# Local artifacts that should not be versioned
+.coverage
+09-tools/.coverage
+09-tools/web/vm-ui/dist/
+.claude/worktrees/*

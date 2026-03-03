@@ -98,20 +98,21 @@ def create_app(
     # ============================================================================
 
     # Routers faltantes - Phase 0 Hotfix
-    app.include_router(onboarding_experiments_router, prefix="/api/v2")
-    app.include_router(onboarding_personalization_router, prefix="/api/v2")
-    app.include_router(onboarding_recovery_router, prefix="/api/v2")
-    app.include_router(onboarding_activation_router, prefix="/api/v2")
-    app.include_router(onboarding_continuity_router, prefix="/api/v2")
-    # Note: onboarding_base_router is included in api.py with prefix /v2/onboarding
-    app.include_router(predictive_resilience_router, prefix="/api/v2")
-    app.include_router(outcome_roi_router, prefix="/api/v2")
-    app.include_router(copilot_router, prefix="/api/v2")
-    app.include_router(safety_tuning_router, prefix="/api/v2")
-    app.include_router(adaptive_escalation_router, prefix="/api/v2")
-    app.include_router(control_loop_router, prefix="/api/v2")
-    app.include_router(recovery_router, prefix="/api/v2")
-    app.include_router(approval_learning_router, prefix="/api/v2")
+    # Note: These routers already include /api/v2/ prefix in their routes
+    app.include_router(onboarding_experiments_router)
+    app.include_router(onboarding_personalization_router)
+    app.include_router(onboarding_recovery_router)
+    app.include_router(onboarding_activation_router)
+    app.include_router(onboarding_continuity_router)
+    # Note: onboarding_base_router is included in api.py
+    app.include_router(predictive_resilience_router)
+    app.include_router(outcome_roi_router)
+    app.include_router(copilot_router)
+    app.include_router(safety_tuning_router)
+    app.include_router(adaptive_escalation_router)
+    app.include_router(control_loop_router)
+    app.include_router(recovery_router)
+    app.include_router(approval_learning_router)
 
     # New v2 API structure (Phase 2)
     app.include_router(v2_router)
