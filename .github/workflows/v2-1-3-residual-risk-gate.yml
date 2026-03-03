@@ -1,0 +1,114 @@
+# VM Studio v2.1.3 - Residual Risk Burn-Down Gate
+# Focus: Metrics collision (v28/v34), Workspace flakes, Projection timing
+# This is a focused gate for post-v2.1.2 residual risk verification
+
+name: v2.1.3 Residual Risk Gate
+
+on:
+  push:
+    branches: [main, feature/governance-v2-1-3-residual-risk-burn-down]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Backend: Metrics and Projection Consistency
+  backend-residual-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run metrics/prometheus contract tests
+        run: |
+          PYTHONPATH=09-tools uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -v --tb=short
+
+      - name: Run API v2 domain extension tests
+        run: |
+          PYTHONPATH=09-tools uv run pytest 09-tools/tests/test_vm_webapp_api_v2_domain_extensions.py -v --tb=short
+
+      - name: Run API v2 core tests
+        run: |
+          PYTHONPATH=09-tools uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -v --tb=short
+
+  # Frontend: Workspace continuity and hook stability
+  frontend-residual-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 09-tools/web/vm-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-python@v5
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run continuity panel tests
+        run: npm run test -- --run src/features/workspace/components/OnboardingContinuityPanel.test.tsx
+
+      - name: Run workspace hook tests
+        run: |
+          npm run test -- --run \
+            src/features/workspace/useWorkspace.controlCenter.test.tsx \
+            src/features/workspace/useWorkspace.copilot.test.tsx
+
+      - name: Run full workspace suite
+        run: npm run test -- --run src/features/workspace/
+
+      - name: Build verification
+        run: npm run build
+
+  # Workflow syntax validation
+  workflow-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow syntax
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/v2-1-3-residual-risk-gate.yml'))"
+          echo "Workflow syntax is valid"
+
+  # Summary
+  residual-risk-summary:
+    needs: [backend-residual-gate, frontend-residual-gate, workflow-validation]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report Status
+        run: |
+          echo "## v2.1.3 Residual Risk Gate Summary"
+          echo ""
+          echo "| Component | Status |"
+          echo "|-----------|--------|"
+          echo "| Backend Metrics Contract | ${{ needs.backend-residual-gate.result }} |"
+          echo "| Frontend Workspace | ${{ needs.frontend-residual-gate.result }} |"
+          echo "| Workflow Validation | ${{ needs.workflow-validation.result }} |"
+          echo ""
+          
+          if [[ "${{ needs.backend-residual-gate.result }}" == "success" && \
+                "${{ needs.frontend-residual-gate.result }}" == "success" && \
+                "${{ needs.workflow-validation.result }}" == "success" ]]; then
+            echo "✅ All residual risk checks passed"
+            exit 0
+          else
+            echo "❌ Some residual risk checks failed"
+            exit 1
+          fi
