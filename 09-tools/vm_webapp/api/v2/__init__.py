@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+# Copilot
+from .copilot import copilot_router
+
 # Core
 from .core import (
     brands_router,
@@ -15,6 +18,9 @@ from .editorial import editorial_decisions_router
 from .workflow import workflow_runs_router
 
 v2_router = APIRouter(prefix="/api/v2")
+
+# Copilot
+v2_router.include_router(copilot_router)
 
 # Core
 v2_router.include_router(brands_router)
