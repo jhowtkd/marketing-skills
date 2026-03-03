@@ -1,0 +1,101 @@
+name: v2 API Testing Suite
+
+on:
+  push:
+    branches: [feat/testing-suite]
+  pull_request:
+    branches: [main]
+    paths:
+      - '09-tools/tests/api/v2/**'
+      - '09-tools/vm_webapp/api/v2/**'
+      - '.github/workflows/testing-suite.yml'
+
+env:
+  PYTHONPATH: 09-tools
+
+jobs:
+  v2-api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi pytest-cov
+      
+      - name: Run v2 API core tests
+        run: |
+          cd 09-tools
+          pytest tests/api/v2/test_core.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run v2 API workflow tests
+        run: |
+          cd 09-tools
+          pytest tests/api/v2/test_workflow.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run v2 API with coverage
+        run: |
+          cd 09-tools
+          pytest tests/api/v2/ -v --cov=vm_webapp --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          files: 09-tools/coverage.xml
+          fail_ci_if_error: false
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run integration tests
+        run: |
+          cd 09-tools
+          pytest tests/integration/test_end_to_end.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+
+  onboarding-persistence-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run onboarding persistence tests
+        run: |
+          cd 09-tools
+          pytest tests/test_onboarding_persistence.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
