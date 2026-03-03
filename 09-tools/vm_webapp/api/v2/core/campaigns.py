@@ -89,10 +89,10 @@ async def create_campaign_v2(data: CampaignCreate, request: Request) -> Campaign
     """
     from vm_webapp.commands_v2 import create_campaign_command
     from vm_webapp.db import session_scope
-    
+
     actor_id = getattr(request.state, 'actor_id', 'system')
     idempotency_key = _auto_id("idem")
-    
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_campaign_command(
             session,

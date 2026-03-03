@@ -88,10 +88,10 @@ async def create_project_v2(data: ProjectCreate, request: Request) -> ProjectRes
     """
     from vm_webapp.commands_v2 import create_project_command
     from vm_webapp.db import session_scope
-    
+
     actor_id = getattr(request.state, 'actor_id', 'system')
     idempotency_key = _auto_id("idem")
-    
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_project_command(
             session,
