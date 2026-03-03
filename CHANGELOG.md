@@ -273,3 +273,15 @@ See git history for versions prior to v23.
 - Recovery endpoints now accessible
 - Approval learning endpoints now accessible
 
+
+## [2.0.2] - 2026-03-05
+
+### Changed
+- Remove duplicate copilot endpoints from api.py (consolidated in api_copilot.py)
+- Standardize all v2 endpoints with `/api/v2/` prefix
+- 58 endpoints migrated from `/v2/` to `/api/v2/` for consistency
+
+### Fixed
+- Fix 404 errors on `/api/v2/threads/{id}/alerts` and other thread sub-resources
+- Remove 320 lines of duplicate code from api.py
+
