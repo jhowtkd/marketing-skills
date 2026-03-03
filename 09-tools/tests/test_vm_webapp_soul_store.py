@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import threading
 from pathlib import Path
 
@@ -16,6 +17,26 @@ def _markdown_with_sections(title: str, sections: list[str]) -> str:
     for section in sections:
         body.extend([f"## {section}", f"Content for {section}.", ""])
     return "\n".join(body).rstrip() + "\n"
+
+
+def _save_brand_in_process(
+    runtime_root: str,
+    markdown: str,
+    version_hash: str,
+    result_queue: multiprocessing.Queue,
+) -> None:
+    store = SoulStore(runtime_root=Path(runtime_root))
+    try:
+        store.save_brand_soul(
+            brand_id="brand-001",
+            markdown=markdown,
+            version_hash=version_hash,
+        )
+        result_queue.put(("ok", ""))
+    except ValueError as exc:
+        result_queue.put(("conflict", str(exc)))
+    except Exception as exc:  # noqa: BLE001
+        result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
 
 
 def test_load_bootstraps_brand_template_when_missing(tmp_path: Path) -> None:
@@ -193,3 +214,41 @@ def test_concurrent_save_is_locked_and_keeps_single_winner(tmp_path: Path) -> No
     latest = store.get_brand_soul("brand-001")
     assert latest.markdown in (markdown_a, markdown_b)
     assert list(latest.path.parent.glob("brand.md.*.tmp")) == []
+
+
+def test_cross_process_save_is_optimistically_locked(tmp_path: Path) -> None:
+    store = SoulStore(runtime_root=tmp_path)
+    initial = store.get_brand_soul("brand-001")
+    markdown_a = _markdown_with_sections("Brand Soul Process A", required_sections("brand"))
+    markdown_b = _markdown_with_sections("Brand Soul Process B", required_sections("brand"))
+
+    ctx = multiprocessing.get_context("fork")
+    result_queue = ctx.Queue()
+    proc_a = ctx.Process(
+        target=_save_brand_in_process,
+        args=(str(tmp_path), markdown_a, initial.version_hash, result_queue),
+    )
+    proc_b = ctx.Process(
+        target=_save_brand_in_process,
+        args=(str(tmp_path), markdown_b, initial.version_hash, result_queue),
+    )
+
+    proc_a.start()
+    proc_b.start()
+    proc_a.join(timeout=5)
+    proc_b.join(timeout=5)
+
+    assert proc_a.exitcode == 0
+    assert proc_b.exitcode == 0
+
+    results = [result_queue.get(timeout=2), result_queue.get(timeout=2)]
+    statuses = [status for status, _ in results]
+    assert statuses.count("ok") == 1
+    assert statuses.count("conflict") == 1
+
+    for status, message in results:
+        if status == "conflict":
+            assert "version_hash mismatch" in message
+
+    latest = store.get_brand_soul("brand-001")
+    assert latest.markdown in (markdown_a, markdown_b)

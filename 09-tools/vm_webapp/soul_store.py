@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import threading
+import fcntl
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -113,9 +114,19 @@ def _lock_for_path(path: Path) -> Iterator[None]:
             lock = threading.Lock()
             _PATH_LOCKS[path_key] = lock
     lock.acquire()
+    lock_file = None
     try:
+        lock_path = path.with_name(f"{path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+")
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         yield
     finally:
+        if lock_file is not None:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            finally:
+                lock_file.close()
         lock.release()
 
 
