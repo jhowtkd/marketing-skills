@@ -252,3 +252,24 @@ CHANGELOG.md
 ## Previous Versions
 
 See git history for versions prior to v23.
+
+## [2.0.1] - 2026-03-03
+
+### Fixed
+- Register 14 missing API routers (previously 107+ endpoints returning 404)
+- Add missing router imports for: onboarding-experiments, predictive-resilience, copilot, safety-tuning, etc.
+- Add onboarding telemetry endpoints:
+  - POST /api/v2/onboarding/events
+  - GET /api/v2/onboarding/metrics  
+  - GET /api/v2/onboarding/friction-metrics
+- Fix Python 3.9 compatibility issues in api_copilot.py
+
+### Added
+- Onboarding experiments endpoints now accessible
+- Predictive resilience endpoints now accessible
+- Copilot suggestions endpoints now accessible
+- Safety tuning endpoints now accessible
+- Control loop endpoints now accessible
+- Recovery endpoints now accessible
+- Approval learning endpoints now accessible
+
