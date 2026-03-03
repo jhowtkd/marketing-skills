@@ -2,11 +2,13 @@ name: v2 API Testing Suite
 
 on:
   push:
-    branches: [feat/testing-suite]
+    branches: [feat/testing-suite, feature/ci-hardening-v2.1.2]
   pull_request:
     branches: [main]
     paths:
       - '09-tools/tests/api/v2/**'
+      - '09-tools/tests/test_vm_webapp_health_probes.py'
+      - '09-tools/tests/test_vm_webapp_api_v2*.py'
       - '09-tools/vm_webapp/api/v2/**'
       - '.github/workflows/testing-suite.yml'
 
@@ -14,7 +16,8 @@ env:
   PYTHONPATH: 09-tools
 
 jobs:
-  v2-api-tests:
+  # Suite: API Core - Testes de funcionalidade core da API v2
+  api-core-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,22 +45,83 @@ jobs:
           pytest tests/api/v2/test_workflow.py -v --tb=short
         env:
           PYTHONPATH: 09-tools
+
+  # Suite: API Contract - Testes de contrato e integridade da API
+  api-contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       
-      - name: Run v2 API with coverage
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+      
+      - name: Run health probes contract tests
         run: |
           cd 09-tools
-          pytest tests/api/v2/ -v --cov=vm_webapp --cov-report=xml --cov-report=term
+          pytest tests/test_vm_webapp_health_probes.py -v --tb=short
         env:
           PYTHONPATH: 09-tools
       
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v3
-        with:
-          files: 09-tools/coverage.xml
-          fail_ci_if_error: false
+      - name: Run API v2 contract tests
+        run: |
+          cd 09-tools
+          pytest tests/test_vm_webapp_api_v2.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 metrics tests
+        run: |
+          cd 09-tools
+          pytest tests/test_vm_webapp_api_v2_metrics.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 optimizer tests
+        run: |
+          cd 09-tools
+          pytest tests/test_vm_webapp_api_v2_optimizer.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Run API v2 domain extension tests
+        run: |
+          cd 09-tools
+          pytest tests/test_vm_webapp_api_v2_domain_extensions.py -v --tb=short
+        env:
+          PYTHONPATH: 09-tools
 
+  # Suite: Frontend Unit - Testes unitários do frontend (isolados)
+  frontend-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 09-tools/web/vm-ui/package-lock.json
+      
+      - name: Install frontend dependencies
+        working-directory: 09-tools/web/vm-ui
+        run: npm ci
+      
+      - name: Run frontend unit tests
+        working-directory: 09-tools/web/vm-ui
+        run: npm run test -- --run src/features/workspace/
+
+  # Suite: Integration - Testes de integração end-to-end
   integration-tests:
     runs-on: ubuntu-latest
+    needs: [api-core-tests, api-contract-tests]
     steps:
       - uses: actions/checkout@v4
       
@@ -78,6 +142,7 @@ jobs:
         env:
           PYTHONPATH: 09-tools
 
+  # Suite: Onboarding Persistence - Testes específicos de onboarding
   onboarding-persistence-tests:
     runs-on: ubuntu-latest
     steps:
@@ -99,3 +164,34 @@ jobs:
           pytest tests/test_onboarding_persistence.py -v --tb=short
         env:
           PYTHONPATH: 09-tools
+
+  # Coverage Report - Consolidado após todos os testes de API
+  coverage-report:
+    runs-on: ubuntu-latest
+    needs: [api-core-tests, api-contract-tests]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r 09-tools/requirements.txt
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi pytest-cov
+      
+      - name: Run v2 API with coverage
+        run: |
+          cd 09-tools
+          pytest tests/api/v2/ tests/test_vm_webapp_health_probes.py tests/test_vm_webapp_api_v2*.py -v --cov=vm_webapp --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: 09-tools
+      
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          files: 09-tools/coverage.xml
+          fail_ci_if_error: false

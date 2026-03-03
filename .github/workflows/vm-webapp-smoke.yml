@@ -14,7 +14,8 @@ on:
       - ".github/workflows/vm-webapp-smoke.yml"
 
 jobs:
-  tests:
+  # Suite: API Contract Tests - Tests for API contract integrity
+  api-contract-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +24,30 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - run: uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-      - run: uv run pytest 09-tools/tests/test_vm_webapp_event_driven_e2e.py -q
-      - run: uv run pytest 09-tools/tests/test_vm_webapp_platform_e2e.py -q
+      - name: Run API v2 contract tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
+      - name: Run health probes tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_health_probes.py -q
+      - name: Run metrics tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_api_v2_metrics.py -q
+      - name: Run optimizer tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_api_v2_optimizer.py -q
+
+  # Suite: E2E Tests - End-to-end integration tests
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: api-contract-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - name: Run event-driven E2E tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_event_driven_e2e.py -q
+      - name: Run platform E2E tests
+        run: uv run pytest 09-tools/tests/test_vm_webapp_platform_e2e.py -q
 
   editorial-gate:
     runs-on: ubuntu-latest
