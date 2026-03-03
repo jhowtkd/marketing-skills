@@ -30,6 +30,9 @@ class ProjectCreate(VMBaseModel):
     name: str
     brand_id: str
     description: Optional[str] = None
+    objective: str = ""
+    channels: list[str] = []
+    due_date: Optional[str] = None
 
 
 class ProjectUpdate(VMBaseModel):
