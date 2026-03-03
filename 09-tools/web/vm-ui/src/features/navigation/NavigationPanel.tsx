@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useCallback, type FormEvent } from "react";
 
 import { BrandApi, ProjectApi, ThreadApi } from "../../api/typed-client";
 import type { Brand, Project, Thread } from "../../types/api";
+import { LoadMoreButton } from "../../components/ui/InfiniteScrollList";
 
 type MaybeId = string | null;
 
@@ -29,6 +30,26 @@ export default function NavigationPanel({
   const [brands, setBrands] = useState<Brand[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
+
+  // Lazy loading / Infinite scroll state
+  const [visibleBrandsCount, setVisibleBrandsCount] = useState(10);
+  const [visibleProjectsCount, setVisibleProjectsCount] = useState(10);
+  const [visibleThreadsCount, setVisibleThreadsCount] = useState(10);
+  const BRANDS_PAGE_SIZE = 10;
+  const PROJECTS_PAGE_SIZE = 10;
+  const THREADS_PAGE_SIZE = 10;
+
+  const loadMoreBrands = useCallback(() => {
+    setVisibleBrandsCount((prev) => prev + BRANDS_PAGE_SIZE);
+  }, []);
+
+  const loadMoreProjects = useCallback(() => {
+    setVisibleProjectsCount((prev) => prev + PROJECTS_PAGE_SIZE);
+  }, []);
+
+  const loadMoreThreads = useCallback(() => {
+    setVisibleThreadsCount((prev) => prev + THREADS_PAGE_SIZE);
+  }, []);
 
   async function loadBrands(): Promise<void> {
     const response = await BrandApi.listBrands();
@@ -297,22 +318,30 @@ export default function NavigationPanel({
             <p className="mt-2 text-base font-semibold text-slate-900">{selectedBrand?.name ?? "Nenhum cliente selecionado"}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {brands.length ? (
-                brands.map((brand) => (
-                  <button
-                    key={brand.brand_id}
-                    type="button"
-                    onClick={() => onSelectBrand(brand.brand_id)}
-                    className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                      brand.brand_id === activeBrandId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
-                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
-                    ].join(" ")}
-                  >
-                    {brand.name}
-                    {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{brand.brand_id}</span> : null}
-                  </button>
-                ))
+                <>
+                  {brands.slice(0, visibleBrandsCount).map((brand) => (
+                    <button
+                      key={brand.brand_id}
+                      type="button"
+                      onClick={() => onSelectBrand(brand.brand_id)}
+                      className={[
+                        "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
+                        brand.brand_id === activeBrandId
+                          ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                          : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
+                      ].join(" ")}
+                    >
+                      {brand.name}
+                      {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{brand.brand_id}</span> : null}
+                    </button>
+                  ))}
+                  <LoadMoreButton
+                    onLoadMore={loadMoreBrands}
+                    hasMore={brands.length > visibleBrandsCount}
+                    isLoading={false}
+                    className="mt-2"
+                  />
+                </>
               ) : (
                 <p className="text-xs text-slate-500">Sem clientes cadastrados.</p>
               )}
@@ -326,22 +355,30 @@ export default function NavigationPanel({
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {projects.length ? (
-                projects.map((project) => (
-                  <button
-                    key={project.project_id}
-                    type="button"
-                    onClick={() => onSelectProject(project.project_id)}
-                    className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                      project.project_id === activeProjectId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
-                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
-                    ].join(" ")}
-                  >
-                    {project.name}
-                    {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{project.project_id}</span> : null}
-                  </button>
-                ))
+                <>
+                  {projects.slice(0, visibleProjectsCount).map((project) => (
+                    <button
+                      key={project.project_id}
+                      type="button"
+                      onClick={() => onSelectProject(project.project_id)}
+                      className={[
+                        "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
+                        project.project_id === activeProjectId
+                          ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                          : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
+                      ].join(" ")}
+                    >
+                      {project.name}
+                      {devMode ? <span className="ml-2 text-[11px] text-inherit/80">{project.project_id}</span> : null}
+                    </button>
+                  ))}
+                  <LoadMoreButton
+                    onLoadMore={loadMoreProjects}
+                    hasMore={projects.length > visibleProjectsCount}
+                    isLoading={false}
+                    className="mt-2"
+                  />
+                </>
               ) : (
                 <p className="text-xs text-slate-500">
                   {activeBrandId ? "Sem campanhas para este cliente." : "Selecione um cliente para listar campanhas."}
@@ -357,22 +394,30 @@ export default function NavigationPanel({
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {threads.length ? (
-                threads.map((thread) => (
-                  <button
-                    key={thread.thread_id}
-                    type="button"
-                    onClick={() => onSelectThread(thread.thread_id)}
-                    className={[
-                      "rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
-                      thread.thread_id === activeThreadId
-                        ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
-                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
-                    ].join(" ")}
-                  >
-                    <span className="block">{thread.title}</span>
-                    {devMode ? <span className="mt-1 block text-[11px] text-inherit/80">{thread.thread_id}</span> : null}
-                  </button>
-                ))
+                <>
+                  {threads.slice(0, visibleThreadsCount).map((thread) => (
+                    <button
+                      key={thread.thread_id}
+                      type="button"
+                      onClick={() => onSelectThread(thread.thread_id)}
+                      className={[
+                        "rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
+                        thread.thread_id === activeThreadId
+                          ? "border-[var(--vm-primary)] bg-[var(--vm-primary)] text-white shadow-sm ring-1 ring-[color:var(--vm-primary)]/15"
+                          : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300",
+                      ].join(" ")}
+                    >
+                      <span className="block">{thread.title}</span>
+                      {devMode ? <span className="mt-1 block text-[11px] text-inherit/80">{thread.thread_id}</span> : null}
+                    </button>
+                  ))}
+                  <LoadMoreButton
+                    onLoadMore={loadMoreThreads}
+                    hasMore={threads.length > visibleThreadsCount}
+                    isLoading={false}
+                    className="mt-2"
+                  />
+                </>
               ) : (
                 <p className="text-xs text-slate-500">
                   {activeProjectId ? "Sem jobs para esta campanha." : "Selecione uma campanha para listar jobs."}
