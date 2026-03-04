@@ -2,6 +2,16 @@
 
 All notable changes to the Vibe Marketing platform.
 
+## [Unreleased]
+
+### Fixed
+- API v2 core compatibility for `brands/projects/threads` (legacy payloads, idempotency handling, stable create responses).
+- Copilot and observability alignment for thread-scoped routes and runtime metric exposure in `/api/v2/metrics`.
+- Structured request logging compatibility with test capture, including `request_id`, `correlation_id`, and `path` in message output.
+
+### Tests
+- Synced API/fixture/integration tests with current contracts and verified full suite stability (`1462 passed` in `09-tools/tests`).
+
 ## [v35.0.0] - Cross-Session Continuity Autopilot
 
 ### Added
@@ -324,4 +334,3 @@ See git history for versions prior to v23.
 - Backend routers: 17 (all registered)
 - TypeScript client: 21,148 lines
 - Schemas: 4 files, 30+ classes
-

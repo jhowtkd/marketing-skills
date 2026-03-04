@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { requestDeepEvaluationForRun } from "../workspace/useWorkspace";
+import { QualityApi } from "../../api/typed-client";
 
 describe("requestDeepEvaluationForRun", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("requests deep evaluation on the correct endpoint", async () => {
-    const post = vi.fn().mockResolvedValue({
+    const evaluateSpy = vi.spyOn(QualityApi, "evaluate").mockResolvedValue({
       score: {
         overall: 91,
         criteria: {
@@ -22,25 +27,19 @@ describe("requestDeepEvaluationForRun", () => {
     const result = await requestDeepEvaluationForRun({
       runId: "run-123",
       artifactText: "# Plano\n## CTA\nComprar agora",
-      post,
     });
 
-    expect(post).toHaveBeenCalledWith(
-      "/api/v2/workflow-runs/run-123/quality-evaluation",
-      { depth: "deep", rubric_version: "v1" },
-      "quality"
-    );
+    expect(evaluateSpy).toHaveBeenCalledWith("run-123");
     expect(result.status).toBe("ready");
     expect(result.score?.source).toBe("deep");
   });
 
   it("falls back to local heuristic score when deep evaluation fails", async () => {
-    const post = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.spyOn(QualityApi, "evaluate").mockRejectedValue(new Error("network down"));
 
     const result = await requestDeepEvaluationForRun({
       runId: "run-456",
       artifactText: "texto curto",
-      post,
     });
 
     expect(result.status).toBe("error");
