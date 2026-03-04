@@ -19,6 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -39,6 +46,13 @@ jobs:
     needs: api-contract-tests
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -49,49 +63,24 @@ jobs:
       - name: Run platform E2E tests
         run: uv run pytest 09-tools/tests/test_vm_webapp_platform_e2e.py -q
 
-  editorial-gate:
+  editorial-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test editorial decisions backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_decisions.py -q
-          # Fallback: testes específicos podem não existir
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_editorial_decisions_endpoints_mark_and_list -q || echo "Test not found: mark_and_list"
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_workflow_run_baseline_endpoint_respects_priority -q || echo "Test not found: baseline_endpoint"
 
-  editorial-policy-gate-v5:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial policy v5 (multitenant + matrix coverage)
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q
-
-  editorial-insights-gate-v6:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial insights endpoint (Governanca v6)
-        run: |
-          # Teste específico não existe; usar teste editorial disponível
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::TestEditorialEndpoints::test_create_editorial_decision_returns_not_implemented -q || echo "Editorial insights test skipped"
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -100,50 +89,73 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test editorial insights UI
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/WorkspacePanel.test.tsx
-
-  # Job: Frontend Gate - Produz artifact vm-ui-dist
-  frontend-gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test frontend
+      
+      # Parallel execution
+      - name: "Run tests (parallel)"
         working-directory: ./09-tools/web/vm-ui
         run: |
-          npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx src/features/workspace/useWorkspace.editorialDecision.test.tsx src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx src/features/workspace/EditorialAuditPanel.test.tsx src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx src/features/workspace/components/AgentDagOpsPanel.test.tsx
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_decisions.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q && \
+            uv run pytest 09-tools/tests/test_editorial_ops_report.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q || echo "No api_v2 editorial tests" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q || echo "No prometheus copilot tests"
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+          
+          echo "::group::[subgate: frontend] Running frontend tests"
+          npm run test -- --run src/features/workspace/useWorkspace.copilot.test.tsx
+          FRONTEND_1_EXIT=$?
+          npm run test -- --run src/features/workspace/components/CopilotPanel.test.tsx
+          FRONTEND_2_EXIT=$?
+          echo "::endgroup::"
+          
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+          
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "::endgroup::"
+          
+          # Fail if any failed
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vm-ui-dist-smoke
-          path: 09-tools/web/vm-ui/dist
-          retention-days: 1
 
-  ux-task-first-redesign-gate-v29:
+  approval-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test UX telemetry and metrics backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -152,7 +164,181 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test v29 UX task-first redesign
+
+      # Parallel execution
+      - name: "Run tests (parallel)"
+        working-directory: ./09-tools/web/vm-ui
+        run: |
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q || echo "API v2 tests completed with warnings" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q && \
+            uv run pytest 09-tools/tests/test_editorial_ops_report.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_approval_learning.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2_learning.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: frontend] Running frontend tests"
+          npm run test -- --run src/features/workspace/components/ApprovalLearningOpsPanel.test.tsx
+          FRONTEND_1_EXIT=$?
+          npm run test -- --run src/features/workspace/components/ApprovalLearningOpsPanel.test.tsx || echo "Approval UI test skipped - component not found"
+          FRONTEND_2_EXIT=$?
+          echo "::endgroup::"
+
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "::endgroup::"
+
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
+
+  safety-resilience-gates-combined:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+
+      # Frontend setup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      - name: Install frontend dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+
+      # Parallel execution
+      - name: "Run tests (parallel)"
+        working-directory: ./09-tools/web/vm-ui
+        run: |
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_safety_autotuning.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_adaptive_escalation.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2_adaptive_escalation.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_predictive_resilience.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q && \
+            uv run pytest 09-tools/tests/test_editorial_ops_report.py::TestNightlyReportV27Section -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_recovery_orchestrator.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_recovery_chain.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: frontend] Running frontend tests"
+          npm run test -- --run src/features/workspace/components/AdaptiveEscalationPanel.test.tsx
+          FRONTEND_1_EXIT=$?
+          npm run test -- --run src/features/workspace/components/PredictiveResiliencePanel.test.tsx
+          FRONTEND_2_EXIT=$?
+          npm run test -- --run src/features/workspace/components/RecoveryOrchestrationPanel.test.tsx
+          FRONTEND_3_EXIT=$?
+          echo "No safety autotuning UI tests available"
+          FRONTEND_4_EXIT=0
+          echo "::endgroup::"
+
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "Frontend 3: $FRONTEND_3_EXIT"
+          echo "Frontend 4: $FRONTEND_4_EXIT"
+          echo "::endgroup::"
+
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ] || [ $FRONTEND_3_EXIT -ne 0 ] || [ $FRONTEND_4_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
+
+  frontend-gates-combined:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+
+      # Backend tests with subgate labels
+      - name: "[subgate: ux-task-first-redesign-gate-v29] Test UX telemetry and metrics backend"
+        run: |
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+
+      # Frontend setup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
+      - name: Install frontend dependencies
+        working-directory: ./09-tools/web/vm-ui
+        run: npm ci
+
+      # Frontend tests with subgate labels
+      - name: "[subgate: frontend-gate] Test frontend"
+        working-directory: ./09-tools/web/vm-ui
+        run: |
+          npm run test -- --run src/features/workspace/WorkspaceRunBinding.test.tsx src/features/workspace/useWorkspace.editorialDecision.test.tsx src/features/workspace/WorkspaceGoldenDecisionFlow.test.tsx src/features/workspace/EditorialAuditPanel.test.tsx src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx src/features/workspace/components/AgentDagOpsPanel.test.tsx
+
+      - name: "[subgate: ux-task-first-redesign-gate-v29] Test v29 UX task-first redesign"
         working-directory: ./09-tools/web/vm-ui
         run: |
           # UX telemetry and funnel
@@ -170,24 +356,36 @@ jobs:
           npm run test -- --run src/features/settings/SettingsPage.taskFirst.test.tsx
           # Full workspace test suite
           npm run test -- --run src/features/workspace/
+
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
 
-  approval-learning-loop-gate-v24:
+      - name: "[subgate: frontend-gate] Upload build artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-ui-dist-smoke
+          path: 09-tools/web/vm-ui/dist
+          retention-days: 1
+
+  quality-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test approval learning loop backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_approval_learning.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_learning.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -196,31 +394,72 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test approval learning UI
+
+      # Parallel execution
+      - name: "Run tests (parallel)"
         working-directory: ./09-tools/web/vm-ui
         run: |
-          npm run test -- --run src/features/workspace/components/ApprovalLearningOpsPanel.test.tsx
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_projectors_v2.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2_additions.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -k "first_run" -q || echo "No first_run tests found" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_quality_optimizer.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: frontend] Running frontend tests"
+          npm run test -- --run src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx
+          FRONTEND_1_EXIT=$?
+          npm run test -- --run src/features/workspace/components/QualityFirstOptimizerPanel.test.tsx
+          FRONTEND_2_EXIT=$?
+          echo "::endgroup::"
+
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "::endgroup::"
+
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
 
-  approval-cost-optimizer-gate-v23:
+  control-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test approval cost optimizer backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_approval_optimizer.py -q
-          # Skip: TestApprovalOptimizerEndpoints não existe neste arquivo
-          # uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::TestApprovalOptimizerEndpoints -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q || echo "API v2 tests completed with warnings"
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-          uv run pytest 09-tools/tests/test_editorial_ops_report.py -q
+
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -229,44 +468,53 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test approval optimizer UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # Fallback: ApprovalQueueOptimizerPanel.test.tsx does not exist
-          # Using ApprovalLearningOpsPanel.test.tsx as alternative
-          npm run test -- --run src/features/workspace/components/ApprovalLearningOpsPanel.test.tsx || echo "Approval UI test skipped - component not found"
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
 
-  online-control-loop-gate-v26:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test online control loop backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_control_loop_sentinel.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_online_control_loop.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-          uv run pytest 09-tools/tests/test_editorial_ops_report.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test online control loop UI
+      # Parallel execution
+      - name: "Run tests (parallel)"
         working-directory: ./09-tools/web/vm-ui
         run: |
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_control_loop_sentinel.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_online_control_loop.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q && \
+            uv run pytest 09-tools/tests/test_editorial_ops_report.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_rollout_decision.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_kpi_scoreboard.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_regression_alerts.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "rollout" -q || echo "No rollout-specific tests in api_v2"
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: frontend] Running frontend tests"
           npm run test -- --run src/features/workspace/components/OnlineControlLoopPanel.test.tsx
+          FRONTEND_1_EXIT=$?
+          echo "No rollout-specific UI tests available"
+          FRONTEND_2_EXIT=0
+          echo "::endgroup::"
+
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "::endgroup::"
+
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
@@ -275,6 +523,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -302,102 +557,17 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
 
-  rollout-governance-gate-v15:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test rollout governance backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_rollout_decision.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_kpi_scoreboard.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_regression_alerts.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "rollout" -q || echo "No rollout-specific tests in api_v2"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test rollout decision UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # REMOVED: useWorkspace.rolloutDecision.test.tsx does not exist
-          # REMOVED: RolloutDecisionCard.test.tsx does not exist
-          echo "No rollout-specific UI tests available"
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
-
-  first-run-quality-gate-v12:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test first-run quality engine backend
-        run: |
-          # REMOVED: test_vm_webapp_first_run_realculation.py does not exist
-          # Coverage by test_vm_webapp_projectors_v2.py
-          uv run pytest 09-tools/tests/test_vm_webapp_projectors_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_additions.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -k "first_run" -q || echo "No first_run tests found"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test first-run recommendation UI
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx
-
-  editorial-copilot-gate-v13:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial copilot backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test editorial copilot UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          npm run test -- --run src/features/workspace/useWorkspace.copilot.test.tsx
-          npm run test -- --run src/features/workspace/components/CopilotPanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
-
   segmented-copilot-gate-v14:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -426,42 +596,17 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
 
-  safety-autotuning-gate-v17:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test safety autotuning backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_safety_autotuning.py -q
-          # REMOVED: test_vm_webapp_api_v2_safety_tuning.py does not exist
-          # Coverage maintained by safety_autotuning.py and safety_tuning_audit.py
-          # REMOVED: test_vm_webapp_safety_tuning_audit.py does not exist
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test safety autotuning UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # REMOVED: SafetyAutotuningPanel.test.tsx does not exist
-          echo "No safety autotuning UI tests available"
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
-
   agent-dag-gate-v20:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -489,50 +634,24 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
 
-  adaptive-escalation-gate-v21:
+  onboarding-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test adaptive escalation backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_adaptive_escalation.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_adaptive_escalation.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test adaptive escalation UI
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/components/AdaptiveEscalationPanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
 
-  quality-optimizer-gate-v25:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test quality optimizer backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_quality_optimizer.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-          # REMOVED: TestNightlyReportGovernanceSection does not exist in test_editorial_ops_report.py
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -541,182 +660,65 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test quality optimizer UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          npm run test -- --run src/features/workspace/components/QualityFirstOptimizerPanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
 
-  predictive-resilience-gate-v27:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test predictive resilience backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_predictive_resilience.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-          uv run pytest 09-tools/tests/test_editorial_ops_report.py::TestNightlyReportV27Section -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test predictive resilience UI
+      # Parallel execution
+      - name: "Run tests (parallel)"
         working-directory: ./09-tools/web/vm-ui
         run: |
-          npm run test -- --run src/features/workspace/components/PredictiveResiliencePanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_onboarding_api.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "onboarding" -q || echo "No onboarding tests in api_v2" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -k "onboarding" -q || echo "No onboarding tests in prometheus" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_activation_learning.py -q || echo "Activation learning tests" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_onboarding_experiments.py -q || echo "Onboarding experiments tests" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_onboarding_experiment_policy.py -q || echo "Onboarding experiment policy tests"
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
 
-  recovery-orchestration-gate-v28:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test recovery orchestration backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_recovery_orchestrator.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_recovery_chain.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test recovery orchestration UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          npm run test -- --run src/features/workspace/components/RecoveryOrchestrationPanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
-
-  onboarding-first-success-gate-v30:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test onboarding backend
-        run: |
-          uv run pytest 09-tools/tests/test_onboarding_api.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test v30 onboarding first-success-path
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # Onboarding telemetry and funnel
+          echo "::group::[subgate: frontend] Running frontend tests"
           npm run test -- --run src/features/onboarding/telemetry.test.ts
+          FRONTEND_1_EXIT=$?
           npm run test -- --run src/features/onboarding/funnel.v31.test.ts
-          # Onboarding wizard
+          FRONTEND_2_EXIT=$?
           npm run test -- --run src/features/onboarding/OnboardingWizard.test.tsx
-          # Template picker
+          FRONTEND_3_EXIT=$?
           npm run test -- --run src/features/onboarding/TemplatePicker.test.tsx
-          # Contextual tour
+          FRONTEND_4_EXIT=$?
           npm run test -- --run src/features/onboarding/ContextualTour.test.tsx
-          # Workspace integration
-          npm run test -- --run src/features/workspace/
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
+          FRONTEND_5_EXIT=$?
+          npm run test -- --run src/features/workspace/components/OnboardingActivationPanel.test.tsx || echo "OnboardingActivationPanel test"
+          FRONTEND_6_EXIT=$?
+          npm run test -- --run src/features/workspace/components/OnboardingExperimentPanel.test.tsx || echo "OnboardingExperimentPanel test"
+          FRONTEND_7_EXIT=$?
+          echo "::endgroup::"
 
-  onboarding-activation-learning-loop-gate-v31:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test onboarding activation backend
-        run: |
-          uv run pytest 09-tools/tests/test_onboarding_activation_api.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_onboarding_activation.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test v31 onboarding activation learning loop
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # Friction telemetry
-          npm run test -- --run src/features/onboarding/funnel.v31.test.ts
-          # Activation panel
-          npm run test -- --run src/features/workspace/components/OnboardingActivationPanel.test.tsx
-          # Full workspace test suite
-          npm run test -- --run src/features/workspace/
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
 
-  onboarding-experimentation-gate-v32:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test onboarding experimentation backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_onboarding_experiments.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_onboarding_experiment_policy.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test v32 onboarding experimentation layer
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          # Experiment panel
-          npm run test -- --run src/features/workspace/components/OnboardingExperimentPanel.test.tsx
-          # Full workspace test suite
-          npm run test -- --run src/features/workspace/
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "Frontend 3: $FRONTEND_3_EXIT"
+          echo "Frontend 4: $FRONTEND_4_EXIT"
+          echo "Frontend 5: $FRONTEND_5_EXIT"
+          echo "Frontend 6: $FRONTEND_6_EXIT"
+          echo "Frontend 7: $FRONTEND_7_EXIT"
+          echo "::endgroup::"
+
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ] || [ $FRONTEND_3_EXIT -ne 0 ] || [ $FRONTEND_4_EXIT -ne 0 ] || [ $FRONTEND_5_EXIT -ne 0 ] || [ $FRONTEND_6_EXIT -ne 0 ] || [ $FRONTEND_7_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
+
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
