@@ -53,6 +53,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -69,6 +76,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -83,6 +97,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache UV dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-py-3.12-uv-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
