@@ -144,3 +144,64 @@ git add .github/workflows/vm-editorial-monitoring.yml .github/workflows/vm-edito
 git commit -m "ci(legacy): harden editorial monitoring and ops-nightly failure handling"
 git push origin <branch>
 ```
+
+---
+
+## ✅ FINALIZADO - Legacy Workflows Hardening
+
+### Correção de Sintaxe Crítica
+- **Arquivo:** `09-tools/scripts/editorial_ops_report.py`
+- **Problema:** Docstring com aspas extras `"""...""""` na linha 753
+- **Correção:** `"""Generate SKIPPED notice when appropriate."""`
+- **Commit:** `e64a02cd`
+
+### Validação Final (SHA e64a02cd)
+
+#### Comandos Executados
+```bash
+# 1. Correção de sintaxe
+sed -i '' 's/"""Generate SKIPPED notice when appropriate.""""/"""Generate SKIPPED notice when appropriate."""/' 09-tools/scripts/editorial_ops_report.py
+
+# 2. Validação local
+python3 -m py_compile 09-tools/scripts/editorial_ops_report.py              # ✅ OK
+PYTHONPATH=09-tools uv run pytest -q 09-tools/tests/test_editorial_ops_report.py  # ✅ 39 passed
+python3 -m py_compile scripts/check_editorial_thresholds.py                  # ✅ OK
+
+# 3. Commit
+git add 09-tools/scripts/editorial_ops_report.py
+git commit -m "fix(legacy): fix editorial ops report syntax blocking nightly workflow"
+
+# 4. Disparar workflows no SHA atual
+git push origin main
+gh workflow run vm-editorial-monitoring.yml --ref main    # Run ID: 22679447435
+gh workflow run vm-editorial-ops-nightly.yml --ref main   # Run ID: 22679448569
+
+# 5. Acompanhar
+gh run watch 22679447435 --exit-status  # ✅ success
+gh run watch 22679448569 --exit-status  # ✅ success
+```
+
+### Workflow Dispatch - Resultado Final
+
+| Workflow | Run ID | headSha | Status | Conclusão |
+|----------|--------|---------|--------|-----------|
+| vm-editorial-monitoring | 22679447435 | e64a02cd... | completed | **✅ success** |
+| vm-editorial-ops-nightly | 22679448569 | e64a02cd... | completed | **✅ success** |
+
+### Commits na Main
+
+```
+e64a02cd fix(legacy): fix editorial ops report syntax blocking nightly workflow
+ce22aee3 ci(legacy): add remaining workflow fixes (ops-nightly env, todo docs)
+f4b89fea ci(legacy): harden editorial monitoring and ops-nightly failure handling
+```
+
+### Resumo das Mudanças
+
+| Arquivo | Linhas | Descrição |
+|---------|--------|-----------|
+| vm-editorial-monitoring.yml | +60 | Endpoint resolution, accessibility check, skip when unavailable |
+| vm-editorial-ops-nightly.yml | +40 | Env preservation, port 8766, readiness check, robust teardown |
+| editorial_ops_report.py | 1 | Fix docstring typo |
+
+**Status:** ✅ **FRENTES ENCERRADAS**
