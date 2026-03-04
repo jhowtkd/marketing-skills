@@ -15,6 +15,8 @@ from vm_webapp.onboarding_prefill import (
     generate_prefill_payload,
     get_prefill_for_user,
     PrefillSource,
+    infer_prefill_data,
+    merge_prefill_with_explicit,
 )
 
 # v38: Import fast lane functionality
@@ -459,6 +461,62 @@ async def get_prefill_for_user_endpoint(
         confidence=payload["confidence"],
         fields=payload["fields"],
         context=payload["context"],
+    )
+
+
+# v38: API v2 Prefill endpoint (specification compliant)
+class PrefillV2Request(BaseModel):
+    """Request body for /api/v2/onboarding/prefill"""
+    utm_campaign: Optional[str] = None
+    referrer: Optional[str] = None
+    email: Optional[str] = None
+    explicit_fields: List[str] = []
+
+
+class PrefillV2Response(BaseModel):
+    """Response for /api/v2/onboarding/prefill"""
+    prefill_data: Dict[str, Any]
+    confidence: str
+    source: str
+
+
+@router.post("/api/v2/onboarding/prefill")
+async def get_prefill_v2(
+    request_data: PrefillV2Request,
+    request: Request = None
+) -> PrefillV2Response:
+    """Get smart prefill suggestions based on user context (v2 API).
+    
+    v38: Friction Killer #1 - reduces onboarding setup time by inferring
+    user intent from UTM params, referrer, email domain, or segment.
+    
+    Nunca sobrescreve input explícito do usuário.
+    """
+    # Infer prefill data from available signals
+    inferred = infer_prefill_data(
+        source="onboarding",
+        utm_campaign=request_data.utm_campaign,
+        referrer=request_data.referrer,
+        email=request_data.email,
+    )
+    
+    # Filter out fields that are explicitly provided by user
+    prefill_data = {
+        "template_type": inferred.get("template_type"),
+        "channel": inferred.get("channel"),
+        "segment": inferred.get("segment"),
+    }
+    
+    # Remove None values and fields that user explicitly filled
+    prefill_data = {
+        k: v for k, v in prefill_data.items()
+        if v is not None and k not in request_data.explicit_fields
+    }
+    
+    return PrefillV2Response(
+        prefill_data=prefill_data,
+        confidence=inferred["confidence"],
+        source=inferred["source"],
     )
 
 

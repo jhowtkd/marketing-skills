@@ -349,3 +349,141 @@ def get_prefill_for_user(user_id: str, session=None) -> Dict[str, Any]:
             "has_segment": False,
         },
     }
+
+
+# =============================================================================
+# v38 SPECIFICATION COMPLIANT API
+# =============================================================================
+
+def infer_prefill_data(
+    source: str,
+    utm_campaign: str | None = None,
+    referrer: str | None = None,
+    email: str | None = None,
+) -> dict:
+    """Infer prefill data from available user signals.
+    
+    v38: Friction Killer #1 - Smart Prefill
+    Reduces onboarding setup time by inferring user intent from UTM params,
+    referrer, and email domain.
+    
+    Args:
+        source: Identifier for the inference source/context
+        utm_campaign: UTM campaign parameter (optional)
+        referrer: Referrer URL (optional)
+        email: User email address (optional)
+        
+    Returns:
+        Dictionary with inferred prefill data including:
+        - template_type: Inferred template type
+        - channel: Inferred marketing channel
+        - segment: Inferred user segment
+        - confidence: "high", "medium", or "low"
+        - source: Which signal was used for inference
+        
+    Inference Rules:
+        - UTM campaign "blog" → template_type: "blog_post"
+        - UTM campaign "landing" → template_type: "landing_page"
+        - UTM campaign "social" → template_type: "social_media"
+        - UTM campaign "email" → template_type: "email_marketing"
+        - Referrer contains "google" → channel: "paid_search"
+        - Referrer contains "facebook" or "meta" → channel: "social_ads"
+        - Email domain contains "@enterprise.com" or "@corp." → segment: "enterprise"
+        - Email domain contains "@gmail.com" or "@outlook.com" → segment: "smb"
+    """
+    result = {
+        "template_type": None,
+        "channel": None,
+        "segment": None,
+        "confidence": "low",
+        "source": "default",
+    }
+    
+    signals_used = []
+    
+    # UTM Campaign rules (highest priority for template_type)
+    if utm_campaign:
+        campaign_lower = utm_campaign.lower()
+        if "blog" in campaign_lower:
+            result["template_type"] = "blog_post"
+            result["confidence"] = "high"
+            result["source"] = "utm_campaign"
+            signals_used.append("utm_campaign")
+        elif "landing" in campaign_lower:
+            result["template_type"] = "landing_page"
+            result["confidence"] = "high"
+            result["source"] = "utm_campaign"
+            signals_used.append("utm_campaign")
+        elif "social" in campaign_lower:
+            result["template_type"] = "social_media"
+            result["confidence"] = "high"
+            result["source"] = "utm_campaign"
+            signals_used.append("utm_campaign")
+        elif "email" in campaign_lower:
+            result["template_type"] = "email_marketing"
+            result["confidence"] = "high"
+            result["source"] = "utm_campaign"
+            signals_used.append("utm_campaign")
+    
+    # Referrer rules for channel
+    if referrer:
+        referrer_lower = referrer.lower()
+        if "google" in referrer_lower:
+            result["channel"] = "paid_search"
+            if result["source"] == "default":
+                result["source"] = "referrer"
+                result["confidence"] = "medium"
+            signals_used.append("referrer")
+        elif "facebook" in referrer_lower or "meta" in referrer_lower:
+            result["channel"] = "social_ads"
+            if result["source"] == "default":
+                result["source"] = "referrer"
+                result["confidence"] = "medium"
+            signals_used.append("referrer")
+    
+    # Email domain rules for segment
+    if email:
+        email_lower = email.lower()
+        if "@enterprise.com" in email_lower or "@corp." in email_lower:
+            result["segment"] = "enterprise"
+            if result["source"] == "default":
+                result["source"] = "email_domain"
+                result["confidence"] = "medium"
+            signals_used.append("email_domain")
+        elif "@gmail.com" in email_lower or "@outlook.com" in email_lower:
+            result["segment"] = "smb"
+            if result["source"] == "default":
+                result["source"] = "email_domain"
+                result["confidence"] = "medium"
+            signals_used.append("email_domain")
+    
+    # Update source to reflect all signals used
+    if len(signals_used) > 1:
+        result["source"] = "+".join(signals_used)
+    
+    return result
+
+
+def merge_prefill_with_explicit(
+    prefill_data: dict,
+    explicit_fields: dict,
+) -> dict:
+    """Merge prefill data with explicit user input.
+    
+    NUNCA sobrescreve input explícito do usuário.
+    Explicit values always take precedence over inferred values.
+    
+    Args:
+        prefill_data: Inferred prefill data from infer_prefill_data()
+        explicit_fields: User-provided explicit field values
+        
+    Returns:
+        Merged dictionary with explicit values preserved
+    """
+    merged = prefill_data.copy()
+    
+    for key, value in explicit_fields.items():
+        if value is not None and value != "":
+            merged[key] = value
+    
+    return merged
