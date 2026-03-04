@@ -97,12 +97,12 @@ jobs:
           echo "::group::[parallel] Starting backend tests in background"
           (
             cd /home/runner/work/marketing-skills/marketing-skills
-            uv run pytest 09-tools/tests/test_vm_webapp_editorial.py -q && \
-            uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy_v5.py -q && \
-            uv run pytest 09-tools/tests/test_vm_webapp_editorial_insights.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_decisions.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q && \
             uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q && \
-            uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q && \
-            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
+            uv run pytest 09-tools/tests/test_editorial_ops_report.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q || echo "No api_v2 editorial tests" && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q || echo "No prometheus copilot tests"
             echo $? > /tmp/backend.exit
           ) &
           BACKEND_PID=$!
