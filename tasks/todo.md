@@ -584,3 +584,40 @@ gh run list --workflow v37-ci-gate.yml --limit 20 --json databaseId,createdAt,st
 gh run view <run_id> --log-failed
 ```
 
+
+---
+
+## ✅ PR #47 - Gate Final e Merge (2026-03-04)
+
+### Estado da PR
+- **URL**: https://github.com/jhowtkd/marketing-skills/pull/47
+- **Branch**: codex/v38-ttfv-incremental → main
+- **Estado**: MERGED ✅
+- **Hash final em main**: `ed6d43ee`
+
+### Checks Classificados
+
+| Check | Workflow | Status | Classificação |
+|-------|----------|--------|---------------|
+| backend-onboarding-tests | v38 Onboarding TTFV Gate | SUCCESS | ✅ VERIFIED_OK |
+| frontend-onboarding-tests | v38 Onboarding TTFV Gate | SUCCESS | ✅ VERIFIED_OK |
+| frontend-build | v38 Onboarding TTFV Gate | SUCCESS | ✅ VERIFIED_OK |
+| yaml-validation | v38 Onboarding TTFV Gate | SUCCESS | ✅ VERIFIED_OK |
+| integration-gate | v38 Onboarding TTFV Gate | SUCCESS | ✅ VERIFIED_OK |
+| api-contract-tests | vm-webapp-smoke | SUCCESS | ✅ VERIFIED_OK |
+| onboarding-gates-combined | vm-webapp-smoke | SUCCESS | ✅ VERIFIED_OK |
+| e2e-tests | vm-webapp-smoke | SUCCESS | ✅ VERIFIED_OK |
+| lint-changed | Lint Scoped | SUCCESS | ✅ VERIFIED_OK |
+| unit-tests (v23) | v23 Approval Optimizer | FAILURE | ⚠️ PRE_EXISTING |
+| unit-tests (v33-v36) | v33-v36 CI Gates | FAILURE | ⚠️ PRE_EXISTING |
+| lint (v33-v36) | v33-v36 CI Gates | FAILURE | ⚠️ PRE_EXISTING |
+
+### Decisão Final
+**MERGED** - Todos os checks relevantes passaram. Nenhuma regressão nova detectada.
+
+### Evidência
+```
+gh pr merge 47 --squash --delete-branch
+# ✅ Merge realizado com sucesso
+# Hash final: ed6d43ee
+```
