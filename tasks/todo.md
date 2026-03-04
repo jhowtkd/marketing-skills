@@ -621,3 +621,75 @@ gh pr merge 47 --squash --delete-branch
 # ✅ Merge realizado com sucesso
 # Hash final: ed6d43ee
 ```
+
+---
+
+## ✅ v39 Sprint - Onboarding Fast Lane (2026-03-04)
+
+### Hipótese Escolhida
+Fast Lane reduz TTFV ao oferecer caminho encurtado para usuários de baixo risco
+
+### Regra de Recomendação
+**Elegibilidade:**
+- Risk score ≤ 40
+- Checklist mínimo completo (terms, email, privacy)
+- Enterprise sempre elegível
+
+**Steps puláveis:**
+- advanced_settings (~3 min)
+- integrations (~5 min)
+- customization (~4 min)
+
+**Tempo economizado:** até 12 minutos
+
+### Arquivos Alterados
+Backend:
+- `09-tools/vm_webapp/onboarding_fast_lane.py` (+45 linhas: telemetry + recommendation)
+- `09-tools/vm_webapp/api_onboarding.py` (+35 linhas: endpoints /recommend e /event)
+- `09-tools/tests/test_vm_webapp_onboarding_fast_lane.py` (+280 linhas: 34 testes)
+
+Frontend:
+- `09-tools/web/vm-ui/src/features/onboarding/OnboardingWizard.tsx` (+168 linhas: FastLaneCTA)
+- `09-tools/web/vm-ui/src/features/onboarding/ttfvTelemetry.ts` (+107 linhas: trackFastLane* events)
+- `09-tools/web/vm-ui/src/features/onboarding/ttfvTelemetry.test.ts` (novo, 8 testes)
+- `09-tools/web/vm-ui/src/features/onboarding/OnboardingWizard.test.tsx` (+4 testes fast lane)
+
+### Telemetry Events
+- `fast_lane_presented` - CTA exibido ao usuário
+- `fast_lane_accepted` - Usuário aceitou caminho recomendado
+- `fast_lane_rejected` - Usuário preferiu configuração manual
+
+### Comandos de Validação
+```bash
+# Backend
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_onboarding_fast_lane.py -v
+# ✅ 34 passed
+
+# Frontend
+cd 09-tools/web/vm-ui
+npm run test -- --run src/features/onboarding/OnboardingWizard.test.tsx
+# ✅ 23 passed
+npm run test -- --run src/features/onboarding/ttfvTelemetry.test.ts
+# ✅ 8 passed
+
+# Build
+npm run build
+# ✅ built in 839ms
+
+# Regressão
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
+# ✅ 1 passed
+```
+
+### Critérios de Aceite
+- Taxa de aceitação ≥ 40%
+- Redução TTFV 6-10 minutos
+- Sem regressão completion rate
+- 100% usuários elegíveis veem CTA
+
+### Risco Residual
+Baixo - feature com fallback, não quebra fluxo existente
+
+### Commits
+- `f737cf5b` v39: Add telemetry backend for Fast Lane onboarding
+- `ce06b053` v39: Onboarding Fast Lane - UI, Telemetry e Testes
