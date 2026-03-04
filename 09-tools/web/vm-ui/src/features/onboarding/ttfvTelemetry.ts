@@ -335,6 +335,15 @@ export enum FastLaneEvent {
   FAST_LANE_REJECTED = 'fast_lane_rejected',
 }
 
+// v40: Save/Resume telemetry events
+export enum SaveResumeEvent {
+  PROGRESS_SAVED = 'progress_saved',
+  RESUME_PRESENTED = 'resume_presented',
+  RESUME_ACCEPTED = 'resume_accepted',
+  RESUME_REJECTED = 'resume_rejected',
+  RESUME_FAILED = 'resume_failed',
+}
+
 export interface FastLaneTelemetryPayload {
   event: FastLaneEvent;
   userId: string;
@@ -431,6 +440,125 @@ export async function trackFastLaneRejected(
       fast_lane_event: FastLaneEvent.FAST_LANE_REJECTED,
       confidence,
       reasons,
+    },
+  });
+}
+
+// v40: Save/Resume telemetry functions
+
+/**
+ * Track progress saved event (v40 spec compliant)
+ * @param userId - User identifier
+ * @param step - Current step when saved
+ * @param source - Source of save (manual, auto_save, resume)
+ */
+export async function trackOnboardingProgressSaved(
+  userId: string,
+  step: string,
+  source: 'manual' | 'auto_save' | 'resume'
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_COMPLETED,
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'progress_save',
+    metadata: {
+      save_resume_event: SaveResumeEvent.PROGRESS_SAVED,
+      savedStep: step,
+      source,
+    },
+  });
+}
+
+/**
+ * Track resume prompt presented to user (v40 spec compliant)
+ * @param userId - User identifier
+ * @param lastStep - Last step saved
+ */
+export async function trackOnboardingResumePresented(
+  userId: string,
+  lastStep: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_VIEWED,
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'resume_prompt',
+    metadata: {
+      save_resume_event: SaveResumeEvent.RESUME_PRESENTED,
+      lastStep,
+    },
+  });
+}
+
+/**
+ * Track resume accepted by user (v40 spec compliant)
+ * @param userId - User identifier
+ * @param resumedStep - Step being resumed to
+ */
+export async function trackOnboardingResumeAccepted(
+  userId: string,
+  resumedStep: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_COMPLETED,
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'resume_accept',
+    metadata: {
+      save_resume_event: SaveResumeEvent.RESUME_ACCEPTED,
+      resumedStep,
+    },
+  });
+}
+
+/**
+ * Track resume rejected by user (v40 spec compliant)
+ * @param userId - User identifier
+ * @param reason - Reason for rejection
+ */
+export async function trackOnboardingResumeRejected(
+  userId: string,
+  reason: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.DROPOFF_REASON,
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'resume_reject',
+    reason,
+    metadata: {
+      save_resume_event: SaveResumeEvent.RESUME_REJECTED,
+    },
+  });
+}
+
+/**
+ * Track resume failed (v40 spec compliant)
+ * @param userId - User identifier
+ * @param error - Error message
+ * @param step - Step where failure occurred
+ */
+export async function trackOnboardingResumeFailed(
+  userId: string,
+  error: string,
+  step: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.DROPOFF_REASON,
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'resume_fail',
+    reason: 'resume_failed',
+    metadata: {
+      save_resume_event: SaveResumeEvent.RESUME_FAILED,
+      error,
+      failedStep: step,
     },
   });
 }

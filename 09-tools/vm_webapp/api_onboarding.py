@@ -9,6 +9,17 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from vm_webapp.db import session_scope
 from vm_webapp.models_onboarding import OnboardingEvent, OnboardingFrictionPoint, OnboardingState
 
+# v40: Import progress save/resume functionality
+from vm_webapp.onboarding_progress import (
+    OnboardingProgress as ProgressModel,
+    save_progress,
+    get_progress,
+    resume_progress,
+    has_progress,
+    auto_save_trigger,
+    delete_progress,
+)
+
 # v38: Import prefill functionality
 from vm_webapp.onboarding_prefill import (
     UserContext,
@@ -1043,4 +1054,184 @@ async def get_active_experiments_endpoint(
             for e in experiments
         ],
         "count": len(experiments),
+    }
+
+
+# v40: Progress Save/Resume endpoint schemas
+class SaveProgressRequest(BaseModel):
+    """Request body for /progress/{user_id}"""
+    current_step: str
+    step_data: Dict[str, Any] = {}
+    completed_steps: List[str] = []
+    skipped_steps: List[str] = []
+    prefill_data: Optional[Dict] = None
+    fast_lane_accepted: bool = False
+    thread_id: Optional[str] = None
+    session_id: Optional[str] = None
+    source: str = "manual"
+
+
+class ProgressResponse(BaseModel):
+    """Response for progress endpoints."""
+    user_id: str
+    thread_id: Optional[str]
+    session_id: str
+    current_step: str
+    step_data: Dict[str, Any]
+    completed_steps: List[str]
+    skipped_steps: List[str]
+    prefill_data: Optional[Dict]
+    fast_lane_accepted: bool
+    updated_at: str
+    source: str
+    version: int
+
+
+class ProgressExistsResponse(BaseModel):
+    """Response for checking if progress exists."""
+    has_progress: bool
+    user_id: str
+
+
+class AutoSaveRequest(BaseModel):
+    """Request body for auto-save trigger."""
+    step: str
+    data: Dict[str, Any]
+
+
+class ResumeResponse(BaseModel):
+    """Response for resume endpoint."""
+    resumed: bool
+    progress: Optional[ProgressResponse] = None
+
+
+class DeleteProgressResponse(BaseModel):
+    """Response for delete progress endpoint."""
+    deleted: bool
+    user_id: str
+
+
+@router.get("/progress/{user_id}")
+async def get_onboarding_progress(user_id: str) -> ProgressResponse:
+    """Get saved onboarding progress for user."""
+    progress = get_progress(user_id)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="No progress found for user")
+    
+    return ProgressResponse(
+        user_id=progress.user_id,
+        thread_id=progress.thread_id,
+        session_id=progress.session_id,
+        current_step=progress.current_step,
+        step_data=progress.step_data,
+        completed_steps=progress.completed_steps,
+        skipped_steps=progress.skipped_steps,
+        prefill_data=progress.prefill_data,
+        fast_lane_accepted=progress.fast_lane_accepted,
+        updated_at=progress.updated_at.isoformat(),
+        source=progress.source,
+        version=progress.version,
+    )
+
+
+@router.post("/progress/{user_id}")
+async def save_onboarding_progress(
+    user_id: str,
+    request: SaveProgressRequest
+) -> ProgressResponse:
+    """Save or update onboarding progress."""
+    progress = save_progress(
+        user_id=user_id,
+        current_step=request.current_step,
+        step_data=request.step_data,
+        completed_steps=request.completed_steps,
+        skipped_steps=request.skipped_steps,
+        prefill_data=request.prefill_data,
+        fast_lane_accepted=request.fast_lane_accepted,
+        thread_id=request.thread_id,
+        session_id=request.session_id or f"session-{user_id}",
+        source=request.source,
+    )
+    
+    return ProgressResponse(
+        user_id=progress.user_id,
+        thread_id=progress.thread_id,
+        session_id=progress.session_id,
+        current_step=progress.current_step,
+        step_data=progress.step_data,
+        completed_steps=progress.completed_steps,
+        skipped_steps=progress.skipped_steps,
+        prefill_data=progress.prefill_data,
+        fast_lane_accepted=progress.fast_lane_accepted,
+        updated_at=progress.updated_at.isoformat(),
+        source=progress.source,
+        version=progress.version,
+    )
+
+
+@router.post("/progress/{user_id}/resume")
+async def resume_onboarding_progress(user_id: str) -> ResumeResponse:
+    """Resume onboarding from saved progress."""
+    progress = resume_progress(user_id)
+    
+    if not progress:
+        return ResumeResponse(resumed=False, progress=None)
+    
+    return ResumeResponse(
+        resumed=True,
+        progress=ProgressResponse(
+            user_id=progress.user_id,
+            thread_id=progress.thread_id,
+            session_id=progress.session_id,
+            current_step=progress.current_step,
+            step_data=progress.step_data,
+            completed_steps=progress.completed_steps,
+            skipped_steps=progress.skipped_steps,
+            prefill_data=progress.prefill_data,
+            fast_lane_accepted=progress.fast_lane_accepted,
+            updated_at=progress.updated_at.isoformat(),
+            source=progress.source,
+            version=progress.version,
+        )
+    )
+
+
+@router.delete("/progress/{user_id}")
+async def reset_onboarding_progress(user_id: str) -> DeleteProgressResponse:
+    """Reset/delete onboarding progress."""
+    deleted = delete_progress(user_id)
+    
+    return DeleteProgressResponse(
+        deleted=deleted,
+        user_id=user_id,
+    )
+
+
+@router.get("/progress/{user_id}/exists")
+async def check_progress_exists(user_id: str) -> ProgressExistsResponse:
+    """Check if user has saved progress."""
+    return ProgressExistsResponse(
+        has_progress=has_progress(user_id),
+        user_id=user_id,
+    )
+
+
+@router.post("/progress/{user_id}/auto-save")
+async def trigger_auto_save(
+    user_id: str,
+    request: AutoSaveRequest
+) -> Dict[str, Any]:
+    """Trigger auto-save for a completed step."""
+    auto_save_trigger(
+        user_id=user_id,
+        step=request.step,
+        data=request.data,
+    )
+    
+    return {
+        "success": True,
+        "user_id": user_id,
+        "step": request.step,
+        "auto_saved": True,
     }

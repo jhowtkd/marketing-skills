@@ -8,6 +8,11 @@ import {
   trackFastLanePresented,
   trackFastLaneAccepted,
   trackFastLaneRejected,
+  trackOnboardingProgressSaved,
+  trackOnboardingResumePresented,
+  trackOnboardingResumeAccepted,
+  trackOnboardingResumeRejected,
+  trackOnboardingResumeFailed,
 } from './ttfvTelemetry';
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
 import { ContextualTour } from './ContextualTour';
@@ -174,6 +179,19 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   // Refs to track if fetches are in progress
   const prefillFetchedRef = useRef(false);
   const fastLaneFetchedRef = useRef(false);
+  const progressCheckedRef = useRef(false);
+  
+  // v40: Save/Resume state
+  const [savedProgress, setSavedProgress] = useState<{
+    hasProgress: boolean;
+    lastStep: string;
+    lastUpdated: string;
+    stepData: Record<string, any>;
+    completedSteps: string[];
+  } | null>(null);
+  
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   // v30: Contextual tour state
   const [showTour, setShowTour] = useState(false);
@@ -208,6 +226,36 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
 
   useEffect(() => {
     trackOnboardingStarted(userId);
+  }, [userId]);
+  
+  // v40: Check for saved progress on mount
+  useEffect(() => {
+    if (progressCheckedRef.current) return;
+    progressCheckedRef.current = true;
+    
+    const checkSavedProgress = async () => {
+      try {
+        const response = await fetch(`/api/v2/onboarding/progress/${userId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.has_progress) {
+            setSavedProgress({
+              hasProgress: data.has_progress,
+              lastStep: data.current_step,
+              lastUpdated: data.updated_at,
+              stepData: data.step_data || {},
+              completedSteps: data.completed_steps || [],
+            });
+            setShowResumePrompt(true);
+            trackOnboardingResumePresented(userId, data.current_step);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to check saved progress:', error);
+      }
+    };
+    
+    checkSavedProgress();
   }, [userId]);
 
   // v38: Fetch and apply smart prefill
@@ -374,12 +422,38 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     }
   }, [state.currentStep, state.workspaceName, state.selectedTemplate]);
 
+  // v40: Auto-save progress when completing a step
+  const autoSaveProgress = useCallback(async (step: string, stepData: any) => {
+    try {
+      const currentCompletedSteps = STEP_ORDER.slice(0, STEP_ORDER.indexOf(step as OnboardingStep));
+      await fetch(`/api/v2/onboarding/progress/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_step: step,
+          step_data: stepData,
+          completed_steps: currentCompletedSteps,
+          source: 'auto_save'
+        })
+      });
+      trackOnboardingProgressSaved(userId, step, 'auto_save');
+    } catch (error) {
+      console.warn('Failed to auto-save progress:', error);
+    }
+  }, [userId]);
+
   const handleNext = useCallback(() => {
     const nextStep = getNextStep(state.currentStep);
     if (nextStep) {
       setState((prev) => ({ ...prev, currentStep: nextStep as OnboardingStep }));
+      
+      // v40: Auto-save progress after advancing step
+      autoSaveProgress(nextStep, {
+        workspaceName: state.workspaceName,
+        selectedTemplate: state.selectedTemplate,
+      });
     }
-  }, [state.currentStep]);
+  }, [state.currentStep, state.workspaceName, state.selectedTemplate, autoSaveProgress]);
 
   const handleBack = useCallback(() => {
     const currentIndex = STEP_ORDER.indexOf(state.currentStep);
@@ -396,6 +470,52 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     trackOnboardingCompleted(userId, durationMs);
     onComplete();
   }, [onComplete, state.startedAt, userId]);
+  
+  // v40: Handler for accepting resume
+  const handleResume = useCallback(async () => {
+    if (!savedProgress) return;
+    
+    trackOnboardingResumeAccepted(userId, savedProgress.lastStep);
+    
+    // Hydrate state from saved progress
+    setState((prev) => ({
+      ...prev,
+      currentStep: savedProgress.lastStep as OnboardingStep,
+      workspaceName: savedProgress.stepData.workspaceName || '',
+      selectedTemplate: savedProgress.stepData.selectedTemplate || null,
+    }));
+    
+    setIsResuming(true);
+    setShowResumePrompt(false);
+  }, [savedProgress, userId]);
+  
+  // v40: Handler for starting fresh (rejecting resume)
+  const handleStartFresh = useCallback(async () => {
+    trackOnboardingResumeRejected(userId, 'user_chose_fresh_start');
+    
+    try {
+      await fetch(`/api/v2/onboarding/progress/${userId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.warn('Failed to clear saved progress:', error);
+    }
+    
+    setShowResumePrompt(false);
+    // Reset wizard to initial state
+    setState({
+      currentStep: OnboardingStep.WELCOME,
+      workspaceName: '',
+      selectedTemplate: null,
+      startedAt: Date.now(),
+    });
+    setIsResuming(false);
+  }, [userId]);
+  
+  // v40: Reset isResuming after state is hydrated
+  useEffect(() => {
+    if (isResuming) {
+      setIsResuming(false);
+    }
+  }, [isResuming]);
 
   const handleWorkspaceNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -643,6 +763,46 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
           />
         </div>
       </div>
+
+      {/* Resume Prompt */}
+      {showResumePrompt && savedProgress?.hasProgress && (
+        <div 
+          data-testid="resume-prompt"
+          className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg"
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🔄</span>
+            <div className="flex-1">
+              <h3 className="font-semibold text-amber-900 mb-1">
+                Retomar de onde parou?
+              </h3>
+              <p className="text-sm text-amber-700 mb-2">
+                Você tem progresso salvo na etapa: <strong>{savedProgress.lastStep.replace(/_/g, ' ')}</strong>
+                <br />
+                <span className="text-xs">
+                  Última atualização: {new Date(savedProgress.lastUpdated).toLocaleString('pt-BR')}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleResume}
+                  className="px-4 py-2 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 transition-colors"
+                  data-testid="resume-accept"
+                >
+                  Retomar progresso
+                </button>
+                <button
+                  onClick={handleStartFresh}
+                  className="px-4 py-2 bg-white text-amber-700 border border-amber-300 text-sm rounded-md hover:bg-amber-50 transition-colors"
+                  data-testid="resume-reject"
+                >
+                  Começar do zero
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Step Content */}
       <div className="mb-8">{renderStep()}</div>

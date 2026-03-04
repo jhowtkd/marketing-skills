@@ -3,7 +3,13 @@ import {
   trackFastLanePresented,
   trackFastLaneAccepted,
   trackFastLaneRejected,
+  trackOnboardingProgressSaved,
+  trackOnboardingResumePresented,
+  trackOnboardingResumeAccepted,
+  trackOnboardingResumeRejected,
+  trackOnboardingResumeFailed,
   FastLaneEvent,
+  SaveResumeEvent,
   setSessionId,
   getSessionId,
 } from './ttfvTelemetry';
@@ -192,6 +198,209 @@ describe('TTFV Fast Lane Telemetry', () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.sessionId).toBe('custom-session-456');
+    });
+  });
+
+  // v40: Save/Resume telemetry tests
+  describe('trackOnboardingProgressSaved', () => {
+    it('should emit progress_saved event with auto_save source', async () => {
+      await trackOnboardingProgressSaved('user-123', 'workspace_setup', 'auto_save');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: 'test-session-123',
+        step: 'progress_save',
+        metadata: {
+          save_resume_event: SaveResumeEvent.PROGRESS_SAVED,
+          savedStep: 'workspace_setup',
+          source: 'auto_save',
+        },
+      });
+    });
+
+    it('should emit progress_saved event with manual source', async () => {
+      await trackOnboardingProgressSaved('user-456', 'template_selection', 'manual');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.metadata).toMatchObject({
+        save_resume_event: SaveResumeEvent.PROGRESS_SAVED,
+        savedStep: 'template_selection',
+        source: 'manual',
+      });
+    });
+
+    it('should emit progress_saved event with resume source', async () => {
+      await trackOnboardingProgressSaved('user-789', 'customization', 'resume');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.metadata).toMatchObject({
+        save_resume_event: SaveResumeEvent.PROGRESS_SAVED,
+        savedStep: 'customization',
+        source: 'resume',
+      });
+    });
+  });
+
+  describe('trackOnboardingResumePresented', () => {
+    it('should emit resume_presented event with last step', async () => {
+      await trackOnboardingResumePresented('user-123', 'workspace_setup');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: 'test-session-123',
+        step: 'resume_prompt',
+        metadata: {
+          save_resume_event: SaveResumeEvent.RESUME_PRESENTED,
+          lastStep: 'workspace_setup',
+        },
+      });
+    });
+
+    it('should emit resume_presented event for template_selection step', async () => {
+      await trackOnboardingResumePresented('user-456', 'template_selection');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.metadata.lastStep).toBe('template_selection');
+    });
+  });
+
+  describe('trackOnboardingResumeAccepted', () => {
+    it('should emit resume_accepted event with resumed step', async () => {
+      await trackOnboardingResumeAccepted('user-123', 'customization');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: 'test-session-123',
+        step: 'resume_accept',
+        metadata: {
+          save_resume_event: SaveResumeEvent.RESUME_ACCEPTED,
+          resumedStep: 'customization',
+        },
+      });
+    });
+  });
+
+  describe('trackOnboardingResumeRejected', () => {
+    it('should emit resume_rejected event with reason', async () => {
+      await trackOnboardingResumeRejected('user-123', 'user_chose_fresh_start');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: 'test-session-123',
+        step: 'resume_reject',
+        reason: 'user_chose_fresh_start',
+        metadata: {
+          save_resume_event: SaveResumeEvent.RESUME_REJECTED,
+        },
+      });
+    });
+
+    it('should emit resume_rejected event with different reason', async () => {
+      await trackOnboardingResumeRejected('user-456', 'user_prefers_clean_slate');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.reason).toBe('user_prefers_clean_slate');
+    });
+  });
+
+  describe('trackOnboardingResumeFailed', () => {
+    it('should emit resume_failed event with error details', async () => {
+      await trackOnboardingResumeFailed('user-123', 'Progress data corrupted', 'workspace_setup');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: 'test-session-123',
+        step: 'resume_fail',
+        reason: 'resume_failed',
+        metadata: {
+          save_resume_event: SaveResumeEvent.RESUME_FAILED,
+          error: 'Progress data corrupted',
+          failedStep: 'workspace_setup',
+        },
+      });
+    });
+
+    it('should emit resume_failed event for hydration error', async () => {
+      await trackOnboardingResumeFailed('user-789', 'Failed to hydrate state', 'template_selection');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.metadata.error).toBe('Failed to hydrate state');
+      expect(body.metadata.failedStep).toBe('template_selection');
+    });
+  });
+
+  describe('Save/Resume error handling', () => {
+    it('should silently fail when save telemetry fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await trackOnboardingProgressSaved('user-123', 'workspace_setup', 'auto_save');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TTFV telemetry error:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should silently fail when resume telemetry fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await trackOnboardingResumeAccepted('user-123', 'workspace_setup');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TTFV telemetry error:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
     });
   });
 });
