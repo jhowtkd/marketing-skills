@@ -428,3 +428,36 @@ gh run watch 22680258287 --exit-status
 
 **v2.1.3 Residual Risk Gate**: 🟢 **ESTABILIZADO**  
 **Próximo checkpoint**: D+14 (2026-03-18) - Confirmar manutenção de >95%
+
+---
+
+## ✅ v33-v37 Workflows - Correção de Dependências (2026-03-04)
+
+### RCA
+- conftest.py importa fastapi, prometheus_client no nível do módulo
+- Workflows v33-v37 não instalavam prometheus_client em jobs de métricas
+- Erro: `ModuleNotFoundError: No module named 'prometheus_client'`
+
+### Correções Aplicadas
+| Workflow | Arquivo | Mudança |
+|----------|---------|---------|
+| v33 | metrics-validation | +prometheus_client httpx |
+| v34 | metrics-validation | +prometheus_client httpx |
+| v35 | metrics-validation | +prometheus_client httpx |
+| v36 | metrics-validation | +prometheus_client httpx |
+| v37 | unit-tests | +prometheus_client |
+
+### Taxas Antes/Depois
+
+| Período | v33 | v34 | v35 | v36 | v37 |
+|---------|-----|-----|-----|-----|-----|
+| Antes (últimos 5) | 0% | 0% | 0% | 0% | 0% |
+| Depois | Aguardando PRs | Aguardando PRs | Aguardando PRs | Aguardando PRs | Aguardando PRs |
+
+### Decisão de Governança
+- **Manter** workflows como PR-only
+- **Mergear** em vm-webapp-smoke em 90 dias (timeline original)
+- **Não adicionar** workflow_dispatch (mantém isolamento por feature)
+
+### Commits
+- `1113c76e` ci(v33-v37): add missing prometheus_client and httpx dependencies
