@@ -301,3 +301,83 @@ KIMI_BASE_URL=https://api.kimi.com/coding/v1
 VM_WORKSPACE_ROOT=runtime/vm
 VM_DB_PATH=runtime/vm/workspace.sqlite3
 ```
+
+## Bateria de Testes Pre-Release
+
+Script unificado para validação completa antes de releases. Executa testes em estágios com falha rápida e gera evidências.
+
+### Uso
+
+```bash
+# Listar estágios disponíveis
+bash scripts/test_battery_prerelease.sh --list
+
+# Executar estágio específico
+bash scripts/test_battery_prerelease.sh --stage gate-critico
+
+# Executar pipeline completa
+bash scripts/test_battery_prerelease.sh
+
+# Executar range de estágios
+bash scripts/test_battery_prerelease.sh --from preflight --to e2e-startup
+
+# Simular execução (dry-run)
+bash scripts/test_battery_prerelease.sh --dry-run --stage gate-critico
+
+# Salvar artefatos em diretório específico
+bash scripts/test_battery_prerelease.sh --artifacts-dir /path/to/artifacts
+```
+
+### Estágios
+
+| Estágio | Descrição | Comando executado |
+|---------|-----------|-------------------|
+| `preflight` | Verificações de ambiente | python3 --version, uv --version |
+| `gate-critico` | Testes críticos de backend | pytest test_vm_webapp_health_probes.py |
+| `backend-full` | Suite completa backend | pytest 09-tools/tests |
+| `frontend-full` | Suite completa frontend | npm test -- --run (vm-ui) |
+| `e2e-startup` | Testes E2E de inicialização | pytest test_vm_webapp_startup_validation.py |
+| `evidence` | Geração de evidências | Coleta logs e summary |
+
+### Interpretação de Resultados
+
+**Arquivos gerados** (em `artifacts/test-battery/<timestamp>/`):
+- `summary.txt` — Resumo da execução com status e duração
+- `<stage>.log` — Log detalhado de cada estágio
+
+**Regras de Aprovação:**
+- Exit code `0` = APROVADO ✓ (todos os estágios passaram)
+- Exit code `1` = BLOQUEADO ✗ (falha em pelo menos um estágio crítico)
+
+**Exemplo de summary.txt:**
+```
+================================================================================
+PRERELEASE BATTERY TEST SUMMARY
+================================================================================
+Generated: 2026-03-04 06:55:02
+Working Directory: /Users/jhonatan/Repos/marketing-skills
+Dry Run: false
+
+EXECUTION SUMMARY
+-----------------
+Total Duration: 45s
+Exit Code: 0
+Result: APPROVED
+
+STAGE LOGS
+----------
+- preflight.log
+- gate-critico.log
+- backend-full.log
+- frontend-full.log
+- e2e-startup.log
+- evidence.log
+
+================================================================================
+```
+
+### Política de Bloqueio
+
+- Falha no `gate-critico` interrompe imediatamente a pipeline
+- Falha em qualquer estágio após o gate loga o erro e interrompe a execução
+- Artefatos são sempre gerados, mesmo em caso de falha

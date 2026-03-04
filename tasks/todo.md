@@ -28,7 +28,54 @@
 - [x] Validar desenho em seções (arquitetura, componentes/comandos, fluxo e bloqueio).
 - [x] Documentar design aprovado em `docs/plans/2026-03-04-bateria-testes-pre-release-design.md`.
 - [x] Gerar plano de implementacao detalhado via `writing-plans` em `docs/plans/2026-03-04-bateria-testes-pre-release.md`.
-- [ ] Escolher modo de execucao do plano (subagentes nesta sessao vs sessao paralela com executing-plans).
+- [x] Escolher modo de execucao do plano (subagentes nesta sessao vs sessao paralela com executing-plans).
+
+## Progresso - Bateria de Testes Pre-Release
+
+### Task 1: Testes do runner (TDD da interface) ✓
+- [x] Criar testes para `--list`, `--dry-run`, `--stage`
+- [x] Implementar script mínimo para passar nos testes
+- [x] Commit: `test: add prerelease battery runner contract tests`
+
+### Task 2: Runner com estágios e falha rápida ✓
+- [x] Adicionar teste para `--from`/`--to` com pipeline
+- [x] Implementar execução sequencial e short-circuit
+- [x] Commit: `feat: implement staged prerelease battery runner`
+
+### Task 3: Evidências e resumo final ✓
+- [x] Adicionar teste para `--artifacts-dir` e `summary.txt`
+- [x] Implementar geração de logs por estágio
+- [x] Commit: `feat: add artifacts and summary for prerelease battery`
+
+### Task 4: Validação real ponta a ponta ✓
+- [x] Executar gate-critico real (1 passed)
+- [x] Executar backend-full real (1467 passed, 69 warnings)
+- [x] Executar frontend-full real (736 passed, 2 failed - falhas conhecidas)
+- [x] Commit: `chore: validate prerelease battery stages locally`
+
+### Task 5: Documentação operacional [IN_PROGRESS]
+- [ ] Adicionar seção no README
+- [ ] Commitar documentação
+
+### Task 3: Evidências e resumo final
+- [ ] Adicionar teste para `--artifacts-dir` e `summary.txt`
+- [ ] Implementar geração de logs por estágio
+- [ ] Validar e commitar
+
+### Task 4: Validação real ponta a ponta
+- [ ] Executar gate-critico real
+- [ ] Executar backend-full real
+- [ ] Executar frontend-full real
+- [ ] Commitar ajustes
+
+### Task 5: Documentação operacional
+- [ ] Adicionar seção no README
+- [ ] Commitar documentação
+
+### Task 6: Verificação final
+- [ ] Executar bateria completa
+- [ ] Preencher review final
+- [ ] Commitar evidências
 
 ## Review
 - Design aprovado com escopo completo: backend + frontend + E2E + smoke de inicializacao.
