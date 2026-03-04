@@ -42,3 +42,11 @@ def test_invalid_stage_fails_fast() -> None:
     completed = run_script("--stage", "nao-existe")
     assert completed.returncode != 0
     assert "Unknown stage" in (completed.stderr + completed.stdout)
+
+
+def test_pipeline_stops_on_gate_failure() -> None:
+    completed = run_script("--dry-run", "--from", "preflight", "--to", "e2e-startup")
+    assert completed.returncode == 0
+    assert "preflight" in completed.stdout
+    assert "gate-critico" in completed.stdout
+    assert "e2e-startup" in completed.stdout
