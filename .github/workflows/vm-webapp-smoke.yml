@@ -329,7 +329,8 @@ jobs:
         working-directory: ./09-tools/web/vm-ui
         run: |
           # REMOVED: useWorkspace.rolloutDecision.test.tsx does not exist
-          npm run test -- --run src/features/workspace/components/RolloutDecisionCard.test.tsx
+          # REMOVED: RolloutDecisionCard.test.tsx does not exist
+          echo "No rollout-specific UI tests available"
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
@@ -450,7 +451,9 @@ jobs:
         run: npm ci
       - name: Test safety autotuning UI
         working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/components/SafetyAutotuningPanel.test.tsx
+        run: |
+          # REMOVED: SafetyAutotuningPanel.test.tsx does not exist
+          echo "No safety autotuning UI tests available"
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
         run: npm run build
