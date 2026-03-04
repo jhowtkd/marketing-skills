@@ -130,8 +130,8 @@ const TOTAL_STEPS = 5;
 
 const STEP_ORDER: OnboardingStep[] = [
   OnboardingStep.WELCOME,
-  OnboardingStep.WORKSPACE_SETUP,
   OnboardingStep.TEMPLATE_SELECTION,
+  OnboardingStep.WORKSPACE_SETUP,
   OnboardingStep.CUSTOMIZATION,
   OnboardingStep.COMPLETION,
 ];

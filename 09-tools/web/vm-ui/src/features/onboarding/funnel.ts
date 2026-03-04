@@ -86,10 +86,11 @@ export function canResumeOnboarding(userId: string): boolean {
 }
 
 export function getNextStep(currentStep: OnboardingStep): OnboardingStep | null {
+  // v42 Variant A: Template First - reordered steps for better TTFV
   const stepOrder = [
     OnboardingStep.WELCOME,
-    OnboardingStep.WORKSPACE_SETUP,
     OnboardingStep.TEMPLATE_SELECTION,
+    OnboardingStep.WORKSPACE_SETUP,
     OnboardingStep.CUSTOMIZATION,
     OnboardingStep.FIRST_RUN,
     OnboardingStep.COMPLETION,
@@ -105,10 +106,11 @@ export function getNextStep(currentStep: OnboardingStep): OnboardingStep | null 
 export function calculateFunnelMetrics(
   states: FunnelState[]
 ): FunnelMetrics[] {
+  // v42 Variant A: Template First - reordered steps for better TTFV
   const stepOrder = [
     OnboardingStep.WELCOME,
-    OnboardingStep.WORKSPACE_SETUP,
     OnboardingStep.TEMPLATE_SELECTION,
+    OnboardingStep.WORKSPACE_SETUP,
     OnboardingStep.CUSTOMIZATION,
     OnboardingStep.FIRST_RUN,
     OnboardingStep.COMPLETION,

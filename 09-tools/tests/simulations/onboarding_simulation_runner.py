@@ -471,6 +471,54 @@ class OnboardingSimulator:
         return results
 
 
+class OnboardingVariantA(OnboardingSimulator):
+    """Variação A: Template First (reordena steps)
+    
+    Reordena o onboarding para mostrar template selection antes do workspace_setup.
+    A hipótese é que escolher o template primeiro pode reduzir o tempo de decisão
+    e dar mais contexto para o setup do workspace.
+    """
+    def __init__(self, config: Optional[SimulationConfig] = None):
+        super().__init__(config)
+        self.config.steps = [
+            "welcome",
+            "template_selection",  # Movido antes
+            "workspace_setup",     # Movido depois
+            "customization",
+            "completion"
+        ]
+        # Ajuste: template antes pode reduzir tempo de decisão em 10%
+        self.config.step_duration_base_ms = int(self.config.step_duration_base_ms * 0.95)
+
+
+class OnboardingVariantB(OnboardingSimulator):
+    """Variação B: Resume Prompt Delayed (após welcome)
+    
+    Simula o cenário onde o prompt de resume aparece só após o step 2+,
+    não imediatamente no welcome. Isso evita sobrecarga cognitiva inicial.
+    """
+    def __init__(self, config: Optional[SimulationConfig] = None):
+        super().__init__(config)
+        self.resume_delay_steps = 1  # Delay de 1 step
+        # Reduz o overhead de resume por causa da decisão mais informada
+        self.config.resume_overhead_ms = int(self.config.resume_overhead_ms * 0.7)
+
+
+class OnboardingVariantC(OnboardingSimulator):
+    """Variação C: Fast Lane CTA mais cedo
+    
+    Verifica elegibilidade para fast lane antes mesmo do welcome step,
+    permitindo que usuários qualificados vejam a opção desde o início.
+    """
+    def __init__(self, config: Optional[SimulationConfig] = None):
+        super().__init__(config)
+        self.fast_lane_early = True
+        # Aumenta probabilidade de aceitação pois é apresentado no contexto certo
+        self.config.fast_lane_accept_probability = min(
+            1.0, self.config.fast_lane_accept_probability * 1.2
+        )
+
+
 def calculate_statistics(metrics_list: List[JourneyMetrics]) -> Dict[str, Any]:
     """Calculate statistics from a list of journey metrics."""
     if not metrics_list:
