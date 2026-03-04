@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import BaseModel
 
 from vm_webapp.schemas.core import (
     ThreadCreate,
@@ -12,12 +12,17 @@ from vm_webapp.schemas.core import (
     ThreadResponse,
     ThreadsListResponse,
 )
+from ._projection import project_command_event
 
 router = APIRouter(prefix="/threads", tags=["threads"])
 
 
 def _auto_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:10]}"
+
+
+class ThreadModeAddRequest(BaseModel):
+    mode: str
 
 
 @router.get(
@@ -55,8 +60,8 @@ async def list_threads_v2(
                 brand_id=r.brand_id,
                 project_id=r.project_id,
                 title=r.title,
-                status="open" if r.is_open else "closed",
-                created_at=r.created_at,
+                status="open" if r.status == "open" else "closed",
+                created_at=r.last_activity_at,
                 updated_at=r.last_activity_at,
             )
             for r in rows
@@ -78,7 +83,11 @@ async def list_threads_v2(
     },
     status_code=status.HTTP_201_CREATED,
 )
-async def create_thread_v2(data: ThreadCreate, request: Request) -> ThreadResponse:
+async def create_thread_v2(
+    data: ThreadCreate,
+    request: Request,
+    response: Response,
+) -> ThreadResponse:
     """Create a new thread.
     
     Args:
@@ -87,31 +96,39 @@ async def create_thread_v2(data: ThreadCreate, request: Request) -> ThreadRespon
     Returns:
         The newly created thread with generated thread_id
     """
-    from vm_webapp.commands_v2 import create_thread_command
     from vm_webapp.db import session_scope
+    from vm_webapp.commands_v2 import create_thread_command
+    from vm_webapp.repo import get_thread_view
 
-    actor_id = getattr(request.state, 'actor_id', 'system')
-    idempotency_key = _auto_id("idem")
+    actor_id = getattr(request.state, "actor_id", "system")
+    idempotency_key = request.headers.get("Idempotency-Key") or _auto_id("idem")
 
     with session_scope(request.app.state.engine) as session:
         dedup = create_thread_command(
             session,
-            thread_id=None,
+            thread_id=data.thread_id,
             project_id=data.project_id,
             brand_id=data.brand_id,
             title=data.title,
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
-        response = json.loads(dedup.response_json)
+        project_command_event(session, event_id=dedup.event_id)
+        payload = json.loads(dedup.response_json)
+        thread_id = payload["thread_id"]
+        projected = get_thread_view(session, thread_id)
+        if projected is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        response.status_code = status.HTTP_200_OK
         return ThreadResponse(
-            thread_id=response["thread_id"],
-            brand_id=data.brand_id,
-            project_id=data.project_id,
-            title=data.title,
-            status="open",
-            created_at=datetime.now(),
-            updated_at=None,
+            thread_id=projected.thread_id,
+            brand_id=projected.brand_id,
+            project_id=projected.project_id,
+            title=projected.title,
+            status="open" if projected.status == "open" else "closed",
+            created_at=projected.last_activity_at,
+            updated_at=projected.last_activity_at,
+            event_id=dedup.event_id,
         )
 
 
@@ -142,37 +159,107 @@ async def update_thread_v2(
     Returns:
         The updated thread
     """
-    from vm_webapp.commands_v2 import rename_thread_command
     from vm_webapp.db import session_scope
+    from vm_webapp.commands_v2 import rename_thread_command
     from vm_webapp.repo import get_thread_view
     
-    actor_id = getattr(request.state, 'actor_id', 'system')
+    actor_id = getattr(request.state, "actor_id", "system")
     idempotency_key = _auto_id("idem")
     
     with session_scope(request.app.state.engine) as session:
         # Get current thread to return updated data
         thread_view = get_thread_view(session, thread_id)
         if thread_view is None:
-            raise ValueError(f"Thread not found: {thread_id}")
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
 
         if data.title:
-            dedup = rename_thread_command(
+            result = rename_thread_command(
                 session,
                 thread_id=thread_id,
                 title=data.title,
                 actor_id=actor_id,
                 idempotency_key=idempotency_key,
             )
-            title = data.title
-        else:
-            title = thread_view.title
+            project_command_event(session, event_id=result.event_id)
+            thread_view = get_thread_view(session, thread_id)
+            if thread_view is None:
+                raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
 
         return ThreadResponse(
             thread_id=thread_id,
             brand_id=thread_view.brand_id,
             project_id=thread_view.project_id,
-            title=title,
-            status="open" if thread_view.is_open else "closed",
-            created_at=thread_view.created_at,
+            title=thread_view.title,
+            status="open" if thread_view.status == "open" else "closed",
+            created_at=thread_view.last_activity_at,
             updated_at=thread_view.last_activity_at,
+            event_id=None,
         )
+
+
+@router.post(
+    "/{thread_id}/modes",
+    summary="Add mode to thread",
+    responses={
+        status.HTTP_200_OK: {"description": "Mode added"},
+        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
+    },
+)
+async def add_thread_mode_v2(
+    thread_id: str,
+    payload: ThreadModeAddRequest,
+    request: Request,
+) -> dict[str, str]:
+    from vm_webapp.commands_v2 import add_thread_mode_command
+    from vm_webapp.db import session_scope
+    from vm_webapp.repo import get_thread_view
+
+    actor_id = getattr(request.state, "actor_id", "system")
+    idempotency_key = _auto_id("idem")
+
+    with session_scope(request.app.state.engine) as session:
+        if get_thread_view(session, thread_id) is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        result = add_thread_mode_command(
+            session,
+            thread_id=thread_id,
+            mode=payload.mode,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+        )
+        project_command_event(session, event_id=result.event_id)
+        return {"event_id": result.event_id, "thread_id": thread_id, "mode": payload.mode}
+
+
+@router.post(
+    "/{thread_id}/modes/{mode}/remove",
+    summary="Remove mode from thread",
+    responses={
+        status.HTTP_200_OK: {"description": "Mode removed"},
+        status.HTTP_404_NOT_FOUND: {"description": "Thread not found"},
+    },
+)
+async def remove_thread_mode_v2(
+    thread_id: str,
+    mode: str,
+    request: Request,
+) -> dict[str, str]:
+    from vm_webapp.commands_v2 import remove_thread_mode_command
+    from vm_webapp.db import session_scope
+    from vm_webapp.repo import get_thread_view
+
+    actor_id = getattr(request.state, "actor_id", "system")
+    idempotency_key = _auto_id("idem")
+
+    with session_scope(request.app.state.engine) as session:
+        if get_thread_view(session, thread_id) is None:
+            raise HTTPException(status_code=404, detail=f"thread not found: {thread_id}")
+        result = remove_thread_mode_command(
+            session,
+            thread_id=thread_id,
+            mode=mode,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+        )
+        project_command_event(session, event_id=result.event_id)
+        return {"event_id": result.event_id, "thread_id": thread_id, "mode": mode}

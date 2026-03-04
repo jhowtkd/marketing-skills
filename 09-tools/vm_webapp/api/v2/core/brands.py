@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, status
+import json
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from vm_webapp.schemas.core import (
     BrandCreate,
@@ -8,8 +11,13 @@ from vm_webapp.schemas.core import (
     BrandResponse,
     BrandsListResponse,
 )
+from ._projection import project_command_event
 
 router = APIRouter(prefix="/brands", tags=["brands"])
+
+
+def _auto_id(prefix: str) -> str:
+    return f"{prefix}-{uuid4().hex[:10]}"
 
 
 @router.get(
@@ -60,7 +68,7 @@ async def list_brands_v2(request: Request) -> BrandsListResponse:
     },
     status_code=status.HTTP_201_CREATED,
 )
-async def create_brand_v2(data: BrandCreate, request: Request) -> BrandResponse:
+async def create_brand_v2(data: BrandCreate, request: Request, response: Response) -> BrandResponse:
     """Create a new brand.
     
     Args:
@@ -69,30 +77,83 @@ async def create_brand_v2(data: BrandCreate, request: Request) -> BrandResponse:
     Returns:
         The newly created brand with generated brand_id
     """
-    from vm_webapp.commands_v2 import create_brand_command
     from vm_webapp.db import session_scope
-    from uuid import uuid4
-    
-    actor_id = getattr(request.state, 'actor_id', 'system')
-    idempotency_key = f"idem-{uuid4().hex[:10]}"
-    
-    from datetime import datetime
-    import json
-    
+    from vm_webapp.commands_v2 import create_brand_command
+
+    actor_id = getattr(request.state, "actor_id", "system")
+    idempotency_key = request.headers.get("Idempotency-Key") or _auto_id("idem")
+
     with session_scope(request.app.state.engine) as session:
         dedup = create_brand_command(
             session,
-            brand_id=None,
+            brand_id=data.brand_id,
             name=data.name,
             actor_id=actor_id,
             idempotency_key=idempotency_key,
         )
+        project_command_event(session, event_id=dedup.event_id)
+        payload = json.loads(dedup.response_json)
+        brand_id = payload["brand_id"]
+        from vm_webapp.repo import get_brand_view
+
+        projected = get_brand_view(session, brand_id)
+        if projected is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+        response.status_code = status.HTTP_200_OK
+        return BrandResponse(
+            brand_id=projected.brand_id,
+            name=projected.name,
+            description=data.description,
+            status="active",
+            created_at=projected.updated_at,
+            updated_at=None,
+            event_id=dedup.event_id,
+        )
+
+
+@router.patch(
+    "/{brand_id}",
+    response_model=BrandResponse,
+    summary="Update a brand",
+    description="Updates brand name and/or description.",
+    responses={
+        status.HTTP_200_OK: {"description": "Brand updated successfully"},
+        status.HTTP_404_NOT_FOUND: {"description": "Brand not found"},
+    },
+)
+async def update_brand_v2(brand_id: str, data: BrandUpdate, request: Request) -> BrandResponse:
+    from vm_webapp.commands_v2 import update_brand_command
+    from vm_webapp.db import session_scope
+    from vm_webapp.repo import get_brand_view
+
+    actor_id = getattr(request.state, "actor_id", "system")
+    idempotency_key = _auto_id("idem")
+
+    with session_scope(request.app.state.engine) as session:
+        existing = get_brand_view(session, brand_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+
+        resolved_name = data.name if data.name is not None else existing.name
+        dedup = update_brand_command(
+            session,
+            brand_id=brand_id,
+            name=resolved_name,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+        )
+        project_command_event(session, event_id=dedup.event_id)
+        updated = get_brand_view(session, brand_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"brand not found: {brand_id}")
+
         response = json.loads(dedup.response_json)
         return BrandResponse(
             brand_id=response["brand_id"],
-            name=data.name,
+            name=updated.name,
             description=data.description,
             status="active",
-            created_at=datetime.now(),
+            created_at=updated.updated_at,
             updated_at=None,
+            event_id=dedup.event_id,
         )

@@ -6,6 +6,7 @@ from .base import VMBaseModel, Timestamped
 
 
 class BrandCreate(VMBaseModel):
+    brand_id: Optional[str] = None
     name: str
     description: Optional[str] = None
 
@@ -20,6 +21,7 @@ class BrandResponse(Timestamped):
     name: str
     description: Optional[str] = None
     status: Literal["active", "frozen", "archived"] = "active"
+    event_id: Optional[str] = None
 
 
 class BrandsListResponse(VMBaseModel):
@@ -27,6 +29,7 @@ class BrandsListResponse(VMBaseModel):
 
 
 class ProjectCreate(VMBaseModel):
+    project_id: Optional[str] = None
     name: str
     brand_id: str
     description: Optional[str] = None
@@ -38,6 +41,9 @@ class ProjectCreate(VMBaseModel):
 class ProjectUpdate(VMBaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    objective: Optional[str] = None
+    channels: Optional[list[str]] = None
+    due_date: Optional[str] = None
 
 
 class ProjectResponse(Timestamped):
@@ -46,6 +52,7 @@ class ProjectResponse(Timestamped):
     name: str
     description: Optional[str] = None
     status: Literal["active", "archived"] = "active"
+    event_id: Optional[str] = None
 
 
 class ProjectsListResponse(VMBaseModel):
@@ -53,6 +60,7 @@ class ProjectsListResponse(VMBaseModel):
 
 
 class ThreadCreate(VMBaseModel):
+    thread_id: Optional[str] = None
     title: str
     brand_id: str
     project_id: str
@@ -68,6 +76,7 @@ class ThreadResponse(Timestamped):
     project_id: str
     title: str
     status: Literal["open", "closed"] = "open"
+    event_id: Optional[str] = None
 
 
 class ThreadsListResponse(VMBaseModel):
