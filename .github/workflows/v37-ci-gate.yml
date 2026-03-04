@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r 09-tools/requirements.txt
-          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi
+          pip install pytest pytest-asyncio httpx sqlalchemy pydantic-settings fastapi prometheus_client
       
       - name: Run API v2 tests
         run: |

@@ -109,7 +109,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r 09-tools/requirements.txt
-          pip install pytest sqlalchemy pydantic-settings
+          pip install pytest sqlalchemy pydantic-settings fastapi prometheus_client httpx
       
       - name: Validate continuity metrics schema
         run: |
