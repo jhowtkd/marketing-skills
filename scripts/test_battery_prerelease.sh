@@ -218,8 +218,8 @@ stage_frontend_full() {
         return 0
     fi
     
-    # Suite completa de testes de frontend
-    run_command "frontend-full" bash -c "cd 09-tools/web/vm-ui && npm test"
+    # Suite completa de testes de frontend (com --run para não ficar em modo watch)
+    run_command "frontend-full" bash -c "cd 09-tools/web/vm-ui && npm test -- --run"
     
     log "Frontend full completo."
 }
