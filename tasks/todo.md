@@ -7,12 +7,17 @@
 - [x] Criar `docs/ci/2026-03-main-baseline.md`
 - [x] Commit: baseline documentado
 
-## Task 2: Estabilizar vm-webapp-smoke (Onda 1)
-- [ ] Analisar YAML e identificar causas de falha
-- [ ] Corrigir comandos/paths quebrados
-- [ ] Validar YAML
-- [ ] Testar em PR
-- [ ] Commit: smoke estabilizado
+## Task 2: Estabilizar vm-webapp-smoke (Onda 1) ✅
+- [x] Analisar YAML e identificar causas de falha
+- [x] Corrigir comandos/paths quebrados
+- [x] Validar YAML
+- [ ] Testar em PR (após push)
+- [x] Commit: smoke estabilizado
+
+**Correções aplicadas:**
+- `editorial-gate`: Fallback para testes específicos inexistentes (`test_editorial_decisions_endpoints_mark_and_list`, `test_workflow_run_baseline_endpoint_respects_priority`)
+- `editorial-insights-gate-v6`: Corrigido teste inexistente (`test_editorial_insights_endpoint_returns_governance_kpis`) para usar classe existente
+- `approval-cost-optimizer-gate-v23`: Substituído `TestApprovalOptimizerEndpoints` inexistente por run completo do arquivo
 
 ## Task 3: Alinhar v33-v37 (Onda 2)
 - [ ] Analisar divergências entre workflows
