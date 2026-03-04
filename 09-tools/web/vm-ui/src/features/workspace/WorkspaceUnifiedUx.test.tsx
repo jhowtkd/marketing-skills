@@ -95,11 +95,16 @@ describe("Workspace Unified UX Telemetry", () => {
   });
 
   describe("trackStepToActionLatency", () => {
-    it("tracks latency when action is executed after step", async () => {
+    it("tracks latency when action is executed after step", () => {
+      // Use fake timers for deterministic latency measurement
+      vi.useFakeTimers();
+      const T0 = 1000000;
+      vi.setSystemTime(T0);
+      
       startStepToActionTracking("step-1");
       
-      // Simulate delay
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Simulate 50ms delay using fake time
+      vi.setSystemTime(T0 + 50);
       
       trackStepToActionLatency({ stepId: "step-1", action: "generate" });
       
@@ -109,7 +114,15 @@ describe("Workspace Unified UX Telemetry", () => {
       expect(latencyEvent).toBeDefined();
       expect(latencyEvent?.stepId).toBe("step-1");
       expect(latencyEvent?.action).toBe("generate");
-      expect(latencyEvent?.latencyMs).toBeGreaterThanOrEqual(0);
+      expect(latencyEvent?.latencyMs).toBe(50);
+      
+      // Cleanup
+      vi.useRealTimers();
+    });
+    
+    afterEach(() => {
+      // Ensure timers are reset even if test fails
+      vi.useRealTimers();
     });
 
     it("does not track latency if start was not called", () => {
