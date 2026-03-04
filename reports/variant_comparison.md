@@ -1,6 +1,6 @@
 # Variant Comparison Report - v42 Onboarding Optimization
 
-**Generated:** 2026-03-04 23:11:01 UTC  
+**Generated:** 2026-03-04 23:22:49 UTC  
 **Version:** v42  
 **Simulations per variant:** 50
 
@@ -8,10 +8,10 @@
 
 ## 🏆 Winner
 
-**BASELINE**
+**VARIANT A**
 
-- **Score:** 1.0000
-- **Justification:** Baseline mantém o equilíbrio ideal com TTFV de 22.9s e 100.0% completion.
+- **Score:** 1.0344
+- **Justification:** Template First reduziu TTFV para 21.1s com reordenação estratégica dos steps.
 
 ---
 
@@ -19,10 +19,10 @@
 
 | Variant | Score | Avg TTFV | Completion | Prefill | Fast Lane | Complexity |
 |---------|-------|----------|------------|---------|-----------|------------|
-| Baseline 🏆 | 1.000 | 22.89s | 100.0% | 42.0% | 20.0% | 0% |
-| Variant A  | 0.993 | 21.15s | 100.0% | 34.0% | 28.0% | 5% |
-| Variant C  | 0.988 | 22.62s | 100.0% | 30.0% | 30.0% | 8% |
-| Variant B  | 0.985 | 22.44s | 100.0% | 38.0% | 18.0% | 10% |
+| Variant A 🏆 | 1.034 | 21.07s | 100.0% | 36.0% | 22.0% | 5% |
+| Baseline  | 1.000 | 22.54s | 100.0% | 46.0% | 18.0% | 0% |
+| Variant B  | 0.985 | 22.54s | 100.0% | 42.0% | 26.0% | 10% |
+| Variant C  | 0.985 | 22.67s | 100.0% | 42.0% | 32.0% | 8% |
 
 
 ## 🔬 Variant Descriptions

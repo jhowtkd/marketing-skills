@@ -29,12 +29,13 @@ from tests.simulations.onboarding_simulation_runner import (
 def calculate_variant_score(
     name: str,
     stats: Dict[str, Any],
-    complexity_penalty: float = 0.0
+    complexity_penalty: float = 0.0,
+    baseline_ttfv_ms: Optional[float] = None
 ) -> float:
     """Calculate weighted score for a variant.
     
     Score formula:
-    - 60% TTFV efficiency (inverse of normalized time)
+    - 60% TTFV efficiency (baseline / actual, can exceed 1.0 if better than baseline)
     - 25% completion rate
     - 15% complexity penalty (simpler is better)
     
@@ -42,6 +43,7 @@ def calculate_variant_score(
         name: Variant name
         stats: Statistics dict from calculate_statistics
         complexity_penalty: Penalty for added complexity (0.0 = baseline)
+        baseline_ttfv_ms: TTFV of baseline variant for comparison (if None, uses 30s default)
     
     Returns:
         Weighted score (higher is better)
@@ -49,9 +51,9 @@ def calculate_variant_score(
     avg_ttfv_s = stats['avg_ttfv_ms'] / 1000
     
     # TTFV score: menor tempo = maior score (inverted and normalized)
-    # Usando 30s como baseline para normalização
-    baseline_ttfv = 30.0
-    ttfv_efficiency = min(1.0, baseline_ttfv / max(avg_ttfv_s, 1.0))
+    # Usando baseline real da simulação ou 30s como referência
+    baseline_ttfv = (baseline_ttfv_ms / 1000) if baseline_ttfv_ms else 30.0
+    ttfv_efficiency = baseline_ttfv / max(avg_ttfv_s, 1.0)
     
     completion = stats['completion_rate']
     
@@ -107,6 +109,7 @@ def compare_variants(n: int = 50) -> Dict[str, Any]:
     results = {}
     all_metrics: Dict[str, List[JourneyMetrics]] = {}
     
+    # First pass: run all simulations and collect stats
     for name, sim in variants.items():
         print(f"  ▶️  {name}: ", end="", flush=True)
         
@@ -116,16 +119,28 @@ def compare_variants(n: int = 50) -> Dict[str, Any]:
         
         stats = calculate_statistics(metrics)
         complexity = get_complexity_penalty(name)
-        score = calculate_variant_score(name, stats, complexity)
         
         results[name] = {
             'stats': stats,
-            'score': score,
             'complexity_penalty': complexity,
             'sample_size': n,
+            # Score will be calculated in second pass after we have baseline
         }
         
-        print(f"✓ TTFV={stats['avg_ttfv_ms']/1000:.2f}s, Score={score:.3f}")
+        print(f"✓ TTFV={stats['avg_ttfv_ms']/1000:.2f}s")
+    
+    # Get baseline TTFV for relative scoring
+    baseline_ttfv_ms = results['baseline']['stats']['avg_ttfv_ms']
+    
+    # Second pass: calculate scores with baseline reference
+    print()
+    print(f"📊 Calculating scores (baseline TTFV: {baseline_ttfv_ms/1000:.2f}s)...")
+    for name in results:
+        stats = results[name]['stats']
+        complexity = results[name]['complexity_penalty']
+        score = calculate_variant_score(name, stats, complexity, baseline_ttfv_ms)
+        results[name]['score'] = score
+        print(f"  {name}: Score={score:.4f}")
     
     print()
     return results

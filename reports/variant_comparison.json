@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-04T23:11:01.326099",
+  "generated_at": "2026-03-04T23:22:49.654350",
   "version": "v42",
   "methodology": {
     "simulations_per_variant": 50,
@@ -11,27 +11,27 @@
       "score": 1.0,
       "complexity_penalty": 0.0,
       "metrics": {
-        "avg_ttfv_ms": 22888.2,
-        "avg_ttfv_s": 22.89,
-        "min_ttfv_ms": 15368,
-        "max_ttfv_ms": 31722,
+        "avg_ttfv_ms": 22539.98,
+        "avg_ttfv_s": 22.54,
+        "min_ttfv_ms": 14406,
+        "max_ttfv_ms": 27635,
         "completion_rate": 1.0,
-        "prefill_adoption": 0.42,
-        "fast_lane_adoption": 0.2,
+        "prefill_adoption": 0.46,
+        "fast_lane_adoption": 0.18,
         "resume_adoption": 0.0
       }
     },
     "variant_a": {
-      "score": 0.9925,
+      "score": 1.0344,
       "complexity_penalty": 0.05,
       "metrics": {
-        "avg_ttfv_ms": 21152.82,
-        "avg_ttfv_s": 21.15,
-        "min_ttfv_ms": 12586,
-        "max_ttfv_ms": 28616,
+        "avg_ttfv_ms": 21068.74,
+        "avg_ttfv_s": 21.07,
+        "min_ttfv_ms": 13302,
+        "max_ttfv_ms": 28100,
         "completion_rate": 1.0,
-        "prefill_adoption": 0.34,
-        "fast_lane_adoption": 0.28,
+        "prefill_adoption": 0.36,
+        "fast_lane_adoption": 0.22,
         "resume_adoption": 0.0
       }
     },
@@ -39,34 +39,34 @@
       "score": 0.985,
       "complexity_penalty": 0.1,
       "metrics": {
-        "avg_ttfv_ms": 22437.66,
-        "avg_ttfv_s": 22.44,
-        "min_ttfv_ms": 13950,
-        "max_ttfv_ms": 30345,
+        "avg_ttfv_ms": 22539.38,
+        "avg_ttfv_s": 22.54,
+        "min_ttfv_ms": 15686,
+        "max_ttfv_ms": 32552,
         "completion_rate": 1.0,
-        "prefill_adoption": 0.38,
-        "fast_lane_adoption": 0.18,
+        "prefill_adoption": 0.42,
+        "fast_lane_adoption": 0.26,
         "resume_adoption": 0.0
       }
     },
     "variant_c": {
-      "score": 0.988,
+      "score": 0.9846,
       "complexity_penalty": 0.08,
       "metrics": {
-        "avg_ttfv_ms": 22621.98,
-        "avg_ttfv_s": 22.62,
-        "min_ttfv_ms": 14257,
-        "max_ttfv_ms": 28977,
+        "avg_ttfv_ms": 22667.88,
+        "avg_ttfv_s": 22.67,
+        "min_ttfv_ms": 14100,
+        "max_ttfv_ms": 31044,
         "completion_rate": 1.0,
-        "prefill_adoption": 0.3,
-        "fast_lane_adoption": 0.3,
+        "prefill_adoption": 0.42,
+        "fast_lane_adoption": 0.32,
         "resume_adoption": 0.0
       }
     }
   },
   "winner": {
-    "name": "baseline",
-    "score": 1.0,
-    "justification": "Baseline mant\u00e9m o equil\u00edbrio ideal com TTFV de 22.9s e 100.0% completion."
+    "name": "variant_a",
+    "score": 1.0344,
+    "justification": "Template First reduziu TTFV para 21.1s com reordena\u00e7\u00e3o estrat\u00e9gica dos steps."
   }
 }
