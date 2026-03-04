@@ -1,9 +1,23 @@
-"""v38 Onboarding Fast Lane - reduces TTFV by skipping non-essential steps for eligible users."""
+"""v38 Onboarding Fast Lane - reduces TTFV by skipping non-essential steps for eligible users.
+
+v39: Added telemetry tracking for fast lane events.
+"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Any
+import json
+
+# In-memory event store for fast lane telemetry (replace with DB in production)
+_fast_lane_events: List[Dict[str, Any]] = []
+
+
+class FastLaneEventType(str, Enum):
+    """Types of fast lane interaction events."""
+    PRESENTED = "presented"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
 
 
 class RiskLevel(str, Enum):
@@ -363,3 +377,190 @@ def get_fast_lane_for_user(
     )
     
     return get_fast_lane_path(user_id, eligibility)
+
+
+# v39: Telemetry tracking functions
+def track_fast_lane_event(
+    user_id: str,
+    event_type: str,  # "presented", "accepted", "rejected"
+    context: Dict[str, Any],
+) -> None:
+    """Track fast lane interaction event.
+    
+    Args:
+        user_id: Unique identifier for the user
+        event_type: Type of event ("presented", "accepted", "rejected")
+        context: Additional context data for the event
+    
+    Events tracked:
+    - presented: Fast lane option was shown to user
+    - accepted: User chose fast lane path
+    - rejected: User chose standard onboarding path
+    """
+    event = {
+        "user_id": user_id,
+        "event_type": event_type,
+        "timestamp": datetime.now().isoformat(),
+        "context": context,
+    }
+    _fast_lane_events.append(event)
+
+
+def get_fast_lane_events(
+    user_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Get fast lane events, optionally filtered.
+    
+    Args:
+        user_id: Filter by user ID
+        event_type: Filter by event type
+    
+    Returns:
+        List of matching events
+    """
+    events = _fast_lane_events
+    
+    if user_id:
+        events = [e for e in events if e["user_id"] == user_id]
+    
+    if event_type:
+        events = [e for e in events if e["event_type"] == event_type]
+    
+    return events.copy()
+
+
+def clear_fast_lane_events() -> None:
+    """Clear all fast lane events (useful for testing)."""
+    _fast_lane_events.clear()
+
+
+def get_fast_lane_recommendation(
+    user_id: str,
+    prefill_data: Dict[str, Any],
+    context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Return recommendation for fast lane with confidence score and reasons.
+    
+    This function analyzes user context and prefill data to determine
+    whether fast lane is recommended and provides confidence scoring.
+    
+    Args:
+        user_id: Unique identifier for the user
+        prefill_data: Data inferred from prefill (template_type, channel, segment)
+        context: User context including email_domain, signup_source, etc.
+    
+    Returns:
+        {
+            "recommended_path": "fast_lane" | "standard",
+            "confidence": float,  # 0-1
+            "reasons": List[str],
+            "skipped_steps": List[str],
+            "estimated_time_saved_minutes": float,
+        }
+    """
+    reasons = []
+    confidence_factors = []
+    
+    # Analyze prefill confidence
+    prefill_confidence = prefill_data.get("confidence", "low")
+    prefill_source = prefill_data.get("source", "unknown")
+    
+    # Factor 1: Prefill data quality
+    if prefill_confidence == "high":
+        confidence_factors.append(0.3)
+        reasons.append("High confidence prefill data available")
+    elif prefill_confidence == "medium":
+        confidence_factors.append(0.2)
+        reasons.append("Medium confidence prefill data available")
+    else:
+        confidence_factors.append(0.05)
+        reasons.append("Low confidence prefill data")
+    
+    # Factor 2: Email domain reputation
+    email_domain = context.get("email_domain", "").lower()
+    if email_domain in TRUSTED_DOMAINS:
+        confidence_factors.append(0.25)
+        reasons.append(f"Trusted domain: {email_domain}")
+    elif email_domain in HIGH_RISK_DOMAINS:
+        confidence_factors.append(-0.2)
+        reasons.append("High-risk email domain detected")
+    elif ".edu" in email_domain:
+        confidence_factors.append(0.15)
+        reasons.append("Educational institution domain")
+    else:
+        confidence_factors.append(0.1)
+        reasons.append("Standard email domain")
+    
+    # Factor 3: Signup source
+    signup_source = context.get("signup_source", "unknown")
+    if signup_source in ["referral", "partner"]:
+        confidence_factors.append(0.2)
+        reasons.append(f"Trusted signup source: {signup_source}")
+    elif signup_source == "organic":
+        confidence_factors.append(0.15)
+        reasons.append("Organic signup source")
+    else:
+        confidence_factors.append(0.05)
+        reasons.append("Unknown signup source")
+    
+    # Factor 4: User segment
+    segment = context.get("segment")
+    if segment == UserSegment.ENTERPRISE:
+        confidence_factors.append(0.25)
+        reasons.append("Enterprise user segment")
+    elif segment == UserSegment.POWER_USER:
+        confidence_factors.append(0.2)
+        reasons.append("Power user segment")
+    elif segment == UserSegment.RETURNING:
+        confidence_factors.append(0.15)
+        reasons.append("Returning user")
+    
+    # Factor 5: Payment method (indicates commitment)
+    if context.get("has_payment_method"):
+        confidence_factors.append(0.15)
+        reasons.append("Payment method on file")
+    
+    # Factor 6: Previous completions
+    previous_completions = context.get("previous_completions", 0)
+    if previous_completions >= 3:
+        confidence_factors.append(0.2)
+        reasons.append("Multiple previous completions")
+    elif previous_completions >= 1:
+        confidence_factors.append(0.1)
+        reasons.append("Previous completion history")
+    
+    # Factor 7: IP reputation
+    ip_reputation = context.get("ip_reputation_score", 0.5)
+    if ip_reputation > 0.8:
+        confidence_factors.append(0.1)
+        reasons.append("High IP reputation")
+    elif ip_reputation < 0.3:
+        confidence_factors.append(-0.15)
+        reasons.append("Low IP reputation")
+    
+    # Calculate final confidence (sum of factors, clamped to 0-1)
+    confidence = sum(confidence_factors)
+    confidence = max(0.0, min(1.0, confidence))
+    
+    # Determine recommendation threshold
+    # Confidence >= 0.6: recommend fast_lane
+    # Confidence < 0.6: recommend standard
+    recommended_path = "fast_lane" if confidence >= 0.6 else "standard"
+    
+    # Determine which steps would be skipped
+    if recommended_path == "fast_lane":
+        skip_steps = _determine_skip_steps(context, FastLaneConfig())
+        time_saved = _estimate_time_saved(skip_steps)
+    else:
+        skip_steps = []
+        time_saved = 0.0
+        reasons.append("Confidence below threshold for fast lane")
+    
+    return {
+        "recommended_path": recommended_path,
+        "confidence": round(confidence, 2),
+        "reasons": reasons,
+        "skipped_steps": skip_steps,
+        "estimated_time_saved_minutes": time_saved,
+    }
