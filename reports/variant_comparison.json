@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-03-04T23:22:49.654350",
+  "version": "v42",
+  "methodology": {
+    "simulations_per_variant": 50,
+    "score_formula": "0.60*TTFV_efficiency + 0.25*completion + 0.15*simplicity",
+    "journey_type": "happy_path"
+  },
+  "variants": {
+    "baseline": {
+      "score": 1.0,
+      "complexity_penalty": 0.0,
+      "metrics": {
+        "avg_ttfv_ms": 22539.98,
+        "avg_ttfv_s": 22.54,
+        "min_ttfv_ms": 14406,
+        "max_ttfv_ms": 27635,
+        "completion_rate": 1.0,
+        "prefill_adoption": 0.46,
+        "fast_lane_adoption": 0.18,
+        "resume_adoption": 0.0
+      }
+    },
+    "variant_a": {
+      "score": 1.0344,
+      "complexity_penalty": 0.05,
+      "metrics": {
+        "avg_ttfv_ms": 21068.74,
+        "avg_ttfv_s": 21.07,
+        "min_ttfv_ms": 13302,
+        "max_ttfv_ms": 28100,
+        "completion_rate": 1.0,
+        "prefill_adoption": 0.36,
+        "fast_lane_adoption": 0.22,
+        "resume_adoption": 0.0
+      }
+    },
+    "variant_b": {
+      "score": 0.985,
+      "complexity_penalty": 0.1,
+      "metrics": {
+        "avg_ttfv_ms": 22539.38,
+        "avg_ttfv_s": 22.54,
+        "min_ttfv_ms": 15686,
+        "max_ttfv_ms": 32552,
+        "completion_rate": 1.0,
+        "prefill_adoption": 0.42,
+        "fast_lane_adoption": 0.26,
+        "resume_adoption": 0.0
+      }
+    },
+    "variant_c": {
+      "score": 0.9846,
+      "complexity_penalty": 0.08,
+      "metrics": {
+        "avg_ttfv_ms": 22667.88,
+        "avg_ttfv_s": 22.67,
+        "min_ttfv_ms": 14100,
+        "max_ttfv_ms": 31044,
+        "completion_rate": 1.0,
+        "prefill_adoption": 0.42,
+        "fast_lane_adoption": 0.32,
+        "resume_adoption": 0.0
+      }
+    }
+  },
+  "winner": {
+    "name": "variant_a",
+    "score": 1.0344,
+    "justification": "Template First reduziu TTFV para 21.1s com reordena\u00e7\u00e3o estrat\u00e9gica dos steps."
+  }
+}

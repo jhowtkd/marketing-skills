@@ -150,13 +150,29 @@ class TestTelemetryValidation:
     
     def test_all_required_telemetry_present(self, fast_sim):
         """Test that all expected telemetry events can be emitted."""
-        # Run all journey types
+        # Run all journey types multiple times to ensure probabilistic events are captured
         all_events = set()
         
-        for journey_type in JourneyType:
-            metrics = fast_sim.run_simulation(journey_type)
-            for event in metrics.telemetry_events:
-                all_events.add(event.get("event"))
+        # Run multiple times to ensure we hit probabilistic events (fast_lane depends on probability)
+        for _ in range(20):  # 20 runs gives >99% chance of hitting fast_lane_accepted
+            for journey_type in JourneyType:
+                metrics = fast_sim.run_simulation(journey_type)
+                for event in metrics.telemetry_events:
+                    all_events.add(event.get("event"))
+            
+            # Early exit if all events are found
+            if all_events >= {
+                "step_completed",
+                "onboarding_progress_saved",
+                "onboarding_resume_presented",
+                "onboarding_resume_accepted",
+                "onboarding_resume_rejected",
+                "fast_lane_presented",
+                "fast_lane_accepted",
+                "first_value_reached",
+                "onboarding_dropoff",
+            }:
+                break
         
         # Check expected events were seen
         expected_events = {

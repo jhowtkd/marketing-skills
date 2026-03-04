@@ -30,6 +30,7 @@ vi.mock('./ttfvTelemetry', () => ({
 }));
 
 // Mock funnel
+// v42 Variant A: Template First - reordered steps for better TTFV
 vi.mock('./funnel', () => ({
   saveFunnelState: vi.fn(),
   loadFunnelState: vi.fn(() => null),
@@ -37,8 +38,8 @@ vi.mock('./funnel', () => ({
   getNextStep: vi.fn((step) => {
     const order = [
       'welcome',
+      'template_selection',  // Moved before workspace_setup
       'workspace_setup',
-      'template_selection',
       'customization',
       'completion',
     ];
@@ -195,7 +196,7 @@ describe('OnboardingWizard', () => {
       fireEvent.click(continueBtn);
 
       await waitFor(() => {
-        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
       });
     });
 
@@ -225,10 +226,10 @@ describe('OnboardingWizard', () => {
         />
       );
 
-      // Go to step 2
+      // Go to step 2 (template selection - new order)
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
-        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
       });
 
       // Go back
@@ -314,7 +315,15 @@ describe('OnboardingWizard', () => {
         />
       );
 
-      // Go to workspace step
+      // Go to template step first (new order)
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+      
+      // Select template and continue to workspace step
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
 
       await waitFor(() => {
@@ -388,20 +397,20 @@ describe('OnboardingWizard', () => {
       // Step 1: Welcome -> click continue
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Step 2: Template -> select template and continue
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
         expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
       });
 
-      // Step 2: Workspace -> fill name and continue
+      // Step 3: Workspace -> fill name and continue
       const input = screen.getByPlaceholderText(/nome do workspace/i);
       fireEvent.change(input, { target: { value: 'Meu Workspace' } });
-      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
-      await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
-      });
-
-      // Step 3: Template -> select template and continue
-      const templateBtn = screen.getByText(/blog post/i);
-      fireEvent.click(templateBtn);
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
         expect(screen.getByText(/personalização/i)).toBeInTheDocument();
@@ -710,23 +719,21 @@ describe('OnboardingWizard', () => {
         expect(screen.getByRole('button', { name: /continuar/i })).toBeInTheDocument();
       });
 
-      // Navigate to template selection step
+      // Navigate to template selection step (step 2 in new order)
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Check that prefill indicator is shown in template step (v42: Template First)
+      await waitFor(() => {
+        expect(screen.getByTestId('prefill-indicator')).toBeInTheDocument();
+      });
+      
+      // Continue to workspace
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
         expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
-      });
-
-      const input = screen.getByPlaceholderText(/nome do workspace/i);
-      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
-      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
-      });
-
-      // Check that prefill indicator is shown
-      await waitFor(() => {
-        expect(screen.getByTestId('prefill-indicator')).toBeInTheDocument();
       });
     });
 
@@ -780,27 +787,25 @@ describe('OnboardingWizard', () => {
         expect(screen.getByRole('button', { name: /continuar/i })).toBeInTheDocument();
       });
 
-      // Navigate to template selection step
+      // Navigate to template selection step (step 2 in new order)
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
-        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
       });
 
-      const input = screen.getByPlaceholderText(/nome do workspace/i);
-      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
-      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
-      });
-
-      // User explicitly selects a different template
+      // User explicitly selects a template
       const emailTemplate = screen.getByTestId('template-email');
       fireEvent.click(emailTemplate);
 
       // The explicit selection should win
       await waitFor(() => {
         expect(emailTemplate).toHaveClass('border-blue-500');
+      });
+
+      // Continue to workspace setup
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
       });
     });
 
@@ -854,23 +859,23 @@ describe('OnboardingWizard', () => {
         expect(screen.getByRole('button', { name: /continuar/i })).toBeInTheDocument();
       });
 
-      // Navigate to template selection step
+      // Navigate to template selection step (step 2 in new order)
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Check for the campaign context message on template step
+      await waitFor(() => {
+        expect(screen.getByText(/detectamos que você veio de uma campanha/i)).toBeInTheDocument();
+      });
+
+      // Continue to workspace
+      const templateBtn = screen.getByTestId('template-blog-post');
+      fireEvent.click(templateBtn);
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
       await waitFor(() => {
         expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
-      });
-
-      const input = screen.getByPlaceholderText(/nome do workspace/i);
-      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
-      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
-
-      await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
-      });
-
-      // Check for the campaign context message
-      await waitFor(() => {
-        expect(screen.getByText(/detectamos que você veio de uma campanha/i)).toBeInTheDocument();
       });
     });
 
@@ -1567,7 +1572,7 @@ describe('OnboardingWizard', () => {
 
       // Should navigate to the saved step
       await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
       });
     });
 
@@ -1699,19 +1704,39 @@ describe('OnboardingWizard', () => {
         />
       );
 
-      // Wait for initial load
+      // Wait for initial load and all API calls to complete
       await waitFor(() => {
         expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
       });
+      
+      // Wait for loading to complete (progress check, prefill, fast-lane, recommend)
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(4);
+      });
+      
+      // Wait for Continue button to be enabled
+      await waitFor(() => {
+        const continueBtn = screen.getByRole('button', { name: /continuar/i });
+        expect(continueBtn).not.toBeDisabled();
+      });
 
-      // Go to next step
+      // Go to next step (template selection in new order)
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Select a template and continue to workspace
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
       fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
 
       await waitFor(() => {
         expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
       });
 
-      // Auto-save should be called
+      // Auto-save should be called when completing workspace step
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
           '/api/v2/onboarding/progress/user-123',
@@ -1730,15 +1755,16 @@ describe('OnboardingWizard', () => {
 
     it('should hydrate workspace name when resuming', async () => {
       // Mock progress check (with saved progress), prefill, fast-lane, and recommend
+      // With new order (Template First): welcome -> template_selection -> workspace_setup
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
             has_progress: true,
-            current_step: 'template_selection',
+            current_step: 'workspace_setup',
             updated_at: '2026-03-04T10:30:00Z',
-            step_data: { workspaceName: 'Workspace Hidratado', selectedTemplate: null },
-            completed_steps: ['welcome', 'workspace_setup'],
+            step_data: { workspaceName: 'Workspace Hidratado', selectedTemplate: 'blog-post' },
+            completed_steps: ['welcome', 'template_selection'],
           }),
         })
         .mockResolvedValueOnce({
@@ -1756,7 +1782,7 @@ describe('OnboardingWizard', () => {
             user_id: 'user-123',
             is_fast_lane: false,
             skipped_steps: [],
-            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            remaining_steps: ['welcome', 'template_selection', 'workspace_setup', 'customization', 'completion'],
             estimated_time_saved_minutes: 0,
           }),
         })
@@ -1786,20 +1812,24 @@ describe('OnboardingWizard', () => {
       // Accept resume
       fireEvent.click(screen.getByTestId('resume-accept'));
 
-      // Should navigate to template selection with hydrated workspace name
-      await waitFor(() => {
-        expect(screen.getByText(/escolha um template/i)).toBeInTheDocument();
-      });
-
-      // Workspace name should be preserved when going back
-      fireEvent.click(screen.getByRole('button', { name: /voltar/i }));
-      
+      // Should navigate to workspace setup with hydrated workspace name (new order)
       await waitFor(() => {
         expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
       });
 
       const input = screen.getByPlaceholderText(/nome do workspace/i) as HTMLInputElement;
       expect(input.value).toBe('Workspace Hidratado');
+
+      // Go back to template selection
+      fireEvent.click(screen.getByRole('button', { name: /voltar/i }));
+      
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Template should also be preserved
+      const selectedTemplate = screen.getByTestId('template-blog-post');
+      expect(selectedTemplate).toHaveClass('border-blue-500');
     });
 
     it('should not show resume prompt when there is no saved progress', async () => {
