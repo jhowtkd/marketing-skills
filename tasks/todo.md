@@ -461,3 +461,126 @@ gh run watch 22680258287 --exit-status
 
 ### Commits
 - `1113c76e` ci(v33-v37): add missing prometheus_client and httpx dependencies
+
+---
+
+## 📊 v33-v37 Monitoring Board
+
+> **Data de Início:** 2026-03-04  
+> **Fix Commit:** `1113c76e` (ci(v33-v37): add missing prometheus_client and httpx dependencies)  
+> **Status:** 🟡 AGUARDANDO RUNS PÓS-CORREÇÃO
+
+### Critério de Saída Explícito
+
+| Estado | Definição |
+|--------|-----------|
+| **🟡 EM MONITORAMENTO** | Correção aplicada, aguardando runs consecutivas |
+| **🟢 ESTABILIZADO** | Cada workflow atingiu **3 SUCCESS consecutivos** pós-fix (1113c76e) |
+| **🔴 REABRIR INVESTIGAÇÃO** | Qualquer regressão de import/config após correção 1113c76e |
+
+### Regras de Reabertura
+- [ ] **REABRIR** se falha de `ModuleNotFoundError` ou `ImportError` persistir em headSha >= 1113c76e
+- [ ] **REABRIR** se falha de configuração (env var, path) em 2+ workflows simultaneamente
+- [ ] **CONTINUAR MONITORAMENTO** se falha for de teste funcional (test_regression)
+
+### Tabela de Runs (atualizada: 2026-03-04)
+
+#### v33-ci-gate
+
+| run_id | created_at | head_sha | conclusion | failure_type | notes | streak_success |
+|--------|------------|----------|------------|--------------|-------|----------------|
+| 22666418021 | 2026-03-04T10:59:10Z | 230bd695 | failure | import_error | prometheus_client missing | 0 |
+| 22665334287 | 2026-03-04T10:27:44Z | 991ab1b7 | failure | import_error | pre-fix | 0 |
+| 22639161478 | 2026-03-03T19:27:59Z | 14f81469 | failure | import_error | pre-fix | 0 |
+| 22638441194 | 2026-03-03T19:06:49Z | f1e3bd2d | failure | import_error | pre-fix | 0 |
+| 22636435845 | 2026-03-03T18:06:44Z | 42396b47 | failure | import_error | pre-fix | 0 |
+
+**Streak Atual:** 0/3 (sem runs pós-fix)  
+**Status:** 🟡 Aguardando PRs com headSha >= 1113c76e
+
+#### v34-ci-gate
+
+| run_id | created_at | head_sha | conclusion | failure_type | notes | streak_success |
+|--------|------------|----------|------------|--------------|-------|----------------|
+| 22666417991 | 2026-03-04T10:59:10Z | 230bd695 | failure | import_error | prometheus_client missing | 0 |
+| 22665334567 | 2026-03-04T10:27:45Z | 991ab1b7 | failure | import_error | pre-fix | 0 |
+| 22639161496 | 2026-03-03T19:27:59Z | 14f81469 | failure | import_error | pre-fix | 0 |
+| 22638441189 | 2026-03-03T19:06:49Z | f1e3bd2d | failure | import_error | pre-fix | 0 |
+| 22636435879 | 2026-03-03T18:06:45Z | 42396b47 | failure | import_error | pre-fix | 0 |
+
+**Streak Atual:** 0/3 (sem runs pós-fix)  
+**Status:** 🟡 Aguardando PRs com headSha >= 1113c76e
+
+#### v35-ci-gate
+
+| run_id | created_at | head_sha | conclusion | failure_type | notes | streak_success |
+|--------|------------|----------|------------|--------------|-------|----------------|
+| 22666418005 | 2026-03-04T10:59:10Z | 230bd695 | failure | import_error | prometheus_client missing | 0 |
+| 22665334311 | 2026-03-04T10:27:44Z | 991ab1b7 | failure | import_error | pre-fix | 0 |
+| 22639161479 | 2026-03-03T19:27:59Z | 14f81469 | failure | import_error | pre-fix | 0 |
+| 22638441184 | 2026-03-03T19:06:49Z | f1e3bd2d | failure | import_error | pre-fix | 0 |
+| 22636435841 | 2026-03-03T18:06:44Z | 42396b47 | failure | import_error | pre-fix | 0 |
+
+**Streak Atual:** 0/3 (sem runs pós-fix)  
+**Status:** 🟡 Aguardando PRs com headSha >= 1113c76e
+
+#### v36-ci-gate
+
+| run_id | created_at | head_sha | conclusion | failure_type | notes | streak_success |
+|--------|------------|----------|------------|--------------|-------|----------------|
+| 22666417973 | 2026-03-04T10:59:10Z | 230bd695 | failure | import_error | prometheus_client missing | 0 |
+| 22665334302 | 2026-03-04T10:27:44Z | 991ab1b7 | failure | import_error | pre-fix | 0 |
+| 22639161512 | 2026-03-03T19:27:59Z | 14f81469 | failure | import_error | pre-fix | 0 |
+| 22638441192 | 2026-03-03T19:06:49Z | f1e3bd2d | failure | import_error | pre-fix | 0 |
+| 22636435892 | 2026-03-03T18:06:45Z | 42396b47 | failure | import_error | pre-fix | 0 |
+
+**Streak Atual:** 0/3 (sem runs pós-fix)  
+**Status:** 🟡 Aguardando PRs com headSha >= 1113c76e
+
+#### v37-ci-gate
+
+| run_id | created_at | head_sha | conclusion | failure_type | notes | streak_success |
+|--------|------------|----------|------------|--------------|-------|----------------|
+| 22666418063 | 2026-03-04T10:59:10Z | 230bd695 | failure | import_error | prometheus_client missing | 0 |
+| 22665334289 | 2026-03-04T10:27:44Z | 991ab1b7 | failure | import_error | pre-fix | 0 |
+| 22639161491 | 2026-03-03T19:27:59Z | 14f81469 | failure | import_error | pre-fix | 0 |
+| 22638441209 | 2026-03-03T19:06:49Z | f1e3bd2d | failure | import_error | pre-fix | 0 |
+| 22636435864 | 2026-03-03T18:06:44Z | 42396b47 | failure | import_error | pre-fix | 0 |
+
+**Streak Atual:** 0/3 (sem runs pós-fix)  
+**Status:** 🟡 Aguardando PRs com headSha >= 1113c76e
+
+### Resumo de Streaks
+
+| Workflow | Streak Atual | Meta | Status |
+|----------|--------------|------|--------|
+| v33-ci-gate | 0/3 | 3/3 | 🟡 Pendente |
+| v34-ci-gate | 0/3 | 3/3 | 🟡 Pendente |
+| v35-ci-gate | 0/3 | 3/3 | 🟡 Pendente |
+| v36-ci-gate | 0/3 | 3/3 | 🟡 Pendente |
+| v37-ci-gate | 0/3 | 3/3 | 🟡 Pendente |
+
+### Checklist Operacional (Semanal)
+
+- [ ] Atualizar board com runs novos (comando: `gh run list --workflow v3X-ci-gate.yml --limit 20`)
+- [ ] Recalcular streak por workflow (contar SUCCESS consecutivos desde 1113c76e)
+- [ ] Marcar workflows que atingiram 3/3 como 🟢 ESTABILIZADO
+- [ ] Decisão no checkpoint de 2026-03-18
+  - Se todos >= 3/3: Aprovar merge em vm-webapp-smoke
+  - Se algum < 3/3: Extender monitoramento por mais 7 dias
+  - Se regressão import/config: Reabrir investigação
+
+### Comandos para Atualização
+
+```bash
+# Coletar runs novos
+gh run list --workflow v33-ci-gate.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha,displayTitle
+gh run list --workflow v34-ci-gate.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha,displayTitle
+gh run list --workflow v35-ci-gate.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha,displayTitle
+gh run list --workflow v36-ci-gate.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha,displayTitle
+gh run list --workflow v37-ci-gate.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha,displayTitle
+
+# Verificar detalhes de falha
+gh run view <run_id> --log-failed
+```
+
