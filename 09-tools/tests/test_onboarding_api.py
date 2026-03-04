@@ -5,18 +5,21 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
     """Create test client for onboarding API."""
-    import sys
-    import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    
-    from vm_webapp.api_onboarding import router
-    from fastapi import FastAPI
-    
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v2/onboarding")
-    
+    from vm_webapp.app import create_app
+    from vm_webapp.settings import Settings
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    app = create_app(
+        settings=Settings(
+            vm_workspace_root=str(workspace_root),
+            vm_db_path=workspace_root / "test.sqlite3",
+            kimi_api_key="test-api-key",
+        ),
+        enable_in_process_worker=False,
+    )
     return TestClient(app)
 
 

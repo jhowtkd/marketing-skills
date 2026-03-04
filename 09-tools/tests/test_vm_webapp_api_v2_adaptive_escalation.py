@@ -30,9 +30,9 @@ class TestAdaptiveEscalationEndpoints:
     """Test adaptive escalation API endpoints."""
 
     def test_get_escalation_windows_endpoint(self, client):
-        """GET /api/v2/escalation/windows returns adaptive windows."""
+        """POST /v2/escalation/windows returns adaptive windows."""
         response = client.post(
-            "/api/v2/escalation/windows",
+            "/v2/escalation/windows",
             json={
                 "step_id": "step-001",
                 "risk_level": "medium",
@@ -52,7 +52,7 @@ class TestAdaptiveEscalationEndpoints:
     def test_get_escalation_windows_with_context(self, client):
         """Endpoint considers time context."""
         response = client.post(
-            "/api/v2/escalation/windows",
+            "/v2/escalation/windows",
             json={
                 "step_id": "step-002",
                 "risk_level": "high",
@@ -69,9 +69,9 @@ class TestAdaptiveEscalationEndpoints:
         assert "adaptive_factors" in data
 
     def test_record_approval_endpoint(self, client):
-        """POST /api/v2/escalation/approvals records approval."""
+        """POST /v2/escalation/approvals records approval."""
         response = client.post(
-            "/api/v2/escalation/approvals",
+            "/v2/escalation/approvals",
             json={
                 "approver_id": "admin@example.com",
                 "step_id": "step-001",
@@ -86,9 +86,9 @@ class TestAdaptiveEscalationEndpoints:
         assert data["approver_id"] == "admin@example.com"
 
     def test_record_timeout_endpoint(self, client):
-        """POST /api/v2/escalation/timeouts records timeout."""
+        """POST /v2/escalation/timeouts records timeout."""
         response = client.post(
-            "/api/v2/escalation/timeouts",
+            "/v2/escalation/timeouts",
             json={
                 "approver_id": "admin@example.com",
                 "step_id": "step-001",
@@ -101,10 +101,10 @@ class TestAdaptiveEscalationEndpoints:
         assert data["status"] == "recorded"
 
     def test_get_approver_profile_endpoint(self, client):
-        """GET /api/v2/escalation/profiles/{approver_id} returns profile."""
+        """GET /v2/escalation/profiles/{approver_id} returns profile."""
         # First record some activity
         client.post(
-            "/api/v2/escalation/approvals",
+            "/v2/escalation/approvals",
             json={
                 "approver_id": "user@example.com",
                 "step_id": "step-001",
@@ -112,7 +112,7 @@ class TestAdaptiveEscalationEndpoints:
             },
         )
         
-        response = client.get("/api/v2/escalation/profiles/user@example.com")
+        response = client.get("/v2/escalation/profiles/user@example.com")
         
         assert response.status_code == 200
         data = response.json()
@@ -122,8 +122,8 @@ class TestAdaptiveEscalationEndpoints:
         assert "avg_response_time_minutes" in data
 
     def test_get_escalation_metrics_endpoint(self, client):
-        """GET /api/v2/escalation/metrics returns engine metrics."""
-        response = client.get("/api/v2/escalation/metrics")
+        """GET /v2/escalation/metrics returns engine metrics."""
+        response = client.get("/v2/escalation/metrics")
         
         assert response.status_code == 200
         data = response.json()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
+from datetime import datetime, timezone
 
 
 class TestOnboardingEvents:
@@ -12,9 +12,11 @@ class TestOnboardingEvents:
         """Test that tracked events are persisted."""
         brand_id = "b-test"
         response = client.post("/api/v2/onboarding/events", json={
-            "event_type": "test_event",
+            "event": "onboarding_started",
+            "user_id": "persistence-user",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "brand_id": brand_id,
-            "payload": {"test": "data"},
+            "metadata": {"test": "data"},
         })
         assert response.status_code == 200
         data = response.json()
@@ -23,7 +25,9 @@ class TestOnboardingEvents:
     def test_track_event_without_brand(self, client):
         """Test tracking event without brand_id fails."""
         response = client.post("/api/v2/onboarding/events", json={
-            "event_type": "test_event",
+            "event": "onboarding_started",
+            "user_id": "persistence-user-no-brand",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         # May fail or succeed depending on implementation
         assert response.status_code in [200, 422]
@@ -33,7 +37,9 @@ class TestOnboardingEvents:
         brand_id = "b-test"
         # First track an event
         client.post("/api/v2/onboarding/events", json={
-            "event_type": "test_event",
+            "event": "onboarding_started",
+            "user_id": "persistence-user-metrics",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "brand_id": brand_id,
         })
         
@@ -41,7 +47,8 @@ class TestOnboardingEvents:
         response = client.get(f"/api/v2/onboarding/metrics?brand_id={brand_id}")
         assert response.status_code == 200
         data = response.json()
-        assert "total_events" in data or "events" in data or "metrics" in data
+        assert "total_started" in data
+        assert "total_completed" in data
 
 
 class TestOnboardingExperiments:

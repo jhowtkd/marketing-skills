@@ -11,11 +11,12 @@ from vm_webapp.settings import Settings
 
 @pytest.fixture
 def test_settings(tmp_path):
-    """Create test settings with in-memory database."""
+    """Create test settings with file-backed SQLite database."""
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir(parents=True, exist_ok=True)
+    db_path = workspace_root / "test.sqlite3"
     return Settings(
-        vm_db_url="sqlite:///:memory:",
+        vm_db_path=db_path,
         vm_workspace_root=str(workspace_root),
         kimi_api_key="test-api-key",  # Disable LLM for tests
     )

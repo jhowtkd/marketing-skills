@@ -30,7 +30,7 @@ class TestSafetyTuningAPI:
         )
         client = TestClient(app)
         
-        response = client.get("/api/v2/safety-tuning/status")
+        response = client.get("/v2/safety-tuning/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -49,7 +49,7 @@ class TestSafetyTuningAPI:
         client = TestClient(app)
         
         response = client.post(
-            "/api/v2/safety-tuning/run",
+            "/v2/safety-tuning/run",
             json={"mode": "propose"}
         )
         
@@ -71,7 +71,7 @@ class TestSafetyTuningAPI:
         
         # Primeiro executa um ciclo para ter propostas
         run_response = client.post(
-            "/api/v2/safety-tuning/run",
+            "/v2/safety-tuning/run",
             json={"mode": "propose"}
         )
         
@@ -81,7 +81,7 @@ class TestSafetyTuningAPI:
             proposal_id = proposals[0]["proposal_id"]
             
             apply_response = client.post(
-                f"/api/v2/safety-tuning/{proposal_id}/apply",
+                f"/v2/safety-tuning/{proposal_id}/apply",
                 json={"auto": False}
             )
             
@@ -103,7 +103,7 @@ class TestSafetyTuningAPI:
         
         # Testa que endpoint existe e valida que precisa de proposta aplicada
         revert_response = client.post(
-            "/api/v2/safety-tuning/nonexistent/revert",
+            "/v2/safety-tuning/nonexistent/revert",
             json={}
         )
         
@@ -123,7 +123,7 @@ class TestSafetyTuningAPI:
         client = TestClient(app)
         
         response = client.post(
-            "/api/v2/safety-tuning/gates/sample_size/freeze",
+            "/v2/safety-tuning/gates/sample_size/freeze",
             json={"reason": "manual_review"}
         )
         
@@ -144,13 +144,13 @@ class TestSafetyTuningAPI:
         
         # Primeiro congela
         client.post(
-            "/api/v2/safety-tuning/gates/sample_size/freeze",
+            "/v2/safety-tuning/gates/sample_size/freeze",
             json={"reason": "manual_review"}
         )
         
         # Depois descongela
         response = client.post(
-            "/api/v2/safety-tuning/gates/sample_size/unfreeze",
+            "/v2/safety-tuning/gates/sample_size/unfreeze",
             json={}
         )
         
@@ -169,7 +169,7 @@ class TestSafetyTuningAPI:
         )
         client = TestClient(app)
         
-        response = client.get("/api/v2/safety-tuning/audit")
+        response = client.get("/v2/safety-tuning/audit")
         
         assert response.status_code == 200
         data = response.json()

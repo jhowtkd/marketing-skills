@@ -277,7 +277,7 @@ def test_root_serves_ui() -> None:
     res = client.get("/")
     assert res.status_code == 200
     assert "text/html" in res.headers.get("content-type", "")
-    assert "VM Web App" in res.text
+    assert 'data-vm-ui="react"' in res.text
 
 
 def test_chat_returns_placeholder_when_llm_missing(tmp_path: Path) -> None:

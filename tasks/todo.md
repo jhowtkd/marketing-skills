@@ -6,7 +6,7 @@
 - [x] Capturar baseline e executar limpeza de indice para `.venv` e `09-tools/.venv`.
 - [x] Validar `uv.lock` + smoke checks.
 - [x] Preparar commit de higiene.
-- [ ] Iniciar bateria de debug com repo limpo.
+- [x] Iniciar bateria de debug com repo limpo.
 
 ## Review
 - Limpeza de index aplicada com `git rm --cached` para `.venv` e `09-tools/.venv`.
@@ -14,3 +14,5 @@
 - Validacao tecnica minima executada com Python 3.12:
   - `uv run --python 3.12 python -c "import vm_webapp"`
   - `uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_startup_validation.py` (1 passed)
+- Bateria completa de debug executada com sucesso:
+  - `uv run --python 3.12 pytest -q 09-tools/tests` (1462 passed, 61 warnings)
