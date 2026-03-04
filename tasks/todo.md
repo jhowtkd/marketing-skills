@@ -67,3 +67,80 @@ gh pr create \
   --title "CI Final Stabilization Sprint - Wave 1 & 2" \
   --body-file docs/plans/2026-03-04-ci-final-stabilization-implementation.md
 ```
+
+---
+
+# Legacy Workflows Hardening - TODO
+
+## Nova Frente: Reduzir Falhas de Workflows Legados
+
+### ✅ COMPLETED - Correções Aplicadas
+
+#### RCA Real Identificado
+
+1. **vm-editorial-ops-nightly.yml**: Subprocesso Python sobrescreve env e perde PATH
+   - **Linha afetada:** 68 (env={'VM_DB_PATH': ...} sobrescreve todo o environment)
+   - **Erro:** `FileNotFoundError: [Errno 2] No such file or directory: 'uv'`
+
+2. **vm-editorial-monitoring.yml**: Endpoint pode estar ausente/indisponível
+   - **Linha afetada:** 41 (endpoint hardcoded sem verificação de disponibilidade)
+   - **Erro:** `Connection refused` tratado como falha funcional
+
+#### Mudanças Aplicadas
+
+**vm-editorial-ops-nightly.yml:**
+- ✅ Usar `service_env = os.environ.copy()` para preservar PATH
+- ✅ Trocar comando para `['uv','run','python','-m','vm_webapp','serve',...]`
+- ✅ Usar base URL `http://127.0.0.1:8766` (porta 8766)
+- ✅ Adicionar readiness check com timeout de 30s
+- ✅ Teardown robusto (terminate/wait/kill fallback)
+
+**vm-editorial-monitoring.yml:**
+- ✅ Adicionar input `endpoint` em workflow_dispatch
+- ✅ Resolver endpoint por prioridade: input -> secrets -> vars -> vazio
+- ✅ Se endpoint vazio/inacessível: publicar warning no GITHUB_STEP_SUMMARY
+- ✅ Não falhar job quando endpoint indisponível (apenas warning)
+- ✅ Executar threshold check só quando endpoint acessível
+- ✅ Manter falha real quando houver violação de threshold
+
+### Comandos Executados
+
+```bash
+# Validação de sintaxe Python
+python3 -m py_compile scripts/check_editorial_thresholds.py          # ✅ OK
+python3 -m py_compile 09-tools/scripts/editorial_ops_report.py       # ❌ Erro preexistente (linha 753)
+
+# Validação de testes
+PYTHONPATH=09-tools uv run pytest -q 09-tools/tests/test_editorial_ops_report.py  # ✅ 39 passed
+
+# Validação YAML
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/vm-editorial-monitoring.yml')); yaml.safe_load(open('.github/workflows/vm-editorial-ops-nightly.yml')); print('workflow yaml ok')"
+# ✅ .github/workflows/vm-editorial-monitoring.yml OK
+# ✅ .github/workflows/vm-editorial-ops-nightly.yml OK
+```
+
+### Workflow Dispatch Executados
+
+| Workflow | Run ID | Status | Observação |
+|----------|--------|--------|------------|
+| vm-editorial-monitoring | 22679089014 | failure | Testado na main (sem correções) |
+| vm-editorial-ops-nightly | 22679090355 | failure | Testado na main (sem correções) |
+
+**Nota:** Os runs falharam porque executaram na branch `main` (que não tem as correções). As correções estão em working directory não commitadas.
+
+### Status Git
+
+```
+ M .github/workflows/vm-editorial-monitoring.yml
+ M .github/workflows/vm-editorial-ops-nightly.yml
+ M tasks/todo.md
+```
+
+### Próximo Passo
+
+Commit das correções para validação real:
+```bash
+git add .github/workflows/vm-editorial-monitoring.yml .github/workflows/vm-editorial-ops-nightly.yml tasks/todo.md
+git commit -m "ci(legacy): harden editorial monitoring and ops-nightly failure handling"
+git push origin <branch>
+```

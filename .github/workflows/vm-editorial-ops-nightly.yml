@@ -60,16 +60,42 @@ jobs:
           import time
           import json
           import sys
+          import os
+          import urllib.request
+          import urllib.error
           
-          # Start app
+          # Setup environment preserving PATH
+          service_env = os.environ.copy()
+          service_env.update({
+              'VM_DB_PATH': '/tmp/test_workspace.sqlite3',
+              'VM_WORKSPACE_ROOT': '/tmp/test_vm'
+          })
+          
+          # Start app on port 8766
           proc = subprocess.Popen(
-              ['uv', 'run', 'python', '-m', 'vm_webapp.app'],
+              ['uv', 'run', 'python', '-m', 'vm_webapp', 'serve', '--host', '127.0.0.1', '--port', '8766'],
               cwd='09-tools',
-              env={'VM_DB_PATH': '/tmp/test_workspace.sqlite3', 'VM_WORKSPACE_ROOT': '/tmp/test_vm'},
+              env=service_env,
               stdout=open('./logs/webapp.log', 'w'),
               stderr=subprocess.STDOUT,
           )
-          time.sleep(3)  # Wait for startup
+          
+          # Wait for service to be ready (up to 30s)
+          base_url = 'http://127.0.0.1:8766'
+          ready = False
+          for i in range(30):
+              time.sleep(1)
+              try:
+                  with urllib.request.urlopen(f'{base_url}/api/v2/health/ready', timeout=2) as resp:
+                      if resp.status == 200:
+                          ready = True
+                          print(f'Service ready after {i+1}s', file=sys.stderr)
+                          break
+              except urllib.error.URLError:
+                  pass
+          
+          if not ready:
+              print('WARNING: Service not ready after 30s, continuing anyway', file=sys.stderr)
           
           try:
               import urllib.request
@@ -87,21 +113,21 @@ jobs:
                   thread_id = thread_id.strip()
                   try:
                       # Fetch insights
-                      url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/insights'
+                      url = f'{base_url}/api/v2/threads/{thread_id}/editorial-decisions/insights'
                       req = urllib.request.Request(url)
                       with urllib.request.urlopen(req, timeout=10) as resp:
                           data = json.loads(resp.read().decode())
                           insights.append(data)
                       
                       # Fetch forecast
-                      forecast_url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/forecast'
+                      forecast_url = f'{base_url}/api/v2/threads/{thread_id}/editorial-decisions/forecast'
                       forecast_req = urllib.request.Request(forecast_url)
                       with urllib.request.urlopen(forecast_req, timeout=10) as resp:
                           forecast_data = json.loads(resp.read().decode())
                           forecasts.append(forecast_data)
                       
                       # Fetch recommendations
-                      recs_url = f'http://localhost:8000/api/v2/threads/{thread_id}/editorial-decisions/recommendations'
+                      recs_url = f'{base_url}/api/v2/threads/{thread_id}/editorial-decisions/recommendations'
                       recs_req = urllib.request.Request(recs_url)
                       with urllib.request.urlopen(recs_req, timeout=10) as resp:
                           recs_data = json.loads(resp.read().decode())
@@ -137,8 +163,13 @@ jobs:
               
               print(f'Collected {len(insights)} thread insights, {len(forecasts)} forecasts, {len(recommendations)} recommendation sets')
           finally:
-              proc.terminate()
-              proc.wait()
+              # Robust teardown: terminate gracefully, wait, then kill if necessary
+              try:
+                  proc.terminate()
+                  proc.wait(timeout=5)
+              except subprocess.TimeoutExpired:
+                  proc.kill()
+                  proc.wait()
           "
           
           # Copy the files for the next step
