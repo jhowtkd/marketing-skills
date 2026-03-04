@@ -750,7 +750,7 @@ def generate_outcome_roi_section() -> list[str]:
 
 
 def generate_skipped_notice(has_staging_url: bool, has_real_data: bool) -> list[str]:
-    """Generate SKIPPED notice when appropriate.""""
+    """Generate SKIPPED notice when appropriate."""
     lines = []
     
     if not has_staging_url:
