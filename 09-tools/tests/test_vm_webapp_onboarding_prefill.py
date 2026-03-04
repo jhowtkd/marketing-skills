@@ -11,6 +11,8 @@ from vm_webapp.onboarding_prefill import (
     generate_prefill_payload,
     get_prefill_for_user,
     apply_prefill_rules,
+    infer_prefill_data,
+    merge_prefill_with_explicit,
 )
 
 
@@ -242,3 +244,272 @@ class TestGetPrefillForUser:
         # Should return default prefill for unknown user
         assert payload["user_id"] == "nonexistent-user"
         assert payload["prefill_source"] == PrefillSource.DEFAULT
+
+
+# =============================================================================
+# v38 SPECIFICATION COMPLIANT TESTS
+# =============================================================================
+
+class TestInferPrefillData:
+    """Test the specification-compliant infer_prefill_data function."""
+
+    # --- UTM Campaign Rules ---
+    
+    def test_utm_campaign_blog_returns_blog_post(self):
+        """UTM campaign 'blog' → template_type: 'blog_post'"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="blog",
+        )
+        assert result["template_type"] == "blog_post"
+        assert result["confidence"] == "high"
+        assert result["source"] == "utm_campaign"
+
+    def test_utm_campaign_landing_returns_landing_page(self):
+        """UTM campaign 'landing' → template_type: 'landing_page'"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="landing",
+        )
+        assert result["template_type"] == "landing_page"
+        assert result["confidence"] == "high"
+        assert result["source"] == "utm_campaign"
+
+    def test_utm_campaign_social_returns_social_media(self):
+        """UTM campaign 'social' → template_type: 'social_media'"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="social",
+        )
+        assert result["template_type"] == "social_media"
+        assert result["confidence"] == "high"
+        assert result["source"] == "utm_campaign"
+
+    def test_utm_campaign_email_returns_email_marketing(self):
+        """UTM campaign 'email' → template_type: 'email_marketing'"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="email",
+        )
+        assert result["template_type"] == "email_marketing"
+        assert result["confidence"] == "high"
+        assert result["source"] == "utm_campaign"
+
+    def test_utm_campaign_case_insensitive(self):
+        """UTM campaign matching should be case-insensitive"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="BLOG",
+        )
+        assert result["template_type"] == "blog_post"
+
+    def test_utm_campaign_partial_match(self):
+        """UTM campaign with partial match"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="my_blog_campaign",
+        )
+        assert result["template_type"] == "blog_post"
+
+    # --- Referrer Rules ---
+
+    def test_referrer_google_returns_paid_search(self):
+        """Referrer contains 'google' → channel: 'paid_search'"""
+        result = infer_prefill_data(
+            source="test",
+            referrer="https://google.com/search",
+        )
+        assert result["channel"] == "paid_search"
+        assert result["source"] == "referrer"
+        assert result["confidence"] == "medium"
+
+    def test_referrer_facebook_returns_social_ads(self):
+        """Referrer contains 'facebook' → channel: 'social_ads'"""
+        result = infer_prefill_data(
+            source="test",
+            referrer="https://facebook.com/groups/marketing",
+        )
+        assert result["channel"] == "social_ads"
+        assert result["source"] == "referrer"
+        assert result["confidence"] == "medium"
+
+    def test_referrer_meta_returns_social_ads(self):
+        """Referrer contains 'meta' → channel: 'social_ads'"""
+        result = infer_prefill_data(
+            source="test",
+            referrer="https://meta.com/business",
+        )
+        assert result["channel"] == "social_ads"
+        assert result["source"] == "referrer"
+
+    def test_referrer_case_insensitive(self):
+        """Referrer matching should be case-insensitive"""
+        result = infer_prefill_data(
+            source="test",
+            referrer="https://GOOGLE.com/search",
+        )
+        assert result["channel"] == "paid_search"
+
+    # --- Email Domain Rules ---
+
+    def test_email_enterprise_com_returns_enterprise(self):
+        """Email domain contains '@enterprise.com' → segment: 'enterprise'"""
+        result = infer_prefill_data(
+            source="test",
+            email="user@enterprise.com",
+        )
+        assert result["segment"] == "enterprise"
+        assert result["source"] == "email_domain"
+        assert result["confidence"] == "medium"
+
+    def test_email_corp_domain_returns_enterprise(self):
+        """Email domain contains '@corp.' → segment: 'enterprise'"""
+        result = infer_prefill_data(
+            source="test",
+            email="user@corp.example.com",
+        )
+        assert result["segment"] == "enterprise"
+
+    def test_email_gmail_returns_smb(self):
+        """Email domain contains '@gmail.com' → segment: 'smb'"""
+        result = infer_prefill_data(
+            source="test",
+            email="user@gmail.com",
+        )
+        assert result["segment"] == "smb"
+        assert result["source"] == "email_domain"
+        assert result["confidence"] == "medium"
+
+    def test_email_outlook_returns_smb(self):
+        """Email domain contains '@outlook.com' → segment: 'smb'"""
+        result = infer_prefill_data(
+            source="test",
+            email="user@outlook.com",
+        )
+        assert result["segment"] == "smb"
+
+    def test_email_case_insensitive(self):
+        """Email domain matching should be case-insensitive"""
+        result = infer_prefill_data(
+            source="test",
+            email="user@GMAIL.COM",
+        )
+        assert result["segment"] == "smb"
+
+    # --- Fallback Tests ---
+
+    def test_fallback_when_no_signals(self):
+        """Test fallback when no signals are provided"""
+        result = infer_prefill_data(
+            source="test",
+        )
+        assert result["template_type"] is None
+        assert result["channel"] is None
+        assert result["segment"] is None
+        assert result["confidence"] == "low"
+        assert result["source"] == "default"
+
+    def test_fallback_with_unmatched_signals(self):
+        """Test fallback when signals don't match any rules"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="unknown_campaign",
+            referrer="https://example.com",
+            email="user@unknown-domain.com",
+        )
+        assert result["template_type"] is None
+        assert result["channel"] is None
+        assert result["segment"] is None
+        assert result["confidence"] == "low"
+        assert result["source"] == "default"
+
+    # --- Multiple Signals Tests ---
+
+    def test_multiple_signals_priority(self):
+        """UTM campaign has highest priority when multiple signals present"""
+        result = infer_prefill_data(
+            source="test",
+            utm_campaign="blog",
+            referrer="https://google.com",
+            email="user@enterprise.com",
+        )
+        # UTM campaign should determine the source
+        assert result["template_type"] == "blog_post"
+        assert result["channel"] == "paid_search"
+        assert result["segment"] == "enterprise"
+        assert result["confidence"] == "high"
+        assert "utm_campaign" in result["source"]
+
+
+class TestMergePrefillWithExplicit:
+    """Test that prefill never overrides explicit user input."""
+
+    def test_explicit_values_preserved(self):
+        """NUNCA sobrescrever input explícito do usuário"""
+        prefill_data = {
+            "template_type": "blog_post",
+            "channel": "paid_search",
+            "segment": "smb",
+            "confidence": "high",
+            "source": "utm_campaign",
+        }
+        explicit_fields = {
+            "template_type": "landing_page",  # User explicitly chose this
+        }
+        
+        result = merge_prefill_with_explicit(prefill_data, explicit_fields)
+        
+        # Explicit value should be preserved
+        assert result["template_type"] == "landing_page"
+        # Other prefill values should remain
+        assert result["channel"] == "paid_search"
+        assert result["segment"] == "smb"
+
+    def test_explicit_none_does_not_override(self):
+        """Explicit None values should not override prefill"""
+        prefill_data = {
+            "template_type": "blog_post",
+            "confidence": "high",
+        }
+        explicit_fields = {
+            "template_type": None,
+        }
+        
+        result = merge_prefill_with_explicit(prefill_data, explicit_fields)
+        
+        # Prefill value should be preserved
+        assert result["template_type"] == "blog_post"
+
+    def test_explicit_empty_string_does_not_override(self):
+        """Explicit empty string should not override prefill"""
+        prefill_data = {
+            "template_type": "blog_post",
+            "confidence": "high",
+        }
+        explicit_fields = {
+            "template_type": "",
+        }
+        
+        result = merge_prefill_with_explicit(prefill_data, explicit_fields)
+        
+        # Prefill value should be preserved
+        assert result["template_type"] == "blog_post"
+
+    def test_merged_prefill_and_explicit(self):
+        """Test merging prefill with explicit fields without conflict"""
+        prefill_data = {
+            "template_type": "blog_post",
+            "channel": "paid_search",
+            "confidence": "high",
+            "source": "utm_campaign",
+        }
+        explicit_fields = {
+            "brand_name": "My Brand",  # New field not in prefill
+        }
+        
+        result = merge_prefill_with_explicit(prefill_data, explicit_fields)
+        
+        # Both should be present
+        assert result["template_type"] == "blog_post"
+        assert result["channel"] == "paid_search"
+        assert result["brand_name"] == "My Brand"

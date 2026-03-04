@@ -169,6 +169,20 @@ Adicionado `prometheus_client httpx` em todos os jobs de teste Python:
 
 **Nota:** Workflows não têm workflow_dispatch, validação só ocorrerá em próximos PRs.
 
+### Critério de Saída (Exit Criteria)
+
+| Workflow | Critério | Status |
+|----------|----------|--------|
+| v33-ci-gate | 3 SUCCESS consecutivos pós-fix (1113c76e) | 🟡 Em monitoramento |
+| v34-ci-gate | 3 SUCCESS consecutivos pós-fix (1113c76e) | 🟡 Em monitoramento |
+| v35-ci-gate | 3 SUCCESS consecutivos pós-fix (1113c76e) | 🟡 Em monitoramento |
+| v36-ci-gate | 3 SUCCESS consecutivos pós-fix (1113c76e) | 🟡 Em monitoramento |
+| v37-ci-gate | 3 SUCCESS consecutivos pós-fix (1113c76e) | 🟡 Em monitoramento |
+
+**Regra de Reabertura:** Se ocorrer `ModuleNotFoundError` ou `ImportError` em headSha >= 1113c76e, reabrir investigação imediatamente.
+
 ### Próximos Passos
-1. Monitorar próximos PRs para validar correção
-2. Timeline de merge: 90 dias (conforme matriz original)
+1. Monitorar board em tasks/todo.md (seção v33-v37 Monitoring Board)
+2. Atualizar streak counters semanalmente
+3. Decisão no checkpoint 2026-03-18: mergear em vm-webapp-smoke se todos >= 3/3
+4. Timeline de merge: 90 dias (conforme matriz original)
