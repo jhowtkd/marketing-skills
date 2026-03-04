@@ -262,3 +262,63 @@ gh run list --workflow vm-editorial-ops-nightly.yml --limit 10 --json databaseId
 - [ ] Meta: 3 runs consecutivos SUCCESS para cada workflow
 - [ ] Se meta atingida: Promover de "legacy" para "important"
 - [ ] Se regressão: Investigar e aplicar correções adicionais
+
+---
+
+## ✅ D+7 CHECKPOINT - DECISÃO FINAL LEGADO (2026-03-04)
+
+### Comandos Executados
+
+```bash
+# 1) Coletar últimos 20 runs
+gh run list --workflow vm-editorial-monitoring.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha
+gh run list --workflow vm-editorial-ops-nightly.yml --limit 20 --json databaseId,createdAt,status,conclusion,headSha
+
+# 2) Calcular taxas pós-fix (headSha >= e64a02cd)
+# vm-editorial-monitoring: 100% (1/1 runs)
+# vm-editorial-ops-nightly: 100% (1/1 runs)
+
+# 3) Rodar relatório consolidado
+./scripts/ci_weekly_health_report.sh --limit 50
+```
+
+### Taxas Calculadas
+
+| Workflow | Período | Runs | Sucessos | Taxa |
+|----------|---------|------|----------|------|
+| vm-editorial-monitoring | Pós-fix | 1 | 1 | 100% |
+| vm-editorial-ops-nightly | Pós-fix | 1 | 1 | 100% |
+| **Combinado** | **Pós-fix** | **2** | **2** | **100%** |
+
+### Top 5 Runs Mais Recentes
+
+**vm-editorial-monitoring:**
+1. `22679447435` | 2026-03-04T16:46:18Z | ✅ success | e64a02cd
+2. `22679089014` | 2026-03-04T16:37:21Z | ❌ failure | 387ce721
+3. `22669557836` | 2026-03-04T12:34:30Z | ❌ failure | 51b39869
+4. `22658077019` | 2026-03-04T06:35:15Z | ❌ failure | a3decc2b
+5. `22650402722` | 2026-03-04T01:10:52Z | ❌ failure | a3decc2b
+
+**vm-editorial-ops-nightly:**
+1. `22679448569` | 2026-03-04T16:46:19Z | ✅ success | e64a02cd
+2. `22679090355` | 2026-03-04T16:37:23Z | ❌ failure | 387ce721
+3. `22658212688` | 2026-03-04T06:40:49Z | ❌ failure | a3decc2b
+4. `22611606090` | 2026-03-03T06:43:36Z | ❌ failure | eafb4929
+5. `22564811810` | 2026-03-02T06:51:35Z | ❌ failure | 37a463da
+
+### Decisão Final: 🟡 PARCIAL / INCONCLUSIVO
+
+| Critério | Resultado |
+|----------|-----------|
+| Taxa >=95% | ✅ SIM (100%) |
+| Volume suficiente (>=5 runs) | ❌ NÃO (apenas 1 run cada) |
+| Regressão funcional nova | ❌ NÃO |
+
+**Justificativa:** Taxa de sucesso excelente (100%), mas volume insuficiente para decisão definitiva. Correções aplicadas em e64a02cd funcionaram, mas precisamos de mais runs para confirmar estabilidade consistente.
+
+### Próximos Passos
+
+- [ ] Continuar monitoramento por mais 7 dias (D+14: 2026-03-11)
+- [ ] Meta: Atingir 5 runs pós-fix cada workflow
+- [ ] Se taxa >=95% mantida: Promover para ESTABILIZADO
+- [ ] Se taxa cair <70%: Reabrir investigação

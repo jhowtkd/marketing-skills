@@ -273,3 +273,44 @@ gh run list --workflow vm-editorial-ops-nightly.yml --limit 10 --json databaseId
 - [ ] Monitorar próximos 7 dias para confirmar estabilidade
 - [ ] Meta: 3 runs consecutivos com SUCCESS
 - [ ] Se estável por 14 dias: considerar remoção da flag "legacy"
+
+---
+
+## 📝 D+7 Checkpoint - Legacy Workflows Stability Decision (2026-03-04)
+
+### Status após Correções
+
+| Workflow | Taxa Pós-Fix | Volume | Decisão |
+|----------|--------------|--------|---------|
+| vm-editorial-monitoring | 100% (1/1) | Insuficiente | 🟡 PARCIAL |
+| vm-editorial-ops-nightly | 100% (1/1) | Insuficiente | 🟡 PARCIAL |
+| **Combinado** | **100% (2/2)** | **Insuficiente** | **🟡 PARCIAL** |
+
+### Top 5 Runs Mais Recentes
+
+**vm-editorial-monitoring:**
+1. `22679447435` | 2026-03-04T16:46:18Z | ✅ success | e64a02cd
+2. `22679089014` | 2026-03-04T16:37:21Z | ❌ failure | 387ce721
+3. `22669557836` | 2026-03-04T12:34:30Z | ❌ failure | 51b39869
+4. `22658077019` | 2026-03-04T06:35:15Z | ❌ failure | a3decc2b
+5. `22650402722` | 2026-03-04T01:10:52Z | ❌ failure | a3decc2b
+
+**vm-editorial-ops-nightly:**
+1. `22679448569` | 2026-03-04T16:46:19Z | ✅ success | e64a02cd
+2. `22679090355` | 2026-03-04T16:37:23Z | ❌ failure | 387ce721
+3. `22658212688` | 2026-03-04T06:40:49Z | ❌ failure | a3decc2b
+4. `22611606090` | 2026-03-03T06:43:36Z | ❌ failure | eafb4929
+5. `22564811810` | 2026-03-02T06:51:35Z | ❌ failure | 37a463da
+
+### Análise
+
+- ✅ Taxa de sucesso pós-fix: 100% (ambos workflows)
+- ❌ Volume insuficiente: Apenas 1 run pós-fix cada
+- ✅ Sem regressão funcional nova
+- 🟡 Decisão: **PARCIAL / INCONCLUSIVO**
+
+### Recomendação
+
+Continuar monitoramento por mais 7 dias para atingir volume mínimo de 5 runs pós-fix antes de declarar ESTABILIZADO.
+
+Próximo checkpoint: 2026-03-11 (D+14)
