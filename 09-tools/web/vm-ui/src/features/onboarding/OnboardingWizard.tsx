@@ -422,6 +422,26 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     }
   }, [state.currentStep, state.workspaceName, state.selectedTemplate]);
 
+  // v40: Auto-save progress when completing a step
+  const autoSaveProgress = useCallback(async (step: string, stepData: any) => {
+    try {
+      const currentCompletedSteps = STEP_ORDER.slice(0, STEP_ORDER.indexOf(step as OnboardingStep));
+      await fetch(`/api/v2/onboarding/progress/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_step: step,
+          step_data: stepData,
+          completed_steps: currentCompletedSteps,
+          source: 'auto_save'
+        })
+      });
+      trackOnboardingProgressSaved(userId, step, 'auto_save');
+    } catch (error) {
+      console.warn('Failed to auto-save progress:', error);
+    }
+  }, [userId]);
+
   const handleNext = useCallback(() => {
     const nextStep = getNextStep(state.currentStep);
     if (nextStep) {
@@ -450,26 +470,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     trackOnboardingCompleted(userId, durationMs);
     onComplete();
   }, [onComplete, state.startedAt, userId]);
-  
-  // v40: Auto-save progress when completing a step
-  const autoSaveProgress = useCallback(async (step: string, stepData: any) => {
-    try {
-      const currentCompletedSteps = STEP_ORDER.slice(0, STEP_ORDER.indexOf(step as OnboardingStep));
-      await fetch(`/api/v2/onboarding/progress/${userId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          current_step: step,
-          step_data: stepData,
-          completed_steps: currentCompletedSteps,
-          source: 'auto_save'
-        })
-      });
-      trackOnboardingProgressSaved(userId, step, 'auto_save');
-    } catch (error) {
-      console.warn('Failed to auto-save progress:', error);
-    }
-  }, [userId]);
   
   // v40: Handler for accepting resume
   const handleResume = useCallback(async () => {
