@@ -62,8 +62,12 @@ describe('OnboardingWizard', () => {
       mockFetch = vi.fn();
       global.fetch = mockFetch;
       
-      // Default mocks for basic rendering tests
+      // Default mocks for basic rendering tests (order: progress, prefill, fast-lane, recommend)
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -92,10 +96,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
     });
     
@@ -135,6 +135,53 @@ describe('OnboardingWizard', () => {
   });
 
   describe('navigation', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+    
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+      
+      // Default mocks for navigation tests (order: progress, prefill, fast-lane, recommend)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+    });
+    
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should advance to next step when clicking continue', async () => {
       render(
         <OnboardingWizard
@@ -193,6 +240,53 @@ describe('OnboardingWizard', () => {
   });
 
   describe('step validation', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+    
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+      
+      // Default mocks for step validation tests (order: progress, prefill, fast-lane, recommend)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+    });
+    
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should disable continue when workspace name is empty', async () => {
       render(
         <OnboardingWizard
@@ -234,6 +328,54 @@ describe('OnboardingWizard', () => {
   });
 
   describe('completion', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+    
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+      
+      // Default mocks for completion tests (order: progress, prefill, fast-lane, recommend, auto-save)
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+    });
+    
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should call onComplete when finishing all steps', async () => {
       render(
         <OnboardingWizard
@@ -291,6 +433,10 @@ describe('OnboardingWizard', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             user_id: 'user-123',
             prefill_source: 'default',
@@ -317,10 +463,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
     });
     
@@ -357,6 +499,10 @@ describe('OnboardingWizard', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             user_id: 'user-123',
             prefill_source: 'default',
@@ -383,10 +529,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
@@ -428,6 +570,10 @@ describe('OnboardingWizard', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             user_id: 'user-123',
             prefill_source: 'default',
@@ -454,15 +600,15 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
     };
 
     it('should fetch prefill data on mount', async () => {
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -492,10 +638,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -520,6 +662,10 @@ describe('OnboardingWizard', () => {
 
     it('should auto-select template from prefill without explicit input', async () => {
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -549,10 +695,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
@@ -592,6 +734,10 @@ describe('OnboardingWizard', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             user_id: 'user-123',
             prefill_source: 'utm_campaign',
@@ -619,10 +765,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
@@ -666,6 +808,10 @@ describe('OnboardingWizard', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             user_id: 'user-123',
             prefill_source: 'utm_campaign',
@@ -693,10 +839,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
@@ -810,8 +952,12 @@ describe('OnboardingWizard', () => {
     };
 
     it('should fetch fast lane data on mount', async () => {
-      // Mock prefill first, then fast-lane
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -831,6 +977,16 @@ describe('OnboardingWizard', () => {
             estimated_time_saved_minutes: 4.0,
             justification: 'Low risk user',
             risk_level: 'low',
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
           }),
         });
 
@@ -855,8 +1011,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should display fast lane badge for eligible users', async () => {
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -886,10 +1046,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -909,8 +1065,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should not show fast lane badge for standard path users', async () => {
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -940,10 +1100,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -964,8 +1120,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should gracefully handle fast lane fetch failure', async () => {
-      // Mock prefill success, then fast-lane failure
+      // Mock progress check success, prefill success, then fast-lane failure
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1015,8 +1175,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should show CTA when fast lane recommendation is available', async () => {
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1045,10 +1209,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: ['customization'],
             estimated_time_saved_minutes: 4.5,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -1075,8 +1235,12 @@ describe('OnboardingWizard', () => {
     it('should call trackFastLaneAccepted when accepting fast lane', async () => {
       const { trackFastLaneAccepted } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1105,10 +1269,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: ['customization'],
             estimated_time_saved_minutes: 4.5,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -1139,8 +1299,12 @@ describe('OnboardingWizard', () => {
     it('should call trackFastLaneRejected when rejecting fast lane', async () => {
       const { trackFastLaneRejected } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1169,10 +1333,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: ['customization'],
             estimated_time_saved_minutes: 4.5,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -1200,8 +1360,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should apply skip steps when accepting fast lane', async () => {
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check, prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1230,10 +1394,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: ['customization'],
             estimated_time_saved_minutes: 4.5,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         });
 
       render(
@@ -1281,8 +1441,18 @@ describe('OnboardingWizard', () => {
     it('should show resume prompt when there is saved progress', async () => {
       const { trackOnboardingResumePresented } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, and progress check
+      // Mock progress check (with saved progress), prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            has_progress: true,
+            current_step: 'workspace_setup',
+            updated_at: '2026-03-04T10:30:00Z',
+            step_data: { workspaceName: 'Meu Workspace' },
+            completed_steps: ['welcome'],
+          }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1310,16 +1480,6 @@ describe('OnboardingWizard', () => {
             reasons: ['Standard path'],
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            has_progress: true,
-            current_step: 'workspace_setup',
-            updated_at: '2026-03-04T10:30:00Z',
-            step_data: { workspaceName: 'Meu Workspace' },
-            completed_steps: ['welcome'],
           }),
         });
 
@@ -1343,8 +1503,18 @@ describe('OnboardingWizard', () => {
     it('should call API and hydrate state when accepting resume', async () => {
       const { trackOnboardingResumeAccepted } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, progress check, and delete
+      // Mock progress check (with saved progress), prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            has_progress: true,
+            current_step: 'template_selection',
+            updated_at: '2026-03-04T10:30:00Z',
+            step_data: { workspaceName: 'Meu Workspace Salvo', selectedTemplate: 'blog-post' },
+            completed_steps: ['welcome', 'workspace_setup'],
+          }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1372,16 +1542,6 @@ describe('OnboardingWizard', () => {
             reasons: ['Standard path'],
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            has_progress: true,
-            current_step: 'template_selection',
-            updated_at: '2026-03-04T10:30:00Z',
-            step_data: { workspaceName: 'Meu Workspace Salvo', selectedTemplate: 'blog-post' },
-            completed_steps: ['welcome', 'workspace_setup'],
           }),
         });
 
@@ -1414,8 +1574,18 @@ describe('OnboardingWizard', () => {
     it('should call API to clear progress when rejecting resume', async () => {
       const { trackOnboardingResumeRejected } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, progress check, and delete
+      // Mock progress check (with saved progress), prefill, fast-lane, recommend, and delete
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            has_progress: true,
+            current_step: 'workspace_setup',
+            updated_at: '2026-03-04T10:30:00Z',
+            step_data: { workspaceName: 'Meu Workspace' },
+            completed_steps: ['welcome'],
+          }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1443,16 +1613,6 @@ describe('OnboardingWizard', () => {
             reasons: ['Standard path'],
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            has_progress: true,
-            current_step: 'workspace_setup',
-            updated_at: '2026-03-04T10:30:00Z',
-            step_data: { workspaceName: 'Meu Workspace' },
-            completed_steps: ['welcome'],
           }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
@@ -1494,8 +1654,12 @@ describe('OnboardingWizard', () => {
     it('should trigger auto-save when completing a step', async () => {
       const { trackOnboardingProgressSaved } = await import('./ttfvTelemetry');
       
-      // Mock prefill, fast-lane, recommendation, progress check (no saved progress), and auto-save
+      // Mock progress check (no saved progress), prefill, fast-lane, recommend, and auto-save
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1524,10 +1688,6 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ has_progress: false }),
         })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
@@ -1569,8 +1729,18 @@ describe('OnboardingWizard', () => {
     });
 
     it('should hydrate workspace name when resuming', async () => {
-      // Mock prefill, fast-lane, recommendation, progress check
+      // Mock progress check (with saved progress), prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            has_progress: true,
+            current_step: 'template_selection',
+            updated_at: '2026-03-04T10:30:00Z',
+            step_data: { workspaceName: 'Workspace Hidratado', selectedTemplate: null },
+            completed_steps: ['welcome', 'workspace_setup'],
+          }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1598,16 +1768,6 @@ describe('OnboardingWizard', () => {
             reasons: ['Standard path'],
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            has_progress: true,
-            current_step: 'template_selection',
-            updated_at: '2026-03-04T10:30:00Z',
-            step_data: { workspaceName: 'Workspace Hidratado', selectedTemplate: null },
-            completed_steps: ['welcome', 'workspace_setup'],
           }),
         });
 
@@ -1643,8 +1803,12 @@ describe('OnboardingWizard', () => {
     });
 
     it('should not show resume prompt when there is no saved progress', async () => {
-      // Mock prefill, fast-lane, recommendation, and progress check (no progress)
+      // Mock progress check (no progress), prefill, fast-lane, and recommend
       mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1703,8 +1867,9 @@ describe('OnboardingWizard', () => {
       const testMockFetch = vi.fn();
       global.fetch = testMockFetch;
       
-      // Mock prefill, fast-lane, recommendation, and progress check failure
+      // Mock progress check failure, prefill, fast-lane, and recommend
       testMockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -1733,8 +1898,7 @@ describe('OnboardingWizard', () => {
             skipped_steps: [],
             estimated_time_saved_minutes: 0,
           }),
-        })
-        .mockRejectedValueOnce(new Error('Network error'));
+        });
 
       render(
         <OnboardingWizard
