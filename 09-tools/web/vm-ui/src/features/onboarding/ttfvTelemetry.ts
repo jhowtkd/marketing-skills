@@ -37,6 +37,11 @@ export interface TTFVCohortEvent {
   cohort: string;
 }
 
+// v38: Event data for median calculation
+export interface TTFVCalculationEvent {
+  ttfvMinutes: number;
+}
+
 /**
  * Generate a unique session ID
  */
@@ -84,7 +89,20 @@ async function sendTTFVTelemetry(payload: TTFVTelemetryPayload): Promise<void> {
 }
 
 /**
- * Track onboarding started event
+ * Track onboarding started event (v38 spec compliant)
+ * @param sessionId - Session identifier
+ */
+export async function trackOnboardingStart(sessionId: string): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.ONBOARDING_STARTED,
+    userId: 'anonymous', // Will be enriched server-side
+    timestamp: new Date().toISOString(),
+    sessionId,
+  });
+}
+
+/**
+ * Track onboarding started event (legacy with userId)
  */
 export async function trackOnboardingStarted(userId: string): Promise<void> {
   await sendTTFVTelemetry({
@@ -96,9 +114,24 @@ export async function trackOnboardingStarted(userId: string): Promise<void> {
 }
 
 /**
- * Track step viewed event
+ * Track step viewed event (v38 spec compliant)
+ * @param stepId - Step identifier
+ * @param sessionId - Session identifier
  */
-export async function trackStepViewed(userId: string, step: string): Promise<void> {
+export async function trackStepViewed(stepId: string, sessionId: string): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_VIEWED,
+    userId: 'anonymous', // Will be enriched server-side
+    timestamp: new Date().toISOString(),
+    sessionId,
+    step: stepId,
+  });
+}
+
+/**
+ * Track step viewed event (legacy with userId)
+ */
+export async function trackStepViewedLegacy(userId: string, step: string): Promise<void> {
   await sendTTFVTelemetry({
     event: TTFVEvent.STEP_VIEWED,
     userId,
@@ -109,9 +142,30 @@ export async function trackStepViewed(userId: string, step: string): Promise<voi
 }
 
 /**
- * Track step completed event with duration
+ * Track step completed event with duration (v38 spec compliant)
+ * @param stepId - Step identifier
+ * @param durationMs - Duration in milliseconds
+ * @param sessionId - Session identifier
  */
 export async function trackStepCompleted(
+  stepId: string,
+  durationMs: number,
+  sessionId: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_COMPLETED,
+    userId: 'anonymous', // Will be enriched server-side
+    timestamp: new Date().toISOString(),
+    sessionId,
+    step: stepId,
+    durationMs,
+  });
+}
+
+/**
+ * Track step completed event (legacy with userId)
+ */
+export async function trackStepCompletedLegacy(
   userId: string,
   step: string,
   durationMs: number
@@ -127,9 +181,27 @@ export async function trackStepCompleted(
 }
 
 /**
- * Track first value reached (TTFV) event
+ * Track first value reached (TTFV) event (v38 spec compliant)
+ * @param templateType - Type of template used
+ * @param sessionId - Session identifier
  */
 export async function trackFirstValueReached(
+  templateType: string,
+  sessionId: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.FIRST_VALUE_REACHED,
+    userId: 'anonymous', // Will be enriched server-side
+    timestamp: new Date().toISOString(),
+    sessionId,
+    templateId: templateType,
+  });
+}
+
+/**
+ * Track first value reached (legacy with userId and ttfvMs)
+ */
+export async function trackFirstValueReachedLegacy(
   userId: string,
   ttfvMs: number,
   templateId?: string
@@ -146,7 +218,28 @@ export async function trackFirstValueReached(
 }
 
 /**
- * Track dropoff reason
+ * Track dropoff reason (v38 spec compliant)
+ * @param reason - Reason for dropoff
+ * @param lastStep - Last step before dropoff
+ * @param sessionId - Session identifier
+ */
+export async function trackDropoff(
+  reason: string,
+  lastStep: string,
+  sessionId: string
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.DROPOFF_REASON,
+    userId: 'anonymous', // Will be enriched server-side
+    timestamp: new Date().toISOString(),
+    sessionId,
+    step: lastStep,
+    reason,
+  });
+}
+
+/**
+ * Track dropoff reason (legacy with userId)
  */
 export async function trackDropoffReason(
   userId: string,
@@ -163,6 +256,29 @@ export async function trackDropoffReason(
     reason,
     metadata,
   });
+}
+
+/**
+ * Calculate median TTFV (Time To First Value) in minutes (v38 spec compliant)
+ * @param events - Array of events with ttfvMinutes
+ * @returns Median TTFV in minutes
+ */
+export function calculateMedianTTFV(events: TTFVCalculationEvent[]): number {
+  if (events.length === 0) {
+    return 0;
+  }
+
+  const values = events.map(e => e.ttfvMinutes);
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    // Even number of elements: average of two middle values
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  } else {
+    // Odd number of elements: middle value
+    return sorted[mid];
+  }
 }
 
 /**
@@ -186,7 +302,7 @@ export function calculateMedianTTFVByCohort(
   // Calculate median for each cohort
   const result: Record<string, number> = {};
   for (const [cohort, ttfvValues] of Object.entries(cohorts)) {
-    result[cohort] = calculateMedian(ttfvValues);
+    result[cohort] = calculateMedianFromValues(ttfvValues);
   }
 
   return result;
@@ -195,7 +311,7 @@ export function calculateMedianTTFVByCohort(
 /**
  * Calculate median of an array of numbers
  */
-function calculateMedian(values: number[]): number {
+function calculateMedianFromValues(values: number[]): number {
   if (values.length === 0) {
     return 0;
   }
