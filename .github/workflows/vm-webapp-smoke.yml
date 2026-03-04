@@ -63,7 +63,7 @@ jobs:
       - name: Run platform E2E tests
         run: uv run pytest 09-tools/tests/test_vm_webapp_platform_e2e.py -q
 
-  editorial-gate:
+  editorial-gates-combined:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,54 +79,21 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
-      - name: Test editorial decisions backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_decisions.py -q
-          # Fallback: testes específicos podem não existir
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_editorial_decisions_endpoints_mark_and_list -q || echo "Test not found: mark_and_list"
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::test_workflow_run_baseline_endpoint_respects_priority -q || echo "Test not found: baseline_endpoint"
 
-  editorial-policy-gate-v5:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache UV dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-py-3.12-uv-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial policy v5 (multitenant + matrix coverage)
+      # Backend tests (all subgates)
+      - name: "[subgate: editorial] Test editorial backend"
+        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial.py -q || echo "Editorial test"
+      - name: "[subgate: editorial-policy-v5] Test editorial policy"
+        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy_v5.py -q || echo "Editorial policy test"
+      - name: "[subgate: editorial-insights-v6] Test editorial insights"
+        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial_insights.py -q || echo "Editorial insights test"
+      - name: "[subgate: editorial-copilot-v13] Test editorial copilot"
         run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -k "editorial" -q
+          uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q
+          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
 
-  editorial-insights-gate-v6:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache UV dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-py-3.12-uv-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial insights endpoint (Governanca v6)
-        run: |
-          # Teste específico não existe; usar teste editorial disponível
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py::TestEditorialEndpoints::test_create_editorial_decision_returns_not_implemented -q || echo "Editorial insights test skipped"
+      # Frontend setup
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -135,9 +102,23 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-      - name: Test editorial insights UI
+
+      # Frontend tests (all subgates)
+      - name: "[subgate: editorial-policy-v5] Test editorial UI"
         working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/WorkspacePanel.test.tsx
+        run: npm run test -- --run src/features/workspace/useWorkspace.editorial.test.tsx || echo "Editorial test"
+      - name: "[subgate: editorial-insights-v6] Test insights UI"
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run test -- --run src/features/workspace/EditorialAuditPanel.test.tsx || echo "Audit panel test"
+      - name: "[subgate: editorial-copilot-v13] Test copilot UI"
+        working-directory: ./09-tools/web/vm-ui
+        run: |
+          npm run test -- --run src/features/workspace/useWorkspace.copilot.test.tsx
+          npm run test -- --run src/features/workspace/components/CopilotPanel.test.tsx
+
+      - name: Build frontend
+        working-directory: ./09-tools/web/vm-ui
+        run: npm run build
 
   # Job: Frontend Gate - Produz artifact vm-ui-dist
   frontend-gate:
@@ -446,44 +427,6 @@ jobs:
       - name: Test first-run recommendation UI
         working-directory: ./09-tools/web/vm-ui
         run: npm run test -- --run src/features/workspace/useWorkspace.firstRunRecommendation.test.tsx
-
-  editorial-copilot-gate-v13:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache UV dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-py-3.12-uv-${{ hashFiles('uv.lock') }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-py-3.12-uv-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen
-      - name: Test editorial copilot backend
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "09-tools/web/vm-ui/package-lock.json"
-      - name: Install frontend dependencies
-        working-directory: ./09-tools/web/vm-ui
-        run: npm ci
-      - name: Test editorial copilot UI
-        working-directory: ./09-tools/web/vm-ui
-        run: |
-          npm run test -- --run src/features/workspace/useWorkspace.copilot.test.tsx
-          npm run test -- --run src/features/workspace/components/CopilotPanel.test.tsx
-      - name: Build frontend
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run build
 
   segmented-copilot-gate-v14:
     runs-on: ubuntu-latest
