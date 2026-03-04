@@ -139,3 +139,36 @@
 **Próxima Revisão:** 2026-03-11 (7 dias)
 - Se ambos estáveis (≥3 runs SUCCESS consecutivos): Atualizar para "important"
 - Se regressão: Reverter para "legacy" com deprecação acelerada
+
+---
+
+## Correções Aplicadas v33-v37 (2026-03-04)
+
+### Problema Identificado
+- **Causa raiz:** conftest.py importa fastapi, prometheus_client no topo
+- **Erro:** ModuleNotFoundError em jobs que não instalavam todas as dependências
+- **Impacto:** 100% de falha em todos os workflows v33-v37
+
+### Correção Aplicada
+Adicionado `prometheus_client httpx` em todos os jobs de teste Python:
+- v33-ci-gate.yml: metrics-validation job
+- v34-ci-gate.yml: metrics-validation job  
+- v35-ci-gate.yml: metrics-validation job
+- v36-ci-gate.yml: metrics-validation job
+- v37-ci-gate.yml: unit-tests job
+
+### Decisão de Governança
+
+| Workflow | Tipo de Trigger | Decisão |
+|----------|-----------------|---------|
+| v33-ci-gate | PR-only (branch específica) | **MANTER** - Mergear em vm-webapp-smoke em 90 dias |
+| v34-ci-gate | PR-only (branch específica) | **MANTER** - Mergear em vm-webapp-smoke em 90 dias |
+| v35-ci-gate | PR-only (branch específica) | **MANTER** - Mergear em vm-webapp-smoke em 90 dias |
+| v36-ci-gate | PR-only (branch específica) | **MANTER** - Mergear em vm-webapp-smoke em 90 dias |
+| v37-ci-gate | PR-only (branch específica) | **MANTER** - Mergear em vm-webapp-smoke em 90 dias |
+
+**Nota:** Workflows não têm workflow_dispatch, validação só ocorrerá em próximos PRs.
+
+### Próximos Passos
+1. Monitorar próximos PRs para validar correção
+2. Timeline de merge: 90 dias (conforme matriz original)
