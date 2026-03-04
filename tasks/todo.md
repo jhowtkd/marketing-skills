@@ -803,3 +803,54 @@ Aguardar instrução do usuário para adicionar o JSX de renderização ou mante
 ### Commits
 - `504e95e6` feat(v40): Add onboarding save/resume UI, telemetry and tests
 - (uncommitted) test(v40): update wizard mocks for progress API
+
+---
+
+## ✅ v40 FINAL - 100% Testes Passando (2026-03-04)
+
+### Implementação Completa
+
+**JSX de Resume Prompt adicionado:**
+- Render condicional baseado em `showResumePrompt`
+- Card visual com ícone 🔄 e borda âmbar
+- Info: etapa salva (formatada) e timestamp
+- Botão "Retomar progresso" (data-testid="resume-accept")
+- Botão "Começar do zero" (data-testid="resume-reject")
+
+### Validação Final
+
+```bash
+# Frontend Wizard
+npm run test -- --run src/features/onboarding/OnboardingWizard.test.tsx
+# ✅ 30 passed (100%)
+
+# Frontend Telemetry
+npm run test -- --run src/features/onboarding/ttfvTelemetry.test.ts
+# ✅ 20 passed (100%)
+
+# Build
+npm run build
+# ✅ built in 1.21s
+
+# Backend Progress
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_onboarding_progress.py -q
+# ✅ 35 passed (100%)
+
+# Regressão API v2
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
+# ✅ 1 passed (100%)
+
+## TOTAL: 86/86 testes passando ✅
+```
+
+### Commits v40
+```
+99075f49 v40: Implement onboarding progress save/resume backend
+504e95e6 feat(v40): Add onboarding save/resume UI, telemetry and tests
+d09c43a7 docs(v40): Record save/resume implementation status
+6ad9e51e test(v40): update onboarding wizard mocks for progress API
+[NOVO] feat(v40): render onboarding resume prompt and complete save/resume flow
+```
+
+### Status
+🟢 **PRONTO PARA PR** - 100% funcional, todos testes passando

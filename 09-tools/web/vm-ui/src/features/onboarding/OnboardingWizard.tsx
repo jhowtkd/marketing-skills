@@ -764,6 +764,46 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
         </div>
       </div>
 
+      {/* Resume Prompt */}
+      {showResumePrompt && savedProgress?.hasProgress && (
+        <div 
+          data-testid="resume-prompt"
+          className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg"
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🔄</span>
+            <div className="flex-1">
+              <h3 className="font-semibold text-amber-900 mb-1">
+                Retomar de onde parou?
+              </h3>
+              <p className="text-sm text-amber-700 mb-2">
+                Você tem progresso salvo na etapa: <strong>{savedProgress.lastStep.replace(/_/g, ' ')}</strong>
+                <br />
+                <span className="text-xs">
+                  Última atualização: {new Date(savedProgress.lastUpdated).toLocaleString('pt-BR')}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleResume}
+                  className="px-4 py-2 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 transition-colors"
+                  data-testid="resume-accept"
+                >
+                  Retomar progresso
+                </button>
+                <button
+                  onClick={handleStartFresh}
+                  className="px-4 py-2 bg-white text-amber-700 border border-amber-300 text-sm rounded-md hover:bg-amber-50 transition-colors"
+                  data-testid="resume-reject"
+                >
+                  Começar do zero
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step Content */}
       <div className="mb-8">{renderStep()}</div>
 
