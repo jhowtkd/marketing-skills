@@ -50,3 +50,9 @@ def test_pipeline_stops_on_gate_failure() -> None:
     assert "preflight" in completed.stdout
     assert "gate-critico" in completed.stdout
     assert "e2e-startup" in completed.stdout
+
+
+def test_dry_run_writes_summary_file(tmp_path: Path) -> None:
+    completed = run_script("--dry-run", "--artifacts-dir", str(tmp_path))
+    assert completed.returncode == 0
+    assert (tmp_path / "summary.txt").exists()

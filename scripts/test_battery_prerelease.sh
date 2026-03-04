@@ -18,14 +18,37 @@ FROM_STAGE=""
 TO_STAGE=""
 ARTIFACTS_DIR=""
 START_TIME=""
+SUMMARY_FILE=""
+
+# Arrays para tracking
+STAGE_RESULTS=()
+STAGE_TIMES=()
 
 # Funções auxiliares
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    
+    # Também escreve no summary se disponível
+    if [[ -n "$SUMMARY_FILE" && -f "$SUMMARY_FILE" ]]; then
+        echo "$*" >> "$SUMMARY_FILE"
+    fi
 }
 
 error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
+    
+    # Também escreve no summary se disponível
+    if [[ -n "$SUMMARY_FILE" && -f "$SUMMARY_FILE" ]]; then
+        echo "ERROR: $*" >> "$SUMMARY_FILE"
+    fi
+}
+
+log_stage() {
+    local stage="$1"
+    local message="$2"
+    local stage_log="$ARTIFACTS_DIR/${stage}.log"
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" >> "$stage_log"
 }
 
 usage() {
@@ -55,7 +78,6 @@ Exemplos:
     $(basename "$0") --list
     $(basename "$0") --dry-run --stage gate-critico
     $(basename "$0") --from preflight --to e2e-startup
-    $(basename "$0") --stage gate-critico
 EOF
 }
 
@@ -90,6 +112,43 @@ get_stage_index() {
     return 1
 }
 
+# Inicializa o diretório de artefatos
+init_artifacts() {
+    # Criar diretório de artefatos se especificado ou usar default
+    if [[ -z "$ARTIFACTS_DIR" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            # Em dry-run sem dir especificado, não criar artefatos
+            return 0
+        fi
+        ARTIFACTS_DIR="${REPO_ROOT}/artifacts/test-battery/$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    mkdir -p "$ARTIFACTS_DIR"
+    
+    if [[ "$DRY_RUN" == false ]]; then
+        log "Artefatos serão salvos em: $ARTIFACTS_DIR"
+        
+        # Inicializar arquivos de log por estágio
+        for s in "${STAGES[@]}"; do
+            touch "$ARTIFACTS_DIR/${s}.log"
+        done
+    fi
+    
+    # Inicializar summary (sempre, se diretório especificado)
+    SUMMARY_FILE="$ARTIFACTS_DIR/summary.txt"
+    cat > "$SUMMARY_FILE" <<EOF
+================================================================================
+PRERELEASE BATTERY TEST SUMMARY
+================================================================================
+Generated: $(date '+%Y-%m-%d %H:%M:%S')
+Working Directory: $REPO_ROOT
+Dry Run: $DRY_RUN
+
+PIPELINE CONFIGURATION
+----------------------
+EOF
+}
+
 # Executa um comando com ou sem dry-run
 run_command() {
     local stage="$1"
@@ -102,7 +161,15 @@ run_command() {
     fi
     
     log "[$stage] Executando: ${cmd[*]}"
-    "${cmd[@]}"
+    log_stage "$stage" "CMD: ${cmd[*]}"
+    
+    if "${cmd[@]}" 2>&1 | tee -a "$ARTIFACTS_DIR/${stage}.log"; then
+        log_stage "$stage" "RESULT: SUCCESS"
+        return 0
+    else
+        log_stage "$stage" "RESULT: FAILURE"
+        return 1
+    fi
 }
 
 # Estágio: preflight
@@ -171,19 +238,7 @@ stage_e2e_startup() {
 stage_evidence() {
     log "=== STAGE: evidence ==="
     
-    # Criar diretório de artefatos se não existir
-    if [[ -z "$ARTIFACTS_DIR" ]]; then
-        ARTIFACTS_DIR="${REPO_ROOT}/artifacts/test-battery/$(date +%Y%m%d_%H%M%S)"
-    fi
-    
-    if [[ "$DRY_RUN" == false ]]; then
-        mkdir -p "$ARTIFACTS_DIR"
-        log "Artefatos salvos em: $ARTIFACTS_DIR"
-    else
-        log "DRY-RUN: Artefatos seriam salvos em: $ARTIFACTS_DIR"
-    fi
-    
-    log "Evidence stage completo."
+    log "Evidence stage - artefatos já coletados nos estágios anteriores"
 }
 
 # Executa um estágio específico
@@ -214,6 +269,67 @@ run_stage() {
             exit 1
             ;;
     esac
+}
+
+# Gera o resumo final
+generate_summary() {
+    local duration="$1"
+    local exit_code="$2"
+    local failed_stage="$3"
+    
+    if [[ "$DRY_RUN" == true && -n "$ARTIFACTS_DIR" && -f "$SUMMARY_FILE" ]]; then
+        cat >> "$SUMMARY_FILE" <<EOF
+
+EXECUTION SUMMARY
+-----------------
+Total Duration: ${duration}s
+Exit Code: $exit_code
+Result: $(if [[ $exit_code -eq 0 ]]; then echo "APPROVED"; else echo "BLOCKED"; fi)
+EOF
+        if [[ -n "$failed_stage" ]]; then
+            echo "Failed Stage: $failed_stage" >> "$SUMMARY_FILE"
+        fi
+        
+        cat >> "$SUMMARY_FILE" <<EOF
+
+STAGE LOGS
+----------
+$(for s in "${STAGES[@]}"; do
+    if [[ -f "$ARTIFACTS_DIR/${s}.log" ]]; then
+        echo "- ${s}.log"
+    fi
+done)
+
+================================================================================
+EOF
+    fi
+    
+    if [[ "$DRY_RUN" == false && -n "$SUMMARY_FILE" ]]; then
+        cat >> "$SUMMARY_FILE" <<EOF
+
+EXECUTION SUMMARY
+-----------------
+Total Duration: ${duration}s
+Exit Code: $exit_code
+Result: $(if [[ $exit_code -eq 0 ]]; then echo "APPROVED"; else echo "BLOCKED"; fi)
+EOF
+        if [[ -n "$failed_stage" ]]; then
+            echo "Failed Stage: $failed_stage" >> "$SUMMARY_FILE"
+        fi
+        
+        cat >> "$SUMMARY_FILE" <<EOF
+
+STAGE LOGS
+----------
+$(for s in "${STAGES[@]}"; do
+    if [[ -f "$ARTIFACTS_DIR/${s}.log" ]]; then
+        echo "- ${s}.log"
+    fi
+done)
+
+================================================================================
+EOF
+    fi
 }
 
 # Parse argumentos
@@ -273,10 +389,18 @@ START_TIME=$(date +%s)
 log "Iniciando Prerelease Battery Runner"
 log "DRY_RUN=$DRY_RUN"
 
+# Inicializar artefatos
+init_artifacts
+
 # Modo: estágio único
 if [[ -n "$STAGE" ]]; then
     log "Executando estágio único: $STAGE"
-    run_stage "$STAGE"
+    
+    if ! run_stage "$STAGE"; then
+        error "Estágio $STAGE falhou."
+        exit 1
+    fi
+    
     log "Estágio $STAGE concluído com sucesso."
     exit 0
 fi
@@ -307,6 +431,9 @@ done
 # Resumo
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
+
+# Gerar summary
+generate_summary "$DURATION" "$EXIT_CODE" "$FAILED_STAGE"
 
 log "========================================="
 log "Bateria de testes pre-release concluída"
