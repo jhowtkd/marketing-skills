@@ -94,8 +94,8 @@ artifacts/test-battery/20260304_070231/
 ```
 
 ### Riscos Residuais
-1. **2 testes falhos conhecidos:** `deepEval.test.ts` tem 2 falhas relacionadas a mocks de URL que precisam ser corrigidas no código fonte. O runner agora propaga corretamente o exit code de falha do Vitest (corrigido em P0).
-2. **Gate de release seguro:** Qualquer falha de teste (backend, frontend ou E2E) agora bloqueia o pipeline com exit code != 0.
+1. **Nenhum - Bateria 100% verde:** Todos os testes de frontend, backend e E2E estão passando. A correção em `deepEval.test.ts` atualizou os mocks para usar `vi.spyOn(QualityApi, "evaluate")` ao invés de injeção de dependência obsoleta.
+2. **Gate de release seguro:** Qualquer falha de teste (backend, frontend ou E2E) bloqueia o pipeline com exit code != 0.
 
 ### Cobertura de Testes do Runner
 - 6 testes automatizados da interface do runner: **TODOS PASSANDO**
