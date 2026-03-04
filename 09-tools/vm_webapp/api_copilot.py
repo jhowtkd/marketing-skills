@@ -110,6 +110,7 @@ def _get_or_create_segment(
     )
 
 
+@router.get("/api/v2/threads/{thread_id}/copilot/suggestions")
 @router.get("/v2/threads/{thread_id}/copilot/suggestions")
 def get_copilot_suggestions(
     thread_id: str,
@@ -141,7 +142,13 @@ def get_copilot_suggestions(
         
         # Get project for objective_key (v14 segmentation)
         project = get_project_view(session, thread.project_id)
-        objective_key = project.objective_key if project else None
+        objective_key = None
+        if project is not None:
+            objective_key = getattr(project, "objective_key", None) or getattr(
+                project,
+                "objective",
+                None,
+            )
         
         # Get segment for personalization (v14)
         segment = _get_or_create_segment(session, thread.brand_id, objective_key)
@@ -234,6 +241,7 @@ def _get_adjustment_bucket(adjustment_factor: float) -> str:
         return "10_to_15"
 
 
+@router.get("/api/v2/threads/{thread_id}/copilot/segment-status")
 @router.get("/v2/threads/{thread_id}/copilot/segment-status")
 def get_copilot_segment_status(
     thread_id: str,
@@ -257,7 +265,13 @@ def get_copilot_segment_status(
         
         # Get project for objective_key (v14 segmentation)
         project = get_project_view(session, thread.project_id)
-        objective_key = project.objective_key if project else None
+        objective_key = None
+        if project is not None:
+            objective_key = getattr(project, "objective_key", None) or getattr(
+                project,
+                "objective",
+                None,
+            )
         
         # Get segment for personalization (v14)
         segment = _get_or_create_segment(session, thread.brand_id, objective_key)
@@ -288,6 +302,7 @@ def get_copilot_segment_status(
         }
 
 
+@router.post("/api/v2/threads/{thread_id}/copilot/feedback")
 @router.post("/v2/threads/{thread_id}/copilot/feedback")
 def submit_copilot_feedback(
     thread_id: str,

@@ -314,7 +314,7 @@ class OnboardingPersonalizationMetrics:
 
 
 @dataclass
-class OnboardingRecoveryMetrics:
+class OnboardingRecoveryMetrics(RecoveryOrchestrationMetrics):
     """v34 Onboarding Recovery Reactivation Autopilot metrics."""
     # Case metrics
     cases_detected: int = 0
@@ -957,41 +957,9 @@ class MetricsCollector:
                 last_rollback_at=self._recovery_metrics.last_rollback_at,
             )
 
-    def get_recovery_metrics(self) -> RecoveryOrchestrationMetrics:
-        """v28: Get current recovery orchestration metrics snapshot (backward-compatible alias)."""
-        with self._lock:
-            return RecoveryOrchestrationMetrics(
-                runs_total=self._recovery_metrics.runs_total,
-                runs_successful=self._recovery_metrics.runs_successful,
-                runs_failed=self._recovery_metrics.runs_failed,
-                runs_auto=self._recovery_metrics.runs_auto,
-                runs_manual=self._recovery_metrics.runs_manual,
-                steps_total=self._recovery_metrics.steps_total,
-                steps_successful=self._recovery_metrics.steps_successful,
-                steps_failed=self._recovery_metrics.steps_failed,
-                steps_skipped=self._recovery_metrics.steps_skipped,
-                approval_requests_total=self._recovery_metrics.approval_requests_total,
-                approvals_granted=self._recovery_metrics.approvals_granted,
-                approvals_rejected=self._recovery_metrics.approvals_rejected,
-                frozen_incidents=self._recovery_metrics.frozen_incidents,
-                rolled_back_runs=self._recovery_metrics.rolled_back_runs,
-                mttr_seconds_total=self._recovery_metrics.mttr_seconds_total,
-                mttr_count=self._recovery_metrics.mttr_count,
-                mttr_seconds_avg=self._recovery_metrics.mttr_seconds_avg,
-                incident_handoff_timeout=self._recovery_metrics.incident_handoff_timeout,
-                incident_approval_sla_breach=self._recovery_metrics.incident_approval_sla_breach,
-                incident_quality_regression=self._recovery_metrics.incident_quality_regression,
-                incident_system_failure=self._recovery_metrics.incident_system_failure,
-                active_runs=self._recovery_metrics.active_runs,
-                pending_approvals=self._recovery_metrics.pending_approvals,
-                last_run_at=self._recovery_metrics.last_run_at,
-                last_successful_run_at=self._recovery_metrics.last_successful_run_at,
-                last_failed_run_at=self._recovery_metrics.last_failed_run_at,
-                last_approval_at=self._recovery_metrics.last_approval_at,
-                last_rejection_at=self._recovery_metrics.last_rejection_at,
-                last_freeze_at=self._recovery_metrics.last_freeze_at,
-                last_rollback_at=self._recovery_metrics.last_rollback_at,
-            )
+    def get_recovery_metrics(self) -> OnboardingRecoveryMetrics:
+        """Get onboarding recovery metrics (legacy alias kept for compatibility)."""
+        return self.get_onboarding_recovery_metrics()
     
     # v19: ROI Optimizer metrics
     def record_roi_cycle(self) -> None:

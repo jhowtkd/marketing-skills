@@ -140,6 +140,7 @@ RECOMMENDED_TEMPLATE_ID = "blog-post"
 class OnboardingStateSchema(BaseModel):
     user_id: str
     current_step: Optional[str] = None
+    template_id: Optional[str] = None
     has_started: bool = False
     has_completed: bool = False
     duration_ms: Optional[int] = None

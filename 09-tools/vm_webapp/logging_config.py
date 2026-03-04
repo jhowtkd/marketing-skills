@@ -58,10 +58,13 @@ def configure_structured_logging(*, level: str = "INFO", json_format: bool = Tru
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-    
-    # Remove existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    # Remove only handlers previously installed by this module.
+    # Keep external handlers (e.g., pytest caplog) intact.
+    root_logger.handlers = [
+        handler
+        for handler in root_logger.handlers
+        if not getattr(handler, "_vm_structured_handler", False)
+    ]
     
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -75,15 +78,15 @@ def configure_structured_logging(*, level: str = "INFO", json_format: bool = Tru
                 "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
         )
-    
+    setattr(console_handler, "_vm_structured_handler", True)
     root_logger.addHandler(console_handler)
     
     # Configure vm_webapp loggers
     for logger_name in ["vm_webapp.http", "vm_webapp.api", "vm_webapp.middleware"]:
         logger = logging.getLogger(logger_name)
         logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-        logger.propagate = False
-        logger.addHandler(console_handler)
+        logger.handlers.clear()
+        logger.propagate = True
 
 
 async def request_id_middleware(request: Request, call_next) -> Response:
@@ -174,11 +177,29 @@ async def request_id_middleware(request: Request, call_next) -> Response:
         
         # Log at appropriate level based on status
         if status_code >= 500:
-            logger.error("Request completed with server error", extra=extra)
+            logger.error(
+                "Request completed with server error request_id=%s correlation_id=%s path=%s",
+                request_id,
+                correlation_id,
+                request.url.path,
+                extra=extra,
+            )
         elif status_code >= 400:
-            logger.warning("Request completed with client error", extra=extra)
+            logger.warning(
+                "Request completed with client error request_id=%s correlation_id=%s path=%s",
+                request_id,
+                correlation_id,
+                request.url.path,
+                extra=extra,
+            )
         else:
-            logger.info("Request completed successfully", extra=extra)
+            logger.info(
+                "Request completed successfully request_id=%s correlation_id=%s path=%s",
+                request_id,
+                correlation_id,
+                request.url.path,
+                extra=extra,
+            )
         
         # Add headers to response
         if response is not None:

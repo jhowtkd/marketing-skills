@@ -54,23 +54,26 @@ async def metrics_v2(request: Request) -> dict[str, object]:
     from vm_webapp.models import EventLog, Run
     from sqlalchemy import func, select
     
-    metrics = {
-        "counts": {},
-        "rates": {},
-    }
+    # Start from runtime collector snapshot so API-level counters
+    # (e.g., copilot_* metrics) are always exposed.
+    metrics = request.app.state.workflow_runtime.metrics.snapshot()
+    counts = metrics.get("counts")
+    if not isinstance(counts, dict):
+        counts = {}
+    metrics["counts"] = counts
     
     with session_scope(request.app.state.engine) as session:
         # Count events
         event_count = session.scalar(
             select(func.count(EventLog.event_pk))
         ) or 0
-        metrics["counts"]["total_events"] = event_count
+        counts["total_events"] = event_count
         
         # Count runs by status
         runs_by_status = session.execute(
             select(Run.status, func.count(Run.run_id)).group_by(Run.status)
         ).all()
-        metrics["counts"]["runs"] = {
+        counts["runs"] = {
             row[0]: row[1] for row in runs_by_status
         }
     
