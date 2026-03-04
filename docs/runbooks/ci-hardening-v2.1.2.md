@@ -262,3 +262,35 @@ ls -la 09-tools/web/vm-ui/dist/
 
 - Release Note: `docs/releases/2026-03-03-vm-studio-v2-1-2-ci-hardening.md`
 - CI Hardening Plan: `docs/plans/2026-03-03-vm-studio-v2-1-2-ci-hardening-implementation.md`
+
+---
+
+## Gate Governance
+
+### Ownership Matrix
+See [Gate Governance Matrix](../../ci/gate-governance-matrix.md) for complete:
+- Owner assignments per gate
+- Criticidade levels (critical/important/legacy)
+- SLA response times
+- Deprecation policies
+
+### Quick Reference
+
+| Criticidade | SLA | Escalonamento |
+|-------------|-----|---------------|
+| critical | 4h | PagerDuty + Manager |
+| important | 8h | Team channel |
+| legacy | 48h | Best effort |
+
+### Deprecation Process
+1. Create deprecation issue
+2. Notify stakeholders (7 days)
+3. Add workflow warning (30 days)
+4. Dry-run mode (30 days)
+5. Remove completely
+
+### Current Deprecation Queue
+- vm-editorial-ops-nightly: 60 days
+- v33-v35 onboarding gates: 90 days (merge to v38/v39)
+- v23 approval optimizer: 60 days (merge to vm-webapp-smoke)
+

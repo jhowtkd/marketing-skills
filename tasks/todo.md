@@ -35,10 +35,15 @@
 
 Todos os 5 workflows validados com sucesso.
 
-## Task 4: Governança de Gates
-- [ ] Criar matriz de ownership/SLA
-- [ ] Documentar política de deprecação
-- [ ] Commit: governança formalizada
+## Task 4: Governança de Gates ✅
+- [x] Criar matriz de ownership/SLA
+- [x] Documentar política de deprecação
+- [x] Commit: governança formalizada
+
+**Entregáveis:**
+- `docs/ci/gate-governance-matrix.md`: Matriz completa com 14 workflows
+- `docs/runbooks/ci-hardening-v2.1.2.md`: Seção de governança adicionada
+- 3 gates marcados para deprecação (vm-editorial-ops-nightly, v33-v35, v23)
 
 ## Task 5: Observabilidade Semanal
 - [ ] Criar script de relatório
