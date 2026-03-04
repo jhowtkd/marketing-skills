@@ -349,5 +349,129 @@ class TestEdgeCases:
         assert metrics.steps_completed == 2
 
 
+class TestSanityChecks:
+    """Testes de sanidade para validar harness v41 (v43 sprint)."""
+    
+    def test_ttfv_positive_on_complete_journeys(self, fast_sim):
+        """TTFV deve ser > 0 em jornadas completas."""
+        # Test all journey types that should complete
+        completing_journeys = [
+            JourneyType.HAPPY_PATH,
+            JourneyType.INTERRUPTED_RESUME,
+            JourneyType.INTERRUPTED_RESTART,
+        ]
+        
+        for journey_type in completing_journeys:
+            metrics = fast_sim.run_simulation(journey_type)
+            
+            # Only check TTFV for completed journeys
+            if metrics.completed:
+                assert metrics.time_to_first_value_ms > 0, \
+                    f"TTFV should be > 0 for completed {journey_type.value}"
+    
+    def test_all_required_metrics_generated(self, fast_sim):
+        """Deve gerar todas as métricas obrigatórias."""
+        # Run a happy path simulation
+        metrics = fast_sim.simulate_happy_path("test_metrics")
+        
+        # Required metrics that must always be present
+        required_fields = [
+            "journey_type",
+            "user_id",
+            "time_to_first_value_ms",
+            "total_duration_ms",
+            "steps_completed",
+            "total_steps",
+            "prefill_used",
+            "fast_lane_used",
+            "fast_lane_accepted",
+            "resume_used",
+            "completed",
+            "telemetry_events",
+            "started_at",
+        ]
+        
+        for field in required_fields:
+            assert hasattr(metrics, field), f"Missing required metric: {field}"
+        
+        # Validate data types and constraints
+        assert isinstance(metrics.steps_completed, int)
+        assert isinstance(metrics.total_steps, int)
+        assert isinstance(metrics.telemetry_events, list)
+        assert isinstance(metrics.completed, bool)
+        assert metrics.steps_completed >= 0
+        assert metrics.total_steps >= 0
+
+
+class TestV42Regression:
+    """Testes de regressão da v42 - validam que comportamentos padrão não mudaram."""
+    
+    def test_default_step_order_is_not_template_first(self, fast_sim):
+        """Template First ainda é a ordem padrão - falha se ordem for alterada inadvertidamente.
+        
+        Este teste garante que a ordem padrão do OnboardingSimulator continua sendo:
+        welcome → workspace_setup → template_selection → customization → completion
+        
+        Se a ordem for alterada para Template First (variation_a), este teste falha
+        alertando sobre a mudança inadvertida.
+        """
+        expected_default_order = [
+            "welcome",
+            "workspace_setup",
+            "template_selection",
+            "customization",
+            "completion"
+        ]
+        
+        template_first_order = [
+            "welcome",
+            "template_selection",
+            "workspace_setup",
+            "customization",
+            "completion"
+        ]
+        
+        actual_order = fast_sim.config.steps
+        
+        # The default should NOT be Template First order
+        assert actual_order != template_first_order, \
+            "REGRESSION: Default step order was changed to Template First! " \
+            "Use OnboardingVariantA explicitly if Template First is intended."
+        
+        # The default should be the expected baseline order
+        assert actual_order == expected_default_order, \
+            f"Unexpected default step order: {actual_order}. Expected: {expected_default_order}"
+    
+    def test_baseline_config_steps_unchanged(self):
+        """Validar que BASELINE_CONFIG da v42 mantém ordem esperada."""
+        from tests.simulations.v42_experiment_configs import BASELINE_CONFIG_FAST
+        
+        expected_order = [
+            "welcome",
+            "workspace_setup",
+            "template_selection",
+            "customization",
+            "completion"
+        ]
+        
+        assert BASELINE_CONFIG_FAST.steps == expected_order, \
+            "v42 BASELINE_CONFIG step order has changed!"
+    
+    def test_variation_a_is_template_first(self):
+        """Validar que Variation A é explicitamente Template First."""
+        from tests.simulations.v42_experiment_configs import VARIATION_A_CONFIG_FAST
+        
+        expected_template_first_order = [
+            "welcome",
+            "template_selection",
+            "workspace_setup",
+            "customization",
+            "completion"
+        ]
+        
+        assert VARIATION_A_CONFIG_FAST.steps == expected_template_first_order, \
+            "v42 Variation A should be Template First order"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

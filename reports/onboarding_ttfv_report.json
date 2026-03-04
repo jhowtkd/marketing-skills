@@ -1,24 +1,24 @@
 {
-  "generated_at": "2026-03-04T20:07:58.671252",
+  "generated_at": "2026-03-04T23:41:43.854300",
   "runs_per_type": 20,
   "journeys": {
     "happy_path": {
       "statistics": {
         "sample_size": 20,
-        "avg_ttfv_ms": 22576.45,
-        "min_ttfv_ms": 16530,
-        "max_ttfv_ms": 29438,
+        "avg_ttfv_ms": 20798.45,
+        "min_ttfv_ms": 14173,
+        "max_ttfv_ms": 26335,
         "completion_rate": 1.0,
         "prefill_adoption": 0.4,
-        "fast_lane_adoption": 0.2,
+        "fast_lane_adoption": 0.4,
         "resume_adoption": 0.0
       },
       "sample_runs": [
         {
           "journey_type": "happy_path",
           "user_id": "sim_user_happy_path_0",
-          "time_to_first_value_ms": 21927,
-          "total_duration_ms": 21927,
+          "time_to_first_value_ms": 22197,
+          "total_duration_ms": 22197,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -33,88 +33,178 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670016",
+              "timestamp": "2026-03-04T23:41:43.853074",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670018",
+              "timestamp": "2026-03-04T23:41:43.853077",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670021",
+              "timestamp": "2026-03-04T23:41:43.853079",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670022",
+              "timestamp": "2026-03-04T23:41:43.853080",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670023",
+              "timestamp": "2026-03-04T23:41:43.853082",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670024",
+              "timestamp": "2026-03-04T23:41:43.853082",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670025",
+              "timestamp": "2026-03-04T23:41:43.853084",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670026",
+              "timestamp": "2026-03-04T23:41:43.853084",
               "step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670027",
+              "timestamp": "2026-03-04T23:41:43.853086",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670028",
+              "timestamp": "2026-03-04T23:41:43.853086",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_happy_path_0",
-              "timestamp": "2026-03-04T20:07:58.670033"
+              "timestamp": "2026-03-04T23:41:43.853092"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.669531",
-          "completed_at": "2026-03-04T20:07:58.670029"
+          "started_at": "2026-03-04T23:41:43.852933",
+          "completed_at": "2026-03-04T23:41:43.853087"
         },
         {
           "journey_type": "happy_path",
           "user_id": "sim_user_happy_path_1",
-          "time_to_first_value_ms": 17092,
-          "total_duration_ms": 17092,
+          "time_to_first_value_ms": 26335,
+          "total_duration_ms": 26335,
+          "steps_completed": 5,
+          "total_steps": 5,
+          "skipped_steps": [],
+          "prefill_used": false,
+          "fast_lane_used": false,
+          "fast_lane_accepted": false,
+          "resume_used": false,
+          "resume_accepted": null,
+          "completed": true,
+          "abandonment_step": null,
+          "telemetry_events": [
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853099",
+              "step": "welcome",
+              "index": 0
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853100",
+              "step": "welcome"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853101",
+              "step": "workspace_setup",
+              "index": 1
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853102",
+              "step": "workspace_setup"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853103",
+              "step": "template_selection",
+              "index": 2
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853104",
+              "step": "template_selection"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853105",
+              "step": "customization",
+              "index": 3
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853106",
+              "step": "customization"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853107",
+              "step": "completion",
+              "index": 4
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853107",
+              "step": "completion"
+            },
+            {
+              "event": "first_value_reached",
+              "user_id": "sim_user_happy_path_1",
+              "timestamp": "2026-03-04T23:41:43.853111"
+            }
+          ],
+          "started_at": "2026-03-04T23:41:43.853097",
+          "completed_at": "2026-03-04T23:41:43.853108"
+        },
+        {
+          "journey_type": "happy_path",
+          "user_id": "sim_user_happy_path_2",
+          "time_to_first_value_ms": 22292,
+          "total_duration_ms": 22292,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [
             "customization"
           ],
-          "prefill_used": true,
+          "prefill_used": false,
           "fast_lane_used": true,
           "fast_lane_accepted": true,
           "resume_used": false,
@@ -123,180 +213,84 @@
           "abandonment_step": null,
           "telemetry_events": [
             {
-              "event": "prefill_applied",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670039",
-              "step": "template_selection"
-            },
-            {
               "event": "fast_lane_presented",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670040"
+              "user_id": "sim_user_happy_path_2",
+              "timestamp": "2026-03-04T23:41:43.853114"
             },
             {
               "event": "fast_lane_accepted",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670041"
+              "user_id": "sim_user_happy_path_2",
+              "timestamp": "2026-03-04T23:41:43.853115"
             },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670043",
-              "step": "welcome",
-              "index": 0
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670044",
-              "step": "welcome"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670045",
-              "step": "workspace_setup",
-              "index": 1
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670046",
-              "step": "workspace_setup"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670047",
-              "step": "template_selection",
-              "index": 2
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670048",
-              "step": "template_selection"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670049",
-              "step": "completion",
-              "index": 4
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670050",
-              "step": "completion"
-            },
-            {
-              "event": "first_value_reached",
-              "user_id": "sim_user_happy_path_1",
-              "timestamp": "2026-03-04T20:07:58.670054"
-            }
-          ],
-          "started_at": "2026-03-04T20:07:58.670039",
-          "completed_at": "2026-03-04T20:07:58.670050"
-        },
-        {
-          "journey_type": "happy_path",
-          "user_id": "sim_user_happy_path_2",
-          "time_to_first_value_ms": 23590,
-          "total_duration_ms": 23590,
-          "steps_completed": 5,
-          "total_steps": 5,
-          "skipped_steps": [],
-          "prefill_used": false,
-          "fast_lane_used": false,
-          "fast_lane_accepted": false,
-          "resume_used": false,
-          "resume_accepted": null,
-          "completed": true,
-          "abandonment_step": null,
-          "telemetry_events": [
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670057",
+              "timestamp": "2026-03-04T23:41:43.853117",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670058",
+              "timestamp": "2026-03-04T23:41:43.853118",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670059",
+              "timestamp": "2026-03-04T23:41:43.853119",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670060",
+              "timestamp": "2026-03-04T23:41:43.853121",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670062",
+              "timestamp": "2026-03-04T23:41:43.853123",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670062",
+              "timestamp": "2026-03-04T23:41:43.853123",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670063",
-              "step": "customization",
-              "index": 3
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670064",
-              "step": "customization"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670065",
+              "timestamp": "2026-03-04T23:41:43.853125",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670066",
+              "timestamp": "2026-03-04T23:41:43.853125",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_happy_path_2",
-              "timestamp": "2026-03-04T20:07:58.670070"
+              "timestamp": "2026-03-04T23:41:43.853129"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670056",
-          "completed_at": "2026-03-04T20:07:58.670066"
+          "started_at": "2026-03-04T23:41:43.853114",
+          "completed_at": "2026-03-04T23:41:43.853126"
         }
       ]
     },
     "interrupted_resume": {
       "statistics": {
         "sample_size": 20,
-        "avg_ttfv_ms": 24345.2,
-        "min_ttfv_ms": 19007,
-        "max_ttfv_ms": 27060,
+        "avg_ttfv_ms": 24519.7,
+        "min_ttfv_ms": 17986,
+        "max_ttfv_ms": 28922,
         "completion_rate": 1.0,
         "prefill_adoption": 0.0,
         "fast_lane_adoption": 0.0,
@@ -306,8 +300,8 @@
         {
           "journey_type": "interrupted_resume",
           "user_id": "sim_user_interrupted_resume_0",
-          "time_to_first_value_ms": 26257,
-          "total_duration_ms": 26257,
+          "time_to_first_value_ms": 23862,
+          "total_duration_ms": 23862,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -322,101 +316,101 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670336",
+              "timestamp": "2026-03-04T23:41:43.853391",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670337",
+              "timestamp": "2026-03-04T23:41:43.853392",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670338",
+              "timestamp": "2026-03-04T23:41:43.853393",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670339",
+              "timestamp": "2026-03-04T23:41:43.853394",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670340",
+              "timestamp": "2026-03-04T23:41:43.853395",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670340",
+              "timestamp": "2026-03-04T23:41:43.853395",
               "step": "template_selection"
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_interrupted_resume_0",
+              "timestamp": "2026-03-04T23:41:43.853396",
+              "step": "template_selection",
+              "source": "auto_save"
+            },
+            {
+              "event": "onboarding_resume_presented",
+              "user_id": "sim_user_interrupted_resume_0",
+              "timestamp": "2026-03-04T23:41:43.853397",
+              "last_step": "template_selection"
+            },
+            {
+              "event": "onboarding_resume_accepted",
+              "user_id": "sim_user_interrupted_resume_0",
+              "timestamp": "2026-03-04T23:41:43.853397",
+              "resumed_step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670342",
+              "timestamp": "2026-03-04T23:41:43.853400",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670342",
+              "timestamp": "2026-03-04T23:41:43.853400",
               "step": "customization"
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670343",
-              "step": "customization",
-              "source": "auto_save"
-            },
-            {
-              "event": "onboarding_resume_presented",
-              "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670344",
-              "last_step": "customization"
-            },
-            {
-              "event": "onboarding_resume_accepted",
-              "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670344",
-              "resumed_step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670347",
+              "timestamp": "2026-03-04T23:41:43.853401",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670347",
+              "timestamp": "2026-03-04T23:41:43.853402",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_resume_0",
-              "timestamp": "2026-03-04T20:07:58.670351"
+              "timestamp": "2026-03-04T23:41:43.853407"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670334",
-          "completed_at": "2026-03-04T20:07:58.670348"
+          "started_at": "2026-03-04T23:41:43.853389",
+          "completed_at": "2026-03-04T23:41:43.853403"
         },
         {
           "journey_type": "interrupted_resume",
           "user_id": "sim_user_interrupted_resume_1",
-          "time_to_first_value_ms": 21375,
-          "total_duration_ms": 21375,
+          "time_to_first_value_ms": 22900,
+          "total_duration_ms": 22900,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -431,101 +425,101 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670355",
+              "timestamp": "2026-03-04T23:41:43.853410",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670356",
+              "timestamp": "2026-03-04T23:41:43.853411",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670358",
+              "timestamp": "2026-03-04T23:41:43.853412",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670358",
+              "timestamp": "2026-03-04T23:41:43.853413",
               "step": "workspace_setup"
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670359",
+              "timestamp": "2026-03-04T23:41:43.853413",
               "step": "workspace_setup",
               "source": "auto_save"
             },
             {
               "event": "onboarding_resume_presented",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670360",
+              "timestamp": "2026-03-04T23:41:43.853414",
               "last_step": "workspace_setup"
             },
             {
               "event": "onboarding_resume_accepted",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670360",
+              "timestamp": "2026-03-04T23:41:43.853415",
               "resumed_step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670362",
+              "timestamp": "2026-03-04T23:41:43.853416",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670362",
+              "timestamp": "2026-03-04T23:41:43.853416",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670364",
+              "timestamp": "2026-03-04T23:41:43.853418",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670364",
+              "timestamp": "2026-03-04T23:41:43.853418",
               "step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670365",
+              "timestamp": "2026-03-04T23:41:43.853419",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670366",
+              "timestamp": "2026-03-04T23:41:43.853420",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_resume_1",
-              "timestamp": "2026-03-04T20:07:58.670370"
+              "timestamp": "2026-03-04T23:41:43.853424"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670353",
-          "completed_at": "2026-03-04T20:07:58.670366"
+          "started_at": "2026-03-04T23:41:43.853409",
+          "completed_at": "2026-03-04T23:41:43.853420"
         },
         {
           "journey_type": "interrupted_resume",
           "user_id": "sim_user_interrupted_resume_2",
-          "time_to_first_value_ms": 26268,
-          "total_duration_ms": 26268,
+          "time_to_first_value_ms": 22276,
+          "total_duration_ms": 22276,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -540,104 +534,104 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670373",
+              "timestamp": "2026-03-04T23:41:43.853427",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670374",
+              "timestamp": "2026-03-04T23:41:43.853427",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670375",
+              "timestamp": "2026-03-04T23:41:43.853428",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670375",
+              "timestamp": "2026-03-04T23:41:43.853429",
               "step": "workspace_setup"
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_interrupted_resume_2",
+              "timestamp": "2026-03-04T23:41:43.853430",
+              "step": "workspace_setup",
+              "source": "auto_save"
+            },
+            {
+              "event": "onboarding_resume_presented",
+              "user_id": "sim_user_interrupted_resume_2",
+              "timestamp": "2026-03-04T23:41:43.853430",
+              "last_step": "workspace_setup"
+            },
+            {
+              "event": "onboarding_resume_accepted",
+              "user_id": "sim_user_interrupted_resume_2",
+              "timestamp": "2026-03-04T23:41:43.853431",
+              "resumed_step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670377",
+              "timestamp": "2026-03-04T23:41:43.853432",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670377",
+              "timestamp": "2026-03-04T23:41:43.853433",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670378",
+              "timestamp": "2026-03-04T23:41:43.853434",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670379",
+              "timestamp": "2026-03-04T23:41:43.853434",
               "step": "customization"
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670380",
-              "step": "customization",
-              "source": "auto_save"
-            },
-            {
-              "event": "onboarding_resume_presented",
-              "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670380",
-              "last_step": "customization"
-            },
-            {
-              "event": "onboarding_resume_accepted",
-              "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670381",
-              "resumed_step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670382",
+              "timestamp": "2026-03-04T23:41:43.853435",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670383",
+              "timestamp": "2026-03-04T23:41:43.853436",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_resume_2",
-              "timestamp": "2026-03-04T20:07:58.670387"
+              "timestamp": "2026-03-04T23:41:43.853439"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670371",
-          "completed_at": "2026-03-04T20:07:58.670383"
+          "started_at": "2026-03-04T23:41:43.853425",
+          "completed_at": "2026-03-04T23:41:43.853436"
         }
       ]
     },
     "interrupted_restart": {
       "statistics": {
         "sample_size": 20,
-        "avg_ttfv_ms": 52258.8,
-        "min_ttfv_ms": 46588,
-        "max_ttfv_ms": 61290,
+        "avg_ttfv_ms": 48689.0,
+        "min_ttfv_ms": 41190,
+        "max_ttfv_ms": 54646,
         "completion_rate": 1.0,
         "prefill_adoption": 0.0,
         "fast_lane_adoption": 0.0,
@@ -647,8 +641,8 @@
         {
           "journey_type": "interrupted_restart",
           "user_id": "sim_user_interrupted_restart_0",
-          "time_to_first_value_ms": 56174,
-          "total_duration_ms": 56174,
+          "time_to_first_value_ms": 50156,
+          "total_duration_ms": 50156,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -663,120 +657,120 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670689",
+              "timestamp": "2026-03-04T23:41:43.853751",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670690",
+              "timestamp": "2026-03-04T23:41:43.853752",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670691",
+              "timestamp": "2026-03-04T23:41:43.853753",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670692",
+              "timestamp": "2026-03-04T23:41:43.853754",
               "step": "workspace_setup"
             },
             {
               "event": "onboarding_resume_presented",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670692",
+              "timestamp": "2026-03-04T23:41:43.853754",
               "last_step": "workspace_setup"
             },
             {
               "event": "onboarding_resume_rejected",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670693",
+              "timestamp": "2026-03-04T23:41:43.853756",
               "reason": "user_chose_restart"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670694",
+              "timestamp": "2026-03-04T23:41:43.853757",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670695",
+              "timestamp": "2026-03-04T23:41:43.853758",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670696",
+              "timestamp": "2026-03-04T23:41:43.853759",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670697",
+              "timestamp": "2026-03-04T23:41:43.853760",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670698",
+              "timestamp": "2026-03-04T23:41:43.853761",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670698",
+              "timestamp": "2026-03-04T23:41:43.853761",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670700",
+              "timestamp": "2026-03-04T23:41:43.853763",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670700",
+              "timestamp": "2026-03-04T23:41:43.853763",
               "step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670701",
+              "timestamp": "2026-03-04T23:41:43.853764",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670702",
+              "timestamp": "2026-03-04T23:41:43.853765",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_restart_0",
-              "timestamp": "2026-03-04T20:07:58.670706"
+              "timestamp": "2026-03-04T23:41:43.853769"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670678",
-          "completed_at": "2026-03-04T20:07:58.670702"
+          "started_at": "2026-03-04T23:41:43.853750",
+          "completed_at": "2026-03-04T23:41:43.853765"
         },
         {
           "journey_type": "interrupted_restart",
           "user_id": "sim_user_interrupted_restart_1",
-          "time_to_first_value_ms": 61290,
-          "total_duration_ms": 61290,
+          "time_to_first_value_ms": 48302,
+          "total_duration_ms": 48302,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -791,133 +785,133 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670710",
+              "timestamp": "2026-03-04T23:41:43.853772",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670710",
+              "timestamp": "2026-03-04T23:41:43.853773",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670711",
+              "timestamp": "2026-03-04T23:41:43.853774",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670712",
+              "timestamp": "2026-03-04T23:41:43.853775",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670713",
+              "timestamp": "2026-03-04T23:41:43.853776",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670714",
+              "timestamp": "2026-03-04T23:41:43.853777",
               "step": "template_selection"
             },
             {
               "event": "onboarding_resume_presented",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670714",
+              "timestamp": "2026-03-04T23:41:43.853777",
               "last_step": "template_selection"
             },
             {
               "event": "onboarding_resume_rejected",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670715",
+              "timestamp": "2026-03-04T23:41:43.853778",
               "reason": "user_chose_restart"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670716",
+              "timestamp": "2026-03-04T23:41:43.853779",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670717",
+              "timestamp": "2026-03-04T23:41:43.853780",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670718",
+              "timestamp": "2026-03-04T23:41:43.853781",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670719",
+              "timestamp": "2026-03-04T23:41:43.853781",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670720",
+              "timestamp": "2026-03-04T23:41:43.853783",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670720",
+              "timestamp": "2026-03-04T23:41:43.853783",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670721",
+              "timestamp": "2026-03-04T23:41:43.853784",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670722",
+              "timestamp": "2026-03-04T23:41:43.853785",
               "step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670723",
+              "timestamp": "2026-03-04T23:41:43.853786",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670724",
+              "timestamp": "2026-03-04T23:41:43.853786",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_restart_1",
-              "timestamp": "2026-03-04T20:07:58.670727"
+              "timestamp": "2026-03-04T23:41:43.853790"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670708",
-          "completed_at": "2026-03-04T20:07:58.670724"
+          "started_at": "2026-03-04T23:41:43.853771",
+          "completed_at": "2026-03-04T23:41:43.853787"
         },
         {
           "journey_type": "interrupted_restart",
           "user_id": "sim_user_interrupted_restart_2",
-          "time_to_first_value_ms": 56496,
-          "total_duration_ms": 56496,
+          "time_to_first_value_ms": 43094,
+          "total_duration_ms": 43094,
           "steps_completed": 5,
           "total_steps": 5,
           "skipped_steps": [],
@@ -932,114 +926,127 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670731",
+              "timestamp": "2026-03-04T23:41:43.853793",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670731",
+              "timestamp": "2026-03-04T23:41:43.853794",
               "step": "welcome"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670733",
+              "timestamp": "2026-03-04T23:41:43.853795",
               "step": "workspace_setup",
               "index": 1
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670733",
-              "step": "workspace_setup"
-            },
-            {
-              "event": "onboarding_resume_presented",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670734",
-              "last_step": "workspace_setup"
-            },
-            {
-              "event": "onboarding_resume_rejected",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670734",
-              "reason": "user_chose_restart"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670736",
-              "step": "welcome",
-              "index": 0
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670738",
-              "step": "welcome"
-            },
-            {
-              "event": "step_completed",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670739",
-              "step": "workspace_setup",
-              "index": 1
-            },
-            {
-              "event": "onboarding_progress_saved",
-              "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670739",
+              "timestamp": "2026-03-04T23:41:43.853796",
               "step": "workspace_setup"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670741",
+              "timestamp": "2026-03-04T23:41:43.853797",
               "step": "template_selection",
               "index": 2
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670741",
+              "timestamp": "2026-03-04T23:41:43.853797",
+              "step": "template_selection"
+            },
+            {
+              "event": "onboarding_resume_presented",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853798",
+              "last_step": "template_selection"
+            },
+            {
+              "event": "onboarding_resume_rejected",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853799",
+              "reason": "user_chose_restart"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853800",
+              "step": "welcome",
+              "index": 0
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853801",
+              "step": "welcome"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853802",
+              "step": "workspace_setup",
+              "index": 1
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853802",
+              "step": "workspace_setup"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853803",
+              "step": "template_selection",
+              "index": 2
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_interrupted_restart_2",
+              "timestamp": "2026-03-04T23:41:43.853805",
               "step": "template_selection"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670742",
+              "timestamp": "2026-03-04T23:41:43.853806",
               "step": "customization",
               "index": 3
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670743",
+              "timestamp": "2026-03-04T23:41:43.853807",
               "step": "customization"
             },
             {
               "event": "step_completed",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670744",
+              "timestamp": "2026-03-04T23:41:43.853808",
               "step": "completion",
               "index": 4
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670744",
+              "timestamp": "2026-03-04T23:41:43.853809",
               "step": "completion"
             },
             {
               "event": "first_value_reached",
               "user_id": "sim_user_interrupted_restart_2",
-              "timestamp": "2026-03-04T20:07:58.670748"
+              "timestamp": "2026-03-04T23:41:43.853812"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.670729",
-          "completed_at": "2026-03-04T20:07:58.670745"
+          "started_at": "2026-03-04T23:41:43.853792",
+          "completed_at": "2026-03-04T23:41:43.853809"
         }
       ]
     },
@@ -1059,8 +1066,8 @@
           "journey_type": "abandon_early",
           "user_id": "sim_user_abandon_early_0",
           "time_to_first_value_ms": 0,
-          "total_duration_ms": 5852,
-          "steps_completed": 1,
+          "total_duration_ms": 12254,
+          "steps_completed": 2,
           "total_steps": 5,
           "skipped_steps": [],
           "prefill_used": false,
@@ -1069,38 +1076,51 @@
           "resume_used": false,
           "resume_accepted": null,
           "completed": false,
-          "abandonment_step": "welcome",
+          "abandonment_step": "workspace_setup",
           "telemetry_events": [
             {
               "event": "step_completed",
               "user_id": "sim_user_abandon_early_0",
-              "timestamp": "2026-03-04T20:07:58.671127",
+              "timestamp": "2026-03-04T23:41:43.854174",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_abandon_early_0",
-              "timestamp": "2026-03-04T20:07:58.671127",
+              "timestamp": "2026-03-04T23:41:43.854175",
               "step": "welcome"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_abandon_early_0",
+              "timestamp": "2026-03-04T23:41:43.854176",
+              "step": "workspace_setup",
+              "index": 1
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_abandon_early_0",
+              "timestamp": "2026-03-04T23:41:43.854177",
+              "step": "workspace_setup"
             },
             {
               "event": "onboarding_dropoff",
               "user_id": "sim_user_abandon_early_0",
-              "timestamp": "2026-03-04T20:07:58.671128",
-              "step": "welcome",
+              "timestamp": "2026-03-04T23:41:43.854177",
+              "step": "workspace_setup",
               "reason": "user_abandoned"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.671125",
+          "started_at": "2026-03-04T23:41:43.854173",
           "completed_at": null
         },
         {
           "journey_type": "abandon_early",
           "user_id": "sim_user_abandon_early_1",
           "time_to_first_value_ms": 0,
-          "total_duration_ms": 4078,
-          "steps_completed": 1,
+          "total_duration_ms": 6722,
+          "steps_completed": 2,
           "total_steps": 5,
           "skipped_steps": [],
           "prefill_used": false,
@@ -1109,37 +1129,50 @@
           "resume_used": false,
           "resume_accepted": null,
           "completed": false,
-          "abandonment_step": "welcome",
+          "abandonment_step": "workspace_setup",
           "telemetry_events": [
             {
               "event": "step_completed",
               "user_id": "sim_user_abandon_early_1",
-              "timestamp": "2026-03-04T20:07:58.671133",
+              "timestamp": "2026-03-04T23:41:43.854182",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_abandon_early_1",
-              "timestamp": "2026-03-04T20:07:58.671134",
+              "timestamp": "2026-03-04T23:41:43.854183",
               "step": "welcome"
+            },
+            {
+              "event": "step_completed",
+              "user_id": "sim_user_abandon_early_1",
+              "timestamp": "2026-03-04T23:41:43.854184",
+              "step": "workspace_setup",
+              "index": 1
+            },
+            {
+              "event": "onboarding_progress_saved",
+              "user_id": "sim_user_abandon_early_1",
+              "timestamp": "2026-03-04T23:41:43.854185",
+              "step": "workspace_setup"
             },
             {
               "event": "onboarding_dropoff",
               "user_id": "sim_user_abandon_early_1",
-              "timestamp": "2026-03-04T20:07:58.671134",
-              "step": "welcome",
+              "timestamp": "2026-03-04T23:41:43.854185",
+              "step": "workspace_setup",
               "reason": "user_abandoned"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.671131",
+          "started_at": "2026-03-04T23:41:43.854181",
           "completed_at": null
         },
         {
           "journey_type": "abandon_early",
           "user_id": "sim_user_abandon_early_2",
           "time_to_first_value_ms": 0,
-          "total_duration_ms": 5155,
+          "total_duration_ms": 4986,
           "steps_completed": 1,
           "total_steps": 5,
           "skipped_steps": [],
@@ -1154,25 +1187,25 @@
             {
               "event": "step_completed",
               "user_id": "sim_user_abandon_early_2",
-              "timestamp": "2026-03-04T20:07:58.671139",
+              "timestamp": "2026-03-04T23:41:43.854190",
               "step": "welcome",
               "index": 0
             },
             {
               "event": "onboarding_progress_saved",
               "user_id": "sim_user_abandon_early_2",
-              "timestamp": "2026-03-04T20:07:58.671139",
+              "timestamp": "2026-03-04T23:41:43.854190",
               "step": "welcome"
             },
             {
               "event": "onboarding_dropoff",
               "user_id": "sim_user_abandon_early_2",
-              "timestamp": "2026-03-04T20:07:58.671140",
+              "timestamp": "2026-03-04T23:41:43.854191",
               "step": "welcome",
               "reason": "user_abandoned"
             }
           ],
-          "started_at": "2026-03-04T20:07:58.671137",
+          "started_at": "2026-03-04T23:41:43.854188",
           "completed_at": null
         }
       ]

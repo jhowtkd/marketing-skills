@@ -1,15 +1,15 @@
 # Onboarding TTFV Simulation Report
 
-**Generated:** 2026-03-04 20:07:58 UTC
+**Generated:** 2026-03-04 23:41:43 UTC
 **Runs per journey type:** 20
 
 ## Summary Table
 
 | Journey Type | Avg TTFV (s) | Min TTFV (s) | Max TTFV (s) | Completion Rate | Prefill | Fast Lane | Resume |
 |-------------|-------------|-------------|-------------|-----------------|---------|-----------|--------|
-| Happy Path | 22.58 | 16.53 | 29.44 | 100.0% | 40.0% | 20.0% | 0.0% |
-| Interrupted Resume | 24.35 | 19.01 | 27.06 | 100.0% | 0.0% | 0.0% | 100.0% |
-| Interrupted Restart | 52.26 | 46.59 | 61.29 | 100.0% | 0.0% | 0.0% | 100.0% |
+| Happy Path | 20.80 | 14.17 | 26.34 | 100.0% | 40.0% | 40.0% | 0.0% |
+| Interrupted Resume | 24.52 | 17.99 | 28.92 | 100.0% | 0.0% | 0.0% | 100.0% |
+| Interrupted Restart | 48.69 | 41.19 | 54.65 | 100.0% | 0.0% | 0.0% | 100.0% |
 | Abandon Early | 0.00 | 0.00 | 0.00 | 0.0% | 0.0% | 0.0% | 0.0% |
 
 

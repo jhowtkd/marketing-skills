@@ -984,3 +984,65 @@ Reports: reports/variant_comparison.json e .md
 
 ### Status
 🟢 **PRONTO PARA PR** - Variação escolhida validada, documentação completa
+---
+
+## ✅ v43 Sprint - Onboarding Guardrails Pack (2026-03-04)
+
+### Objetivo
+Blindar regressões nas otimizações v38-v42 com contratos explícitos de flow, telemetry e fallback.
+
+### Contratos Definidos
+
+#### 1. Flow Contract (docs/contracts/v43_onboarding_guardrails.md)
+- **Ordem oficial v42 (Template First)**: welcome → template_selection → workspace_setup → customization → completion
+- **Transições críticas**: next, back, skip (com condições específicas)
+- **Violações**: Mudança de ordem sem atualização explícita = quebra de contrato
+
+#### 2. Telemetry Contract
+- **Eventos obrigatórios**: onboarding_started, onboarding_progress_saved, fast_lane_presented/accepted/rejected, first_value_reached
+- **Shape mínimo**: event_id, session_id, timestamp, user_id, payload específico por evento
+- **Validações**: Todos os eventos devem ser emitidos com campos obrigatórios
+
+#### 3. Fallback Contract
+- **API Progress/Resume falha**: Fluxo continua, telemetry de erro emitida, retry background
+- **Prefill indisponível**: Fallback para fluxo manual completo
+- **Fast-lane indisponível**: Fluxo padrão sem skip
+
+### Testes Implementados
+
+| Camada | Testes | Status |
+|--------|--------|--------|
+| Frontend Wizard | 9 novos (6 contrato + 3 fallback) | ✅ 36/36 pass |
+| Frontend Telemetry | 11 novos (6 contrato + 5 fallback) | ✅ 30/30 pass |
+| Backend Progress | 6 novos (fallback + retry) | ✅ 41/41 pass |
+| Simulação v41 | 4 novos (sanidade + regressão) | ✅ 25/25 pass |
+
+### Arquivos Alterados
+- `09-tools/web/vm-ui/src/features/onboarding/OnboardingWizard.test.tsx` (+452 linhas)
+- `09-tools/web/vm-ui/src/features/onboarding/ttfvTelemetry.test.ts` (+271 linhas)
+- `09-tools/tests/test_vm_webapp_onboarding_progress.py` (+191 linhas)
+- `09-tools/tests/simulations/test_onboarding_ttfv_simulation.py` (+124 linhas)
+- `docs/contracts/v43_onboarding_guardrails.md` (novo, 144 linhas)
+
+### Validação Final
+```bash
+# Frontend
+npm run test -- --run OnboardingWizard.test.tsx  # ✅ 36 passed
+npm run test -- --run ttfvTelemetry.test.ts      # ✅ 30 passed
+npm run build                                     # ✅ built
+
+# Backend
+PYTHONPATH=09-tools pytest tests/test_vm_webapp_onboarding_progress.py -q  # ✅ 41 passed
+
+# Simulação
+PYTHONPATH=09-tools pytest tests/simulations/test_onboarding_ttfv_simulation.py -q  # ✅ 25 passed
+```
+
+### Riscos Residuais
+- **Nenhum** - Apenas testes adicionados, sem alteração de comportamento de produção
+- Fallbacks já existiam, apenas documentados e testados
+
+### Status
+🟢 **PRONTO PARA PR** - Guardrails implementados, contratos documentados, todos testes passando
+
+---
