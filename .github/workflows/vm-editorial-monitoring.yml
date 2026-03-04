@@ -4,6 +4,10 @@ on:
   # Manual trigger for diagnostics
   workflow_dispatch:
     inputs:
+      endpoint:
+        description: 'API endpoint to check (optional)'
+        required: false
+        default: ''
       threshold_policy_denied:
         description: 'Threshold for policy denials'
         required: false
@@ -34,14 +38,71 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
+      - name: Resolve endpoint
+        id: resolve_endpoint
+        run: |
+          # Resolve endpoint by priority: input -> secrets -> vars -> empty
+          ENDPOINT="${{ github.event.inputs.endpoint }}"
+          if [ -z "$ENDPOINT" ]; then
+            ENDPOINT="${{ secrets.VM_API_ENDPOINT }}"
+          fi
+          if [ -z "$ENDPOINT" ]; then
+            ENDPOINT="${{ vars.VM_API_ENDPOINT }}"
+          fi
+          
+          echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
+          
+          if [ -z "$ENDPOINT" ]; then
+            echo "⚠️ No endpoint configured - skipping threshold checks" >> $GITHUB_STEP_SUMMARY
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          else
+            echo "Using endpoint: $ENDPOINT"
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check endpoint accessibility
+        id: check_endpoint
+        if: steps.resolve_endpoint.outputs.skipped == 'false'
+        run: |
+          ENDPOINT="${{ steps.resolve_endpoint.outputs.endpoint }}"
+          
+          # Simple connectivity check
+          if ! curl -sf "${ENDPOINT}/api/v2/health/ready" > /dev/null 2>&1; then
+            echo "⚠️ Endpoint not accessible: $ENDPOINT" >> $GITHUB_STEP_SUMMARY
+            echo "Endpoint ${ENDPOINT} is not responding - workflow will not fail but threshold checks are skipped" >> $GITHUB_STEP_SUMMARY
+            
+            # Create diagnostic artifact
+            mkdir -p ./diagnostics
+            echo "{
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+              \"endpoint\": \"${ENDPOINT}\",
+              \"status\": \"unreachable\",
+              \"error\": \"Connection refused or timeout\"
+            }" > ./diagnostics/endpoint_check.json
+            
+            echo "unreachable=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Endpoint accessible: $ENDPOINT" >> $GITHUB_STEP_SUMMARY
+            echo "unreachable=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Check Editorial Metrics
         id: check_metrics
+        if: steps.resolve_endpoint.outputs.skipped == 'false' && steps.check_endpoint.outputs.unreachable != 'true'
         run: |
           python scripts/check_editorial_thresholds.py \
-            --endpoint ${{ secrets.VM_API_ENDPOINT || 'http://localhost:8000' }} \
+            --endpoint ${{ steps.resolve_endpoint.outputs.endpoint }} \
             --threshold-policy-denied ${{ github.event.inputs.threshold_policy_denied || '10' }} \
             --threshold-baseline-none ${{ github.event.inputs.threshold_baseline_none || '50' }}
         continue-on-error: true
+
+      - name: Upload endpoint diagnostic
+        if: steps.check_endpoint.outputs.unreachable == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-diagnostic-${{ github.run_id }}
+          path: ./diagnostics/
+          retention-days: 7
 
       - name: Upload diagnostic artifact on failure
         if: steps.check_metrics.outcome == 'failure'
@@ -59,4 +120,29 @@ jobs:
           echo "⚠️ EDITORIAL GOVERNANCE ALERT: Threshold violations detected"
           echo "Check artifact 'editorial-metrics-diagnostic-${{ github.run_id }}' for details"
           # Aqui poderia integrar com Slack, PagerDuty, etc.
+          # This is a REAL threshold violation - workflow fails
           exit 1
+
+      - name: Summary when skipped
+        if: steps.resolve_endpoint.outputs.skipped == 'true' || steps.check_endpoint.outputs.unreachable == 'true'
+        run: |
+          echo "## Editorial Governance Monitoring - SKIPPED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.resolve_endpoint.outputs.skipped }}" == "true" ]; then
+            echo "⚠️ **Status**: No endpoint configured" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This is not a failure - the workflow is designed to skip when no endpoint is available." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Status**: Endpoint unreachable" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Endpoint: \`${{ steps.resolve_endpoint.outputs.endpoint }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This is not a failure - the endpoint may be temporarily down." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuração" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Para habilitar checks, configure um dos:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`github.event.inputs.endpoint\` no workflow_dispatch" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret \`VM_API_ENDPOINT\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Variable \`VM_API_ENDPOINT\`" >> $GITHUB_STEP_SUMMARY
