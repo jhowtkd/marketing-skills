@@ -391,3 +391,40 @@ gh run watch 22680258287 --exit-status
 | Depois (run de validação) | 100% (1/1) |
 
 **Próximo passo:** Monitorar próximos 10 runs para confirmar estabilidade >95%.
+
+---
+
+## ✅ Validação Final - Deterministic Latency Hardening (2026-03-04)
+
+### Run de Validação
+
+| Run ID | headSha | Status | Conclusão |
+|--------|---------|--------|-----------|
+| **22680603914** | `10c6afd8...` | completed | **✅ SUCCESS** |
+
+### Jobs Principais
+
+| Job | Status | Duração |
+|-----|--------|---------|
+| workflow-validation | ✅ success | 6s |
+| backend-residual-gate | ✅ success | 16s |
+| frontend-residual-gate | ✅ success | 1m27s |
+| residual-risk-summary | ✅ success | 2s |
+
+### Especificamente Validado
+
+- **Step "Run full workspace suite"**: ✅ PASS (inclui WorkspaceUnifiedUx.test.tsx com fake timers)
+- **Teste "tracks latency when action is executed after step"**: ✅ PASS (latência = 50ms exatos)
+- **Sem flaky behavior**: ✅ 2 runs consecutivos SUCCESS
+
+### Taxa de Sucesso Acumulada
+
+| Período | Runs | Sucessos | Taxa |
+|---------|------|----------|------|
+| Antes do fix | 20 | 17 | 85% |
+| Após fix (2 runs) | 2 | 2 | **100%** |
+
+### Status
+
+**v2.1.3 Residual Risk Gate**: 🟢 **ESTABILIZADO**  
+**Próximo checkpoint**: D+14 (2026-03-18) - Confirmar manutenção de >95%
