@@ -163,11 +163,17 @@ run_command() {
     log "[$stage] Executando: ${cmd[*]}"
     log_stage "$stage" "CMD: ${cmd[*]}"
     
-    if "${cmd[@]}" 2>&1 | tee -a "$ARTIFACTS_DIR/${stage}.log"; then
+    # Executa comando capturando output e preservando exit code
+    local exit_code
+    "${cmd[@]}" 2>&1 | tee -a "$ARTIFACTS_DIR/${stage}.log"
+    exit_code=${PIPESTATUS[0]}
+    
+    if [[ $exit_code -eq 0 ]]; then
         log_stage "$stage" "RESULT: SUCCESS"
         return 0
     else
-        log_stage "$stage" "RESULT: FAILURE"
+        log_stage "$stage" "RESULT: FAILURE (exit $exit_code)"
+        error "Comando falhou com exit code $exit_code: ${cmd[*]}"
         return 1
     fi
 }
@@ -176,13 +182,13 @@ run_command() {
 stage_preflight() {
     log "=== STAGE: preflight ==="
     
-    run_command "preflight" echo "Verificando ambiente..."
-    run_command "preflight" python3 --version
-    run_command "preflight" uv --version
+    run_command "preflight" echo "Verificando ambiente..." || return 1
+    run_command "preflight" python3 --version || return 1
+    run_command "preflight" uv --version || return 1
     
     # Verificar Node.js para frontend
     if command -v node &> /dev/null; then
-        run_command "preflight" node --version
+        run_command "preflight" node --version || return 1
     fi
     
     log "Preflight completo."
@@ -193,7 +199,7 @@ stage_gate_critico() {
     log "=== STAGE: gate-critico ==="
     
     # Testes críticos de health probes
-    run_command "gate-critico" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_health_probes.py
+    run_command "gate-critico" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_health_probes.py || return 1
     
     log "Gate crítico aprovado."
 }
@@ -203,7 +209,7 @@ stage_backend_full() {
     log "=== STAGE: backend-full ==="
     
     # Suite completa de testes de backend
-    run_command "backend-full" uv run --python 3.12 pytest -q 09-tools/tests
+    run_command "backend-full" uv run --python 3.12 pytest -q 09-tools/tests || return 1
     
     log "Backend full completo."
 }
@@ -219,7 +225,8 @@ stage_frontend_full() {
     fi
     
     # Suite completa de testes de frontend (com --run para não ficar em modo watch)
-    run_command "frontend-full" bash -c "cd 09-tools/web/vm-ui && npm test -- --run"
+    # Falha em qualquer teste deve propagar erro (exit != 0)
+    run_command "frontend-full" bash -c "cd 09-tools/web/vm-ui && npm test -- --run" || return 1
     
     log "Frontend full completo."
 }
@@ -228,8 +235,10 @@ stage_frontend_full() {
 stage_e2e_startup() {
     log "=== STAGE: e2e-startup ==="
     
-    # Testes E2E de inicialização
-    run_command "e2e-startup" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_startup_validation.py
+    # Testes E2E completos de startup, event-driven e platform
+    run_command "e2e-startup" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_startup_validation.py || return 1
+    run_command "e2e-startup" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_event_driven_e2e.py || return 1
+    run_command "e2e-startup" uv run --python 3.12 pytest -q 09-tools/tests/test_vm_webapp_platform_e2e.py || return 1
     
     log "E2E startup completo."
 }
@@ -247,22 +256,22 @@ run_stage() {
     
     case "$stage" in
         preflight)
-            stage_preflight
+            stage_preflight || return 1
             ;;
         gate-critico)
-            stage_gate_critico
+            stage_gate_critico || return 1
             ;;
         backend-full)
-            stage_backend_full
+            stage_backend_full || return 1
             ;;
         frontend-full)
-            stage_frontend_full
+            stage_frontend_full || return 1
             ;;
         e2e-startup)
-            stage_e2e_startup
+            stage_e2e_startup || return 1
             ;;
         evidence)
-            stage_evidence
+            stage_evidence || return 1
             ;;
         *)
             error "Estágio desconhecido: $stage"

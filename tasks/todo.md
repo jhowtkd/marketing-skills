@@ -94,16 +94,17 @@ artifacts/test-battery/20260304_070231/
 ```
 
 ### Riscos Residuais
-1. **Frontend exit code 0 com falhas:** O Vitest está configurado para retornar exit code 0 mesmo quando há testes falhos. Isso é comportamento do projeto, não do runner.
-2. **2 testes falhos conhecidos:** `deepEval.test.ts` tem 2 falhas relacionadas a mocks de URL que precisam ser corrigidas no código fonte, não no runner.
+1. **2 testes falhos conhecidos:** `deepEval.test.ts` tem 2 falhas relacionadas a mocks de URL que precisam ser corrigidas no código fonte. O runner agora propaga corretamente o exit code de falha do Vitest (corrigido em P0).
+2. **Gate de release seguro:** Qualquer falha de teste (backend, frontend ou E2E) agora bloqueia o pipeline com exit code != 0.
 
 ### Cobertura de Testes do Runner
-- 5 testes automatizados da interface do runner: **TODOS PASSANDO**
+- 6 testes automatizados da interface do runner: **TODOS PASSANDO**
   - `test_list_stages_exposes_expected_pipeline`
   - `test_dry_run_outputs_commands_without_execution`
   - `test_invalid_stage_fails_fast`
   - `test_pipeline_stops_on_gate_failure`
   - `test_dry_run_writes_summary_file`
+  - `test_real_failure_propagates_exit_code`
 
 ### Decisão de Release
 **APROVADO** - A bateria de testes pre-release está funcional e pronta para uso operacional.
