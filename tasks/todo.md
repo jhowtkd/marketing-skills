@@ -45,10 +45,15 @@ Todos os 5 workflows validados com sucesso.
 - `docs/runbooks/ci-hardening-v2.1.2.md`: Seção de governança adicionada
 - 3 gates marcados para deprecação (vm-editorial-ops-nightly, v33-v35, v23)
 
-## Task 5: Observabilidade Semanal
-- [ ] Criar script de relatório
-- [ ] Testar geração de markdown
-- [ ] Commit: observabilidade ativa
+## Task 5: Observabilidade Semanal ✅
+- [x] Criar script de relatório
+- [x] Testar geração de markdown
+- [x] Commit: observabilidade ativa
+
+**Entregáveis:**
+- `scripts/ci_weekly_health_report.sh`: Script completo com suporte a markdown/json
+- `docs/ci/weekly-health/README.md`: Documentação de uso
+- Funcionalidades: resumo por workflow, top falhas, recomendações automáticas
 
 ## Task 6: Validação Final
 - [ ] Consolidar evidências
