@@ -556,7 +556,7 @@ describe('OnboardingWizard', () => {
     });
 
     it('should not show fast lane badge for standard path users', async () => {
-      // Mock prefill first, then fast-lane
+      // Mock prefill first, then fast-lane, then recommendation
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -577,6 +577,16 @@ describe('OnboardingWizard', () => {
             estimated_time_saved_minutes: 0,
             reason: 'High risk user',
           }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.45,
+            reasons: ['High risk user'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
         });
 
       render(
@@ -589,7 +599,7 @@ describe('OnboardingWizard', () => {
 
       // Wait for any effects to complete
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch).toHaveBeenCalledTimes(3);
       });
 
       // Fast lane badge should not be present
@@ -637,7 +647,6 @@ describe('OnboardingWizard', () => {
   // v39: Fast lane CTA tests
   describe('fast lane CTA', () => {
     let mockFetch: ReturnType<typeof vi.fn>;
-    const { trackFastLaneAccepted, trackFastLaneRejected } = await import('./ttfvTelemetry');
 
     beforeEach(() => {
       mockFetch = vi.fn();
@@ -694,12 +703,17 @@ describe('OnboardingWizard', () => {
       });
 
       expect(screen.getByText(/caminho recomendado disponível/i)).toBeInTheDocument();
-      expect(screen.getByText(/economisa.*4\.5 minutos/i)).toBeInTheDocument();
+      // Text is split across elements, check separately
+      expect(screen.getByText(/economiza/i)).toBeInTheDocument();
+      expect(screen.getByText(/4\.5/)).toBeInTheDocument();
+      expect(screen.getByText(/minutos/)).toBeInTheDocument();
       expect(screen.getByTestId('fast-lane-accept')).toBeInTheDocument();
       expect(screen.getByTestId('fast-lane-reject')).toBeInTheDocument();
     });
 
     it('should call trackFastLaneAccepted when accepting fast lane', async () => {
+      const { trackFastLaneAccepted } = await import('./ttfvTelemetry');
+      
       // Mock prefill, fast-lane, and recommendation
       mockFetch
         .mockResolvedValueOnce({
@@ -758,6 +772,8 @@ describe('OnboardingWizard', () => {
     });
 
     it('should call trackFastLaneRejected when rejecting fast lane', async () => {
+      const { trackFastLaneRejected } = await import('./ttfvTelemetry');
+      
       // Mock prefill, fast-lane, and recommendation
       mockFetch
         .mockResolvedValueOnce({
