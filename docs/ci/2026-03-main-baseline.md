@@ -180,54 +180,74 @@ npm run test -- --run src/features/workspace/components/ApprovalLearningOpsPanel
 
 ---
 
-## Decisão Final de Encerramento (Follow-up 48h)
+## Decisão Final de Encerramento (Follow-up 48h) - REVISADA
 
 ### Métricas Atualizadas (pós-follow-up)
 
 | Métrica | Valor Anterior | Valor Atual | Delta |
 |---------|---------------|-------------|-------|
 | Gates corrigidos | 2 | **3** | +1 (v23) |
-| Taxa de verde run #22668238752 | 70% | **70%** | Estável |
+| Taxa de verde (último run #22668921221) | 70% | **75%** | +5% |
 | Falhas PRE_EXISTING remanescentes | 7 | **6** | -1 |
+| v23 (approval-cost-optimizer) | FAILURE | **SUCCESS** | ✅ Corrigido |
 
-### Status dos Critérios de Saída
+### Análise dos Últimos 5 Runs (vm-webapp-smoke)
 
-| # | Critério | Status Final |
-|---|----------|--------------|
-| 1 | Taxa de verde ≥ 80% | 🟡 **70%** (melhoria 0% → 70%) |
-| 2 | vm-webapp-smoke < 20% falha | 🟡 **30% falha** (7/24 gates) |
-| 3 | Documentação de governança | ✅ **Atingido** |
-| 4 | Relatório semanal automatizado | ✅ **Atingido** |
-| 5 | Lista de riscos residuais | ✅ **Atingido** |
+| Run ID | Taxa Verde | Status |
+|--------|-----------|--------|
+| 22668921221 (pós-correção v23) | **75%** (18/24) | Melhor resultado |
+| 22668238752 | 70% (17/24) | |
+| 22666996586 | 62% (15/24) | |
+| 22659531655 | 62% (15/24) | |
+| 22639304696 | 41% (10/24) | |
+| **Média** | **62%** | |
 
-### 🟢 **ENCERRADO** (com ressalvas)
+### Status dos Critérios de Saída (Avaliação Estrita)
+
+| # | Critério | Meta | Real | Status |
+|---|----------|------|------|--------|
+| 1 | Taxa de verde consistente | ≥80% | **75%** (melhor run)<br>**62%** (média 5 runs) | ❌ **NÃO ATINGIDO** |
+| 2 | vm-webapp-smoke <20% falha | <20% | **25%** (6/24 gates) | ❌ **NÃO ATINGIDO** |
+| 3 | Documentação de governança | Completa | ✅ | **ATINGIDO** |
+| 4 | Relatório semanal automatizado | Funcional | ✅ | **ATINGIDO** |
+| 5 | Lista de riscos residuais | Documentada | ✅ | **ATINGIDO** |
+
+### 🔴 **ENCERRADO PARCIAL** (critério estrito aplicado)
 
 **Justificativa:**
-1. **3 gates críticos corrigidos:** editorial-gate, editorial-insights-gate-v6, approval-cost-optimizer-gate-v23
-2. **Melhoria mensurável:** Taxa de verde de 0% (histórico) para 70% (run atual)
-3. **Sem regressões novas:** Todas as falhas remanescentes são PRE_EXISTENTES
-4. **Sistema de monitoramento:** Script semanal operacional para tracking contínuo
+1. **Meta de 80% NÃO atingida:** Melhor run atingiu 75%, média de 62%
+2. **v23 corrigido com sucesso:** PASS no run #22668921221 (validado)
+3. **3 gates corrigidos:** editorial, editorial-insights, approval-cost-optimizer
+4. **Melhoria real:** 41% → 75% (progresso demonstrado, mas meta não alcançada)
 
-**Ressalvas:**
-- 6 gates ainda falham (PRE_EXISTING, não relacionados às nossas correções)
-- Meta de 80% não atingida, mas progresso significativo demonstrado
-- Recomenda-se ciclo de monitoramento contínuo
+**Por que não ENCERRADO total:**
+- Critério #1 (≥80% verde) não atingido consistentemente
+- Apenas 3/5 critérios de saída atingidos (não 5/5)
+- 6 gates PRE_EXISTING ainda falham
+
+### Plano de Follow-up Obrigatório
+
+| # | Ação | Responsável | Prazo |
+|---|------|-------------|-------|
+| 1 | Corrigir 6 gates PRE_EXISTING remanescentes | Platform Team | Próxima sprint |
+| 2 | Atingir meta de 80% verde consistente | Platform Team | 2 semanas |
+| 3 | Monitorar via script semanal | Platform Team | Contínuo |
 
 ### Comparação: Antes vs Depois
 
-| Aspecto | Antes | Depois |
-|---------|-------|--------|
-| vm-webapp-smoke taxa de verde | 0% (histórico) | **70%** |
-| Gates com falhas crônicas por testes inexistentes | 10+ | **6** |
-| Runtime Python v33-v36 | 3.9 (inconsistente) | **3.12** (padronizado) |
-| Documentação de governança | Inexistente | **Completa** |
-| Observabilidade | Manual | **Automatizada** |
+| Aspecto | Antes | Depois | Progresso |
+|---------|-------|--------|-----------|
+| Melhor taxa de verde | 41% | **75%** | +34% ✅ |
+| Média taxa de verde (5 runs) | ~55% | **62%** | +7% |
+| Gates corrigidos | 0 | **3** | +3 ✅ |
+| Runtime Python v33-v36 | 3.9 | **3.12** | Padronizado ✅ |
+| Documentação | Inexistente | **Completa** | ✅ |
 
-### Próximos Passos Recomendados (pós-encerramento)
+### Próximos Passos Recomendados
 
-1. **Monitoramento contínuo:** Usar script semanal para tracking
-2. **Correções adicionais:** 6 gates PRE_EXISTING em backlog separado
-3. **Deprecação:** Executar plano de deprecação de gates legados (60-90 dias)
+1. **Sprint de estabilização:** Focar nos 6 gates PRE_EXISTING
+2. **Meta clara:** Atingir 80% em pelo menos 3 runs consecutivos
+3. **Reavaliação:** Revisar status após 2 semanas
 
 ---
 

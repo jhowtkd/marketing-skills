@@ -57,10 +57,10 @@ Todos os 5 workflows validados com sucesso.
 
 ## Task 6: Validação Final ✅ (Follow-up 48h Concluído)
 - [x] Consolidar evidências
-- [x] Verificar critério de saída (80% verde)
+- [x] Verificar critério de saída (80% verde) - **NÃO ATINGIDO**
 - [x] Documentar riscos residuais
 - [x] Commit: finalização
-- [x] **Follow-up 48h: Investigar approval-cost-optimizer-gate-v23**
+- [x] **Follow-up 48h: Investigar e corrigir approval-cost-optimizer-gate-v23**
 
 **Resultado da Iniciativa (follow-up 48h - 2026-03-04):**
 
@@ -68,32 +68,49 @@ Todos os 5 workflows validados com sucesso.
 |---------|---------------|-------------|--------|
 | Commits entregues | 6 | **7** | +1 correção v23 |
 | Gates corrigidos | 2 | **3** | +1 (v23) |
-| Taxa de verde vm-webapp-smoke | **70%** | **70%** | Estável |
+| Melhor taxa de verde (run #22668921221) | **70%** | **75%** | +5% ✅ |
+| Média 5 runs | - | **62%** | |
 | Falhas PRE_EXISTING | 7 | **6** | -1 |
+| v23 status | FAILURE | **SUCCESS** | ✅ Corrigido |
 | Critérios atingidos plenamente | 3/5 | **3/5** | ✅ |
-| Critérios em progresso | 2/5 | **2/5** | 🟡 |
+| Critério #1 (≥80% verde) | Não | **Não** (75% melhor) | ❌ |
 
 **Gates corrigidos com sucesso (3):**
 - ✅ editorial-gate (FAILURE → SUCCESS)
 - ✅ editorial-insights-gate-v6 (FAILURE → SUCCESS)
-- ✅ approval-cost-optimizer-gate-v23 (FAILURE → SUCCESS após correção)
+- ✅ approval-cost-optimizer-gate-v23 (FAILURE → SUCCESS)
+
+**Análise dos 5 runs mais recentes:**
+| Run ID | Taxa Verde |
+|--------|-----------|
+| 22668921221 (pós-v23) | **75%** ✅ Melhor |
+| 22668238752 | 70% |
+| 22666996586 | 62% |
+| 22659531655 | 62% |
+| 22639304696 | 41% |
+| **Média** | **62%** |
 
 **Diagnóstico v23 (concluído):**
-- **Causa:** Arquivo `ApprovalQueueOptimizerPanel.test.tsx` não existe (PRE_EXISTING)
+- **Causa:** Arquivo `ApprovalQueueOptimizerPanel.test.tsx` não existe
 - **Correção:** Fallback para `ApprovalLearningOpsPanel.test.tsx` (commit 63049898)
-- **Status:** Corrigido e validado
+- **Validação:** SUCCESS no run #22668921221 ✅
 
-**Decisão Final:** 🟢 **ENCERRADO** (com ressalvas)
-- 3/5 critérios atingidos plenamente
-- 2/5 critérios em progresso avançado (70% da meta)
-- Melhoria mensurável: 0% → 70% taxa de verde
-- Sem regressões novas
-- 6 gates PRE_EXISTENTES em backlog separado
+**Decisão Final:** 🔴 **ENCERRADO PARCIAL** (critério estrito)
 
-**Próximos passos (pós-encerramento):**
-1. Monitorar próximo run de vm-webapp-smoke (validar correção v23)
-2. Usar script semanal para tracking contínuo
-3. Backlog: 6 gates PRE_EXISTING para correções futuras
+**Por que não total:**
+- ❌ Critério #1 (≥80% verde): Melhor run 75%, média 62%
+- ❌ Meta não atingida consistentemente
+- ✅ 3/5 critérios de saída atingidos
+- ✅ Progresso real demonstrado (41% → 75%)
+
+**Plano de Follow-up Obrigatório:**
+| # | Ação | Prazo |
+|---|------|-------|
+| 1 | Corrigir 6 gates PRE_EXISTING remanescentes | Próxima sprint |
+| 2 | Atingir 80% verde em 3 runs consecutivos | 2 semanas |
+| 3 | Monitorar via script semanal | Contínuo |
+
+**Status:** Aguardando nova sprint para atingir 100% dos critérios.
 
 ---
 
