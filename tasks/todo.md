@@ -19,12 +19,21 @@
 - `editorial-insights-gate-v6`: Corrigido teste inexistente (`test_editorial_insights_endpoint_returns_governance_kpis`) para usar classe existente
 - `approval-cost-optimizer-gate-v23`: Substituído `TestApprovalOptimizerEndpoints` inexistente por run completo do arquivo
 
-## Task 3: Alinhar v33-v37 (Onda 2)
-- [ ] Analisar divergências entre workflows
-- [ ] Padronizar runtime Python
-- [ ] Alinhar comandos de teste
-- [ ] Validar todos os YAMLs
-- [ ] Commit: gates alinhados
+## Task 3: Alinhar v33-v37 (Onda 2) ✅
+- [x] Analisar divergências entre workflows
+- [x] Padronizar runtime Python
+- [x] Alinhar comandos de teste
+- [x] Validar todos os YAMLs
+- [x] Commit: gates alinhados
+
+**Correções aplicadas:**
+- v33-ci-gate.yml: Python 3.9 → 3.12 (4 ocorrências)
+- v34-ci-gate.yml: Python 3.9 → 3.12 (4 ocorrências)
+- v35-ci-gate.yml: Python 3.9 → 3.12 (4 ocorrências)
+- v36-ci-gate.yml: Python 3.9 → 3.12 (4 ocorrências)
+- v37-ci-gate.yml: Já estava em 3.12 (nenhuma alteração)
+
+Todos os 5 workflows validados com sucesso.
 
 ## Task 4: Governança de Gates
 - [ ] Criar matriz de ownership/SLA
