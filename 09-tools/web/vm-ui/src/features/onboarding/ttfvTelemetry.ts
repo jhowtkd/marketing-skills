@@ -327,3 +327,110 @@ function calculateMedianFromValues(values: number[]): number {
     return sorted[mid];
   }
 }
+
+// v39: Fast lane telemetry events
+export enum FastLaneEvent {
+  FAST_LANE_PRESENTED = 'fast_lane_presented',
+  FAST_LANE_ACCEPTED = 'fast_lane_accepted',
+  FAST_LANE_REJECTED = 'fast_lane_rejected',
+}
+
+export interface FastLaneTelemetryPayload {
+  event: FastLaneEvent;
+  userId: string;
+  timestamp: string;
+  sessionId: string;
+  confidence?: number;
+  recommendedPath?: 'fast_lane' | 'standard';
+  timeSavedMinutes?: number;
+  skippedSteps?: string[];
+  reasons?: string[];
+}
+
+/**
+ * Track fast lane presented to user (v39 spec compliant)
+ * @param userId - User identifier
+ * @param confidence - Confidence score (0-1)
+ * @param recommendedPath - Recommended path ('fast_lane' or 'standard')
+ * @param timeSavedMinutes - Estimated time saved in minutes
+ * @param skippedSteps - Steps that will be skipped
+ * @param reasons - Reasons for recommendation
+ */
+export async function trackFastLanePresented(
+  userId: string,
+  confidence: number,
+  recommendedPath: 'fast_lane' | 'standard',
+  timeSavedMinutes: number,
+  skippedSteps: string[],
+  reasons: string[]
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_VIEWED, // Use existing enum for base event
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'fast_lane_offer',
+    metadata: {
+      fast_lane_event: FastLaneEvent.FAST_LANE_PRESENTED,
+      confidence,
+      recommendedPath,
+      timeSavedMinutes,
+      skippedSteps,
+      reasons,
+    },
+  });
+}
+
+/**
+ * Track fast lane accepted by user (v39 spec compliant)
+ * @param userId - User identifier
+ * @param confidence - Confidence score (0-1)
+ * @param timeSavedMinutes - Estimated time saved in minutes
+ * @param skippedSteps - Steps that will be skipped
+ */
+export async function trackFastLaneAccepted(
+  userId: string,
+  confidence: number,
+  timeSavedMinutes: number,
+  skippedSteps: string[]
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_COMPLETED, // Use existing enum for base event
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'fast_lane_accept',
+    metadata: {
+      fast_lane_event: FastLaneEvent.FAST_LANE_ACCEPTED,
+      confidence,
+      timeSavedMinutes,
+      skippedSteps,
+    },
+  });
+}
+
+/**
+ * Track fast lane rejected by user (v39 spec compliant)
+ * @param userId - User identifier
+ * @param confidence - Confidence score (0-1)
+ * @param reasons - Reasons shown to user
+ */
+export async function trackFastLaneRejected(
+  userId: string,
+  confidence: number,
+  reasons: string[]
+): Promise<void> {
+  await sendTTFVTelemetry({
+    event: TTFVEvent.DROPOFF_REASON, // Use existing enum for base event
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'fast_lane_reject',
+    reason: 'user_rejected_fast_lane',
+    metadata: {
+      fast_lane_event: FastLaneEvent.FAST_LANE_REJECTED,
+      confidence,
+      reasons,
+    },
+  });
+}

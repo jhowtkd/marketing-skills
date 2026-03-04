@@ -24,6 +24,8 @@ from vm_webapp.onboarding_fast_lane import (
     determine_fast_lane_eligibility,
     get_fast_lane_path,
     get_fast_lane_for_user,
+    get_fast_lane_recommendation,
+    track_fast_lane_event,
     RiskLevel,
     MINIMUM_CHECKLIST,
 )
@@ -612,6 +614,90 @@ async def get_fast_lane_for_user_endpoint(
         reason=path.get("reason"),
         justification=path.get("justification"),
         risk_level=path.get("risk_level"),
+    )
+
+
+# v39: Fast Lane Recommendation endpoint schemas
+class FastLaneRecommendRequest(BaseModel):
+    """Request body for /fast-lane/recommend"""
+    user_id: str
+    prefill_data: Dict[str, Any] = {}
+    context: Dict[str, Any] = {}
+
+
+class FastLaneRecommendResponse(BaseModel):
+    """Response for /fast-lane/recommend"""
+    user_id: str
+    recommended_path: str  # "fast_lane" | "standard"
+    confidence: float
+    reasons: List[str]
+    skipped_steps: List[str]
+    estimated_time_saved_minutes: float
+
+
+@router.post("/fast-lane/recommend")
+async def get_fast_lane_recommendation_endpoint(
+    request_data: FastLaneRecommendRequest,
+    request: Request = None
+) -> FastLaneRecommendResponse:
+    """Get recommendation for fast lane with confidence score.
+    
+    v39: Telemetry - provides data-driven recommendation for fast lane
+    eligibility with confidence scoring and reasoning.
+    """
+    recommendation = get_fast_lane_recommendation(
+        user_id=request_data.user_id,
+        prefill_data=request_data.prefill_data,
+        context=request_data.context,
+    )
+    
+    return FastLaneRecommendResponse(
+        user_id=request_data.user_id,
+        recommended_path=recommendation["recommended_path"],
+        confidence=recommendation["confidence"],
+        reasons=recommendation["reasons"],
+        skipped_steps=recommendation["skipped_steps"],
+        estimated_time_saved_minutes=recommendation["estimated_time_saved_minutes"],
+    )
+
+
+# v39: Fast Lane Telemetry endpoint schemas
+class FastLaneEventRequest(BaseModel):
+    """Request body for /fast-lane/event"""
+    user_id: str
+    event_type: str  # "presented", "accepted", "rejected"
+    context: Dict[str, Any] = {}
+
+
+class FastLaneEventResponse(BaseModel):
+    """Response for /fast-lane/event"""
+    success: bool
+    user_id: str
+    event_type: str
+
+
+@router.post("/fast-lane/event")
+async def track_fast_lane_event_endpoint(
+    request_data: FastLaneEventRequest,
+    request: Request = None
+) -> FastLaneEventResponse:
+    """Track fast lane interaction event.
+    
+    v39: Telemetry endpoint for tracking user interactions with fast lane:
+    - presented: Fast lane option was shown to user
+    - accepted: User chose fast lane path  
+    - rejected: User chose standard onboarding path
+    """
+    track_fast_lane_event(
+        user_id=request_data.user_id,
+        event_type=request_data.event_type,
+        context=request_data.context,
+    )
+    
+    return FastLaneEventResponse(
+        success=True,
+        user_id=request_data.user_id,
+        event_type=request_data.event_type,
     )
 
 

@@ -4,6 +4,11 @@ import {
   trackOnboardingCompleted,
   OnboardingStep,
 } from './telemetry';
+import {
+  trackFastLanePresented,
+  trackFastLaneAccepted,
+  trackFastLaneRejected,
+} from './ttfvTelemetry';
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
 import { ContextualTour } from './ContextualTour';
 import type { TourStep } from './ContextualTour';
@@ -154,6 +159,18 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     privacy_policy: true,  // Assumed accepted
   });
   
+  // v39: Fast lane recommendation offer state
+  const [fastLaneOffer, setFastLaneOffer] = useState<{
+    recommendedPath: 'fast_lane' | 'standard';
+    confidence: number;
+    reasons: string[];
+    skippedSteps: string[];
+    estimatedTimeSavedMinutes: number;
+  } | null>(null);
+  
+  // v39: Track if fast lane offer has been presented
+  const fastLanePresentedRef = useRef(false);
+  
   // Refs to track if fetches are in progress
   const prefillFetchedRef = useRef(false);
   const fastLaneFetchedRef = useRef(false);
@@ -236,6 +253,102 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
 
     loadFastLane();
   }, [userId, fastLaneChecklist]);
+  
+  // v39: Fetch fast lane recommendation
+  const fetchFastLaneRecommendation = useCallback(async (
+    userChecklist: Record<string, boolean>,
+    userContext?: { utmSource?: string; referrer?: string }
+  ) => {
+    try {
+      const response = await fetch('/api/v2/onboarding/fast-lane-recommendation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          checklist: userChecklist,
+          context: userContext,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return {
+        recommendedPath: data.recommended_path as 'fast_lane' | 'standard',
+        confidence: data.confidence || 0,
+        reasons: data.reasons || [],
+        skippedSteps: data.skipped_steps || [],
+        estimatedTimeSavedMinutes: data.estimated_time_saved_minutes || 0,
+      };
+    } catch (error) {
+      console.warn('Failed to fetch fast lane recommendation:', error);
+      return null;
+    }
+  }, [userId]);
+  
+  // v39: Load fast lane recommendation on mount
+  useEffect(() => {
+    if (fastLanePresentedRef.current) return;
+    
+    const loadRecommendation = async () => {
+      const recommendation = await fetchFastLaneRecommendation(fastLaneChecklist);
+      if (recommendation && recommendation.recommendedPath === 'fast_lane') {
+        setFastLaneOffer(recommendation);
+        // Track that fast lane was presented
+        await trackFastLanePresented(
+          userId,
+          recommendation.confidence,
+          recommendation.recommendedPath,
+          recommendation.estimatedTimeSavedMinutes,
+          recommendation.skippedSteps,
+          recommendation.reasons
+        );
+        fastLanePresentedRef.current = true;
+      }
+    };
+    
+    loadRecommendation();
+  }, [userId, fastLaneChecklist, fetchFastLaneRecommendation]);
+  
+  // v39: Handler for accepting fast lane
+  const handleAcceptFastLane = useCallback(async () => {
+    if (!fastLaneOffer) return;
+    
+    await trackFastLaneAccepted(
+      userId,
+      fastLaneOffer.confidence,
+      fastLaneOffer.estimatedTimeSavedMinutes,
+      fastLaneOffer.skippedSteps
+    );
+    
+    // Apply skipped steps by updating fast lane state
+    setFastLane({
+      isFastLane: true,
+      skippedSteps: fastLaneOffer.skippedSteps,
+      remainingSteps: STEP_ORDER.filter(s => !fastLaneOffer.skippedSteps.includes(s)),
+      estimatedTimeSavedMinutes: fastLaneOffer.estimatedTimeSavedMinutes,
+      justification: 'User accepted fast lane recommendation',
+    });
+    
+    // Clear the offer after accepting
+    setFastLaneOffer(null);
+  }, [fastLaneOffer, userId]);
+  
+  // v39: Handler for rejecting fast lane
+  const handleRejectFastLane = useCallback(async () => {
+    if (!fastLaneOffer) return;
+    
+    await trackFastLaneRejected(
+      userId,
+      fastLaneOffer.confidence,
+      fastLaneOffer.reasons
+    );
+    
+    // Clear the offer
+    setFastLaneOffer(null);
+  }, [fastLaneOffer, userId]);
 
   useEffect(() => {
     saveFunnelState({
@@ -308,8 +421,61 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
             <p className="text-gray-600">
               Vamos configurar seu workspace em poucos passos simples.
             </p>
+            {/* v39: Fast lane CTA offer */}
+            {fastLaneOffer && (
+              <div 
+                className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg"
+                data-testid="fast-lane-cta"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="text-3xl">🚀</div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-blue-900">
+                      Caminho Recomendado Disponível!
+                    </h3>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Baseado no seu perfil, temos um caminho otimizado que economiza 
+                      <span className="font-semibold"> {fastLaneOffer.estimatedTimeSavedMinutes} minutos</span>.
+                    </p>
+                    {fastLaneOffer.reasons.length > 0 && (
+                      <ul className="text-xs text-blue-600 mt-2 space-y-1">
+                        {fastLaneOffer.reasons.map((reason, idx) => (
+                          <li key={idx} className="flex items-center gap-1">
+                            <span>✓</span> {reason}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {fastLaneOffer.skippedSteps.length > 0 && (
+                      <p className="text-xs text-blue-600 mt-2">
+                        Etapas puladas: {fastLaneOffer.skippedSteps.join(', ')}
+                      </p>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={handleAcceptFastLane}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                        data-testid="fast-lane-accept"
+                      >
+                        Usar caminho recomendado
+                      </button>
+                      <button
+                        onClick={handleRejectFastLane}
+                        className="px-4 py-2 bg-white text-blue-600 text-sm font-medium border border-blue-300 rounded-md hover:bg-blue-50 transition-colors"
+                        data-testid="fast-lane-reject"
+                      >
+                        Não, obrigado
+                      </button>
+                    </div>
+                    <p className="text-xs text-blue-500 mt-2">
+                      Confiança da recomendação: {Math.round(fastLaneOffer.confidence * 100)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* v38: Fast lane indicator */}
-            {fastLane?.isFastLane && (
+            {fastLane?.isFastLane && !fastLaneOffer && (
               <div 
                 className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg"
                 data-testid="fast-lane-badge"

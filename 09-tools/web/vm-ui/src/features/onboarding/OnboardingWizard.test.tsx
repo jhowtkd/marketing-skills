@@ -17,6 +17,13 @@ vi.mock('./telemetry', () => ({
   },
 }));
 
+// Mock ttfvTelemetry
+vi.mock('./ttfvTelemetry', () => ({
+  trackFastLanePresented: vi.fn(),
+  trackFastLaneAccepted: vi.fn(),
+  trackFastLaneRejected: vi.fn(),
+}));
+
 // Mock funnel
 vi.mock('./funnel', () => ({
   saveFunnelState: vi.fn(),
@@ -549,7 +556,7 @@ describe('OnboardingWizard', () => {
     });
 
     it('should not show fast lane badge for standard path users', async () => {
-      // Mock prefill first, then fast-lane
+      // Mock prefill first, then fast-lane, then recommendation
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -570,6 +577,16 @@ describe('OnboardingWizard', () => {
             estimated_time_saved_minutes: 0,
             reason: 'High risk user',
           }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.45,
+            reasons: ['High risk user'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
         });
 
       render(
@@ -582,7 +599,7 @@ describe('OnboardingWizard', () => {
 
       // Wait for any effects to complete
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch).toHaveBeenCalledTimes(3);
       });
 
       // Fast lane badge should not be present
@@ -624,6 +641,254 @@ describe('OnboardingWizard', () => {
       expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  // v39: Fast lane CTA tests
+  describe('fast lane CTA', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should show CTA when fast lane recommendation is available', async () => {
+      // Mock prefill, fast-lane, and recommendation
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'fast_lane',
+            confidence: 0.85,
+            reasons: ['Perfil de baixo risco', 'Dados de contexto disponíveis'],
+            skipped_steps: ['customization'],
+            estimated_time_saved_minutes: 4.5,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-cta')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/caminho recomendado disponível/i)).toBeInTheDocument();
+      // Text is split across elements, check separately
+      expect(screen.getByText(/economiza/i)).toBeInTheDocument();
+      expect(screen.getByText(/4\.5/)).toBeInTheDocument();
+      expect(screen.getByText(/minutos/)).toBeInTheDocument();
+      expect(screen.getByTestId('fast-lane-accept')).toBeInTheDocument();
+      expect(screen.getByTestId('fast-lane-reject')).toBeInTheDocument();
+    });
+
+    it('should call trackFastLaneAccepted when accepting fast lane', async () => {
+      const { trackFastLaneAccepted } = await import('./ttfvTelemetry');
+      
+      // Mock prefill, fast-lane, and recommendation
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'fast_lane',
+            confidence: 0.85,
+            reasons: ['Perfil de baixo risco'],
+            skipped_steps: ['customization'],
+            estimated_time_saved_minutes: 4.5,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-cta')).toBeInTheDocument();
+      });
+
+      const acceptButton = screen.getByTestId('fast-lane-accept');
+      fireEvent.click(acceptButton);
+
+      await waitFor(() => {
+        expect(trackFastLaneAccepted).toHaveBeenCalledWith(
+          'user-123',
+          0.85,
+          4.5,
+          ['customization']
+        );
+      });
+    });
+
+    it('should call trackFastLaneRejected when rejecting fast lane', async () => {
+      const { trackFastLaneRejected } = await import('./ttfvTelemetry');
+      
+      // Mock prefill, fast-lane, and recommendation
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'fast_lane',
+            confidence: 0.85,
+            reasons: ['Perfil de baixo risco', 'Dados de contexto disponíveis'],
+            skipped_steps: ['customization'],
+            estimated_time_saved_minutes: 4.5,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-cta')).toBeInTheDocument();
+      });
+
+      const rejectButton = screen.getByTestId('fast-lane-reject');
+      fireEvent.click(rejectButton);
+
+      await waitFor(() => {
+        expect(trackFastLaneRejected).toHaveBeenCalledWith(
+          'user-123',
+          0.85,
+          ['Perfil de baixo risco', 'Dados de contexto disponíveis']
+        );
+      });
+    });
+
+    it('should apply skip steps when accepting fast lane', async () => {
+      // Mock prefill, fast-lane, and recommendation
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'fast_lane',
+            confidence: 0.85,
+            reasons: ['Perfil de baixo risco'],
+            skipped_steps: ['customization'],
+            estimated_time_saved_minutes: 4.5,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-cta')).toBeInTheDocument();
+      });
+
+      // Accept fast lane
+      fireEvent.click(screen.getByTestId('fast-lane-accept'));
+
+      // Wait for CTA to disappear and fast lane badge to appear
+      await waitFor(() => {
+        expect(screen.queryByTestId('fast-lane-cta')).not.toBeInTheDocument();
+      });
+
+      // Fast lane badge should now be visible
+      await waitFor(() => {
+        expect(screen.getByTestId('fast-lane-badge')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/fast lane ativado/i)).toBeInTheDocument();
     });
   });
 });
