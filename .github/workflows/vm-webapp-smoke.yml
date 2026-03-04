@@ -80,19 +80,6 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
 
-      # Backend tests (all subgates)
-      - name: "[subgate: editorial] Test editorial backend"
-        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial.py -q || echo "Editorial test"
-      - name: "[subgate: editorial-policy-v5] Test editorial policy"
-        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy_v5.py -q || echo "Editorial policy test"
-      - name: "[subgate: editorial-insights-v6] Test editorial insights"
-        run: uv run pytest 09-tools/tests/test_vm_webapp_editorial_insights.py -q || echo "Editorial insights test"
-      - name: "[subgate: editorial-copilot-v13] Test editorial copilot"
-        run: |
-          uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
-
       # Frontend setup
       - uses: actions/setup-node@v4
         with:
@@ -102,19 +89,50 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./09-tools/web/vm-ui
         run: npm ci
-
-      # Frontend tests (all subgates)
-      - name: "[subgate: editorial-policy-v5] Test editorial UI"
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/useWorkspace.editorial.test.tsx || echo "Editorial test"
-      - name: "[subgate: editorial-insights-v6] Test insights UI"
-        working-directory: ./09-tools/web/vm-ui
-        run: npm run test -- --run src/features/workspace/EditorialAuditPanel.test.tsx || echo "Audit panel test"
-      - name: "[subgate: editorial-copilot-v13] Test copilot UI"
+      
+      # Parallel execution
+      - name: "Run tests (parallel)"
         working-directory: ./09-tools/web/vm-ui
         run: |
+          echo "::group::[parallel] Starting backend tests in background"
+          (
+            cd /home/runner/work/marketing-skills/marketing-skills
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_policy_v5.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_insights.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_editorial_copilot.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_api_v2_copilot.py -q && \
+            uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus_copilot.py -q
+            echo $? > /tmp/backend.exit
+          ) &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID"
+          echo "::endgroup::"
+          
+          echo "::group::[subgate: frontend] Running frontend tests"
           npm run test -- --run src/features/workspace/useWorkspace.copilot.test.tsx
+          FRONTEND_1_EXIT=$?
           npm run test -- --run src/features/workspace/components/CopilotPanel.test.tsx
+          FRONTEND_2_EXIT=$?
+          echo "::endgroup::"
+          
+          echo "::group::[parallel] Waiting for backend"
+          wait $BACKEND_PID
+          BACKEND_EXIT=$(cat /tmp/backend.exit)
+          echo "Backend exit code: $BACKEND_EXIT"
+          echo "::endgroup::"
+          
+          echo "::group::[subgate: resumo]"
+          echo "Backend: $BACKEND_EXIT"
+          echo "Frontend 1: $FRONTEND_1_EXIT"
+          echo "Frontend 2: $FRONTEND_2_EXIT"
+          echo "::endgroup::"
+          
+          # Fail if any failed
+          if [ $BACKEND_EXIT -ne 0 ] || [ $FRONTEND_1_EXIT -ne 0 ] || [ $FRONTEND_2_EXIT -ne 0 ]; then
+            echo "ERROR: One or more test groups failed"
+            exit 1
+          fi
 
       - name: Build frontend
         working-directory: ./09-tools/web/vm-ui
