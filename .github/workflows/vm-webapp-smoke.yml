@@ -529,7 +529,7 @@ jobs:
           uv run pytest 09-tools/tests/test_vm_webapp_quality_optimizer.py -q
           uv run pytest 09-tools/tests/test_vm_webapp_api_v2.py -q
           uv run pytest 09-tools/tests/test_vm_webapp_metrics_prometheus.py -q
-          uv run pytest 09-tools/tests/test_editorial_ops_report.py::TestNightlyReportGovernanceSection -q
+          # REMOVED: TestNightlyReportGovernanceSection does not exist in test_editorial_ops_report.py
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
