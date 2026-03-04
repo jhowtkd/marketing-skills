@@ -135,3 +135,23 @@ artifacts/test-battery/20260304_070231/
 - Arquitetura definida em 6 camadas: `preflight`, `gate-critico`, `backend-full`, `frontend-full`, `e2e+startup`, `evidence`.
 - Politica de bloqueio definida: falha critica interrompe pipeline e bloqueia avancos.
 - `docs/kimi/` removido do workspace a pedido do usuario antes de seguir com versionamento.
+
+---
+
+# Todo - ci main green hardening (brainstorming + plano)
+
+## Checklist
+- [x] Explorar contexto atual de CI e workflows ativos.
+- [x] Validar objetivo com o usuario (estabilizar CI global).
+- [x] Definir meta de sucesso (checks obrigatorios da main consistentemente verdes).
+- [x] Definir horizonte de execucao (3-4 semanas).
+- [x] Avaliar abordagens e aprovar estrategia por trilhas de falha.
+- [x] Aprovar design em secoes (arquitetura, workstreams, fluxo/risco/validacao).
+- [x] Documentar design em `docs/plans/2026-03-04-ci-main-green-hardening-design.md`.
+- [x] Gerar plano de implementacao em `docs/plans/2026-03-04-ci-main-green-hardening.md`.
+- [x] Definir modo operacional: orquestracao por este agente + execucao de comandos via Kimi CLI.
+
+## Review
+- Escopo aprovado: hardening de CI da `main` com foco em estabilidade consistente.
+- Estrategia aprovada: execucao por ondas de falha (sem big-bang e sem bypass de seguranca).
+- Resultado desta etapa: design e implementation plan prontos para execucao controlada.
