@@ -466,7 +466,8 @@ jobs:
       - name: Test agent DAG backend
         run: |
           uv run pytest 09-tools/tests/test_vm_webapp_agent_dag.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_agent_dag.py -q
+          # REMOVED: test_vm_webapp_api_v2_agent_dag.py does not exist
+          # Coverage maintained by agent_dag.py, executor.py and supervisor.py
           uv run pytest 09-tools/tests/test_vm_webapp_agent_dag_executor.py -q
           uv run pytest 09-tools/tests/test_vm_webapp_agent_dag_supervisor.py -q
       - uses: actions/setup-node@v4
