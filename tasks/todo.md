@@ -854,3 +854,72 @@ d09c43a7 docs(v40): Record save/resume implementation status
 
 ### Status
 🟢 **PRONTO PARA PR** - 100% funcional, todos testes passando
+
+---
+
+## ✅ v41 FINAL - Onboarding Simulation Harness (2026-03-04)
+
+### Implementação
+
+**Arquivos criados:**
+- `09-tools/tests/simulations/onboarding_simulation_runner.py` (421 linhas) - Motor de simulação
+- `09-tools/tests/simulations/test_onboarding_ttfv_simulation.py` (316 linhas) - 20 testes
+- `scripts/onboarding_ttfv_report.sh` - Gerador de relatórios
+
+### Jornadas Simuladas
+1. **happy_path** - Fluxo completo sem interrupções
+2. **interrupted_resume** - Interrompido + retomada (v40)
+3. **interrupted_restart** - Interrompido + recomeço
+4. **abandon_early** - Abandono prematuro
+
+### Métricas Capturadas
+- time_to_first_value_ms
+- steps_completed
+- resume_used / fast_lane_used / prefill_used
+- completed (true/false)
+- telemetry_events
+
+### Validação
+
+```bash
+# Simulações
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/simulations/test_onboarding_ttfv_simulation.py -v
+# ✅ 20 passed
+
+# Regressão onboarding
+PYTHONPATH=09-tools .venv/bin/python -m pytest 09-tools/tests/test_vm_webapp_onboarding_progress.py -q
+# ✅ 35 passed
+
+# Relatório
+bash scripts/onboarding_ttfv_report.sh
+# ✅ reports/onboarding_ttfv_report.json
+# ✅ reports/onboarding_ttfv_report.md
+```
+
+### Resultados do Relatório (amostra n=20)
+
+| Journey Type | Avg TTFV | Completion | Notas |
+|-------------|----------|------------|-------|
+| Happy Path | ~22.6s | 100% | Baseline |
+| Interrupted Resume | ~24.4s | 100% | +2s overhead vs happy |
+| Interrupted Restart | ~52.3s | 100% | ~2x penalty vs resume |
+| Abandon Early | 0s | 0% | Não completa |
+
+### Impacto de Features
+- **v38 Prefill**: Economia ~3s (40% adoção)
+- **v39 Fast Lane**: Economia ~4s por step pulado
+- **v40 Save/Resume**: Penalty restart = ~2x tempo vs resume
+
+### Telemetry Validada
+- ✅ fast_lane_presented/accepted/rejected
+- ✅ onboarding_progress_saved
+- ✅ onboarding_resume_presented/accepted/rejected
+- ✅ first_value_reached
+
+### Commits v41
+```
+[hash a ser gerado] test(v41): add onboarding simulation harness for local TTFV benchmarking
+```
+
+### Status
+🟢 **PRONTO PARA PR** - 100% testes passando, relatório gerando, sem regressão
