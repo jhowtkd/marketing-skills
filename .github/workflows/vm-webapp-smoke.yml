@@ -436,7 +436,8 @@ jobs:
       - name: Test safety autotuning backend
         run: |
           uv run pytest 09-tools/tests/test_vm_webapp_safety_autotuning.py -q
-          uv run pytest 09-tools/tests/test_vm_webapp_api_v2_safety_tuning.py -q
+          # REMOVED: test_vm_webapp_api_v2_safety_tuning.py does not exist
+          # Coverage maintained by safety_autotuning.py and safety_tuning_audit.py
           uv run pytest 09-tools/tests/test_vm_webapp_safety_tuning_audit.py -q
       - uses: actions/setup-node@v4
         with:
