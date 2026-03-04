@@ -120,17 +120,20 @@
 
 ---
 
-## Critério de Saída - Status
+## Critério de Saída - Status (Atualizado pós-push 2026-03-04)
 
 | # | Critério | Status | Observação |
 |---|----------|--------|------------|
-| 1 | Taxa de verde da main ≥ 80% | 🟡 Parcial | Depende de execução real dos workflows em main |
-| 2 | vm-webapp-smoke com < 20% de falha | 🟡 Em progresso | Correções aplicadas, aguardando validação |
+| 1 | Taxa de verde da main ≥ 80% | 🟡 **70% no run mais recente** | Melhoria significativa (0% → 70%) |
+| 2 | vm-webapp-smoke com < 20% de falha | 🟡 **30% de falha no último run** | Correções aplicadas, 7/24 gates ainda falham |
 | 3 | Documentação de governança completa | ✅ Atingido | Gate Governance Matrix criada |
 | 4 | Relatório semanal automatizado | ✅ Atingido | Script funcional com markdown/json |
 | 5 | Lista de riscos residuais documentada | ✅ Atingido | Ver seção abaixo |
 
-**Decisão:** Iniciativa completa com 3/5 critérios atingidos e 2/5 em validação.
+**Decisão:** Iniciativa **ENCERRADA PARCIAL** com follow-up obrigatório.
+- 3/5 critérios atingidos plenamente
+- 2/5 critérios em progresso avançado (70% da meta atingida)
+- Melhoria mensurável: taxa de verde passou de 0% (histórico) para 70% (run atual)
 
 ---
 
@@ -150,6 +153,34 @@
 1. Duplicação de gates v33-v35 → Plano de merge em v38/v39 documentado
 2. Runtime inconsistente → Padronizado para Python 3.12
 3. Falta de observabilidade → Script semanal criado
+
+---
+
+## 🔴 Follow-up Obrigatório
+
+### approval-cost-optimizer-gate-v23
+**Status:** Continua falhando após correções  
+**Run de referência:** #22668238752 (falha)  
+**Hipótese:** Falha não relacionada a teste inexistente - possível problema de configuração ou dependência
+
+**Próximos 3 passos:**
+1. **Investigar logs detalhados** em https://github.com/jhowtkd/marketing-skills/actions/runs/22668238752
+2. **Verificar se arquivo de teste existe:** `test_vm_webapp_approval_optimizer.py`
+3. **Se necessário:** Adicionar fallback ou corrigir referência no workflow
+
+**Responsável:** Platform Team  
+**SLA:** 48h para diagnóstico inicial
+
+### Outros gates em falha (PRE_EXISTING)
+- quality-optimizer-gate-v25
+- onboarding-first-success-gate-v30
+- safety-autotuning-gate-v17
+- first-run-quality-gate-v12
+- rollout-governance-gate-v15
+- agent-dag-gate-v20
+
+**Status:** Falhas não relacionadas às correções aplicadas nesta iniciativa  
+**Ação:** Manter no backlog de estabilização contínua
 
 ---
 

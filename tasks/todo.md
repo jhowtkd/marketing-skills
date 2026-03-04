@@ -61,18 +61,28 @@ Todos os 5 workflows validados com sucesso.
 - [x] Documentar riscos residuais
 - [x] Commit: finalização
 
-**Resultado da Iniciativa:**
-- 5 commits entregues
-- 3/5 critérios de saída atingidos
-- 2/5 critérios em validação (dependem de execução real em main)
+**Resultado da Iniciativa (pós-push 2026-03-04):**
 
-**Status por Workflow:**
-- vm-webapp-smoke: Correções aplicadas, aguardando validação
-- v33-v37: Runtimes padronizados
-- Governança: Documentada com matriz completa
-- Observabilidade: Script semanal operacional
+| Métrica | Valor |
+|---------|-------|
+| Commits entregues | 6 |
+| Critérios atingidos plenamente | 3/5 |
+| Critérios em progresso avançado | 2/5 |
+| Taxa de verde vm-webapp-smoke (run #22668238752) | **70%** (17/24 gates) |
+| Melhoria vs baseline histórico | **0% → 70%** |
 
-**Decisão:** Iniciativa de CI Main Green Hardening concluída com sucesso.
+**Gates corrigidos com sucesso:**
+- ✅ editorial-gate (era FAILURE → agora SUCCESS)
+- ✅ editorial-insights-gate-v6 (era FAILURE → agora SUCCESS)
+
+**Follow-up obrigatório:**
+- 🔴 approval-cost-optimizer-gate-v23 (continua falhando - investigar em 48h)
+
+**Decisão:** **ENCERRADO PARCIAL** com follow-up obrigatório
+- Iniciativa entrega valor mensurável (70% taxa de verde)
+- 3/5 critérios atingidos plenamente
+- 1 gate requer investigação adicional (não bloqueante)
+- Recomendado: ciclo de monitoramento contínuo de 24-48h
 
 ---
 
