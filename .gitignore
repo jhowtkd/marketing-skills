@@ -29,6 +29,7 @@ __pycache__/
 dist/
 .venv
 .venv*/
+09-tools/.venv/
 
 # Local artifacts that should not be versioned
 .coverage
