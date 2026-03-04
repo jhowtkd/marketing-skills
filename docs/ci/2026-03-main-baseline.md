@@ -11,9 +11,9 @@
 | Workflow | Path | Estado | Criticidade |
 |----------|------|--------|-------------|
 | vm-webapp-smoke | `.github/workflows/vm-webapp-smoke.yml` | ✅ 100% Green | **critical** |
-| VM Editorial Governance Monitoring | `.github/workflows/vm-editorial-monitoring.yml` | Crônico falha | important |
+| VM Editorial Governance Monitoring | `.github/workflows/vm-editorial-monitoring.yml` | 🟡 Estabilizando (1/10) | important |
 | v2.1.3 Residual Risk Gate | `.github/workflows/v2-1-3-residual-risk-gate.yml` | 25% sucesso | important |
-| vm-editorial-ops-nightly | `.github/workflows/vm-editorial-ops-nightly.yml` | Crônico falha | legacy |
+| vm-editorial-ops-nightly | `.github/workflows/vm-editorial-ops-nightly.yml` | 🟡 Estabilizando (1/7) | legacy |
 | vm-studio-run-binding-nightly | `.github/workflows/vm-studio-run-binding-nightly.yml` | 100% sucesso | important |
 | v38 Onboarding TTFV Gate | `.github/workflows/v38-onboarding-ttfv-gate.yml` | 100% sucesso | important |
 | v23 Approval Optimizer CI Gate | `.github/workflows/v23-ci-gate.yml` | N/A (só PR) | important |
@@ -32,8 +32,8 @@
 | Workflow | Total Runs | Sucessos | Falhas | Taxa Verde |
 |----------|-----------|----------|--------|-----------|
 | vm-webapp-smoke | 28 | 28 | 0 | **100%** 🟢 |
-| VM Editorial Governance Monitoring | 11 | 0 | 11 | **0%** 🔴 |
-| vm-editorial-ops-nightly | 3 | 0 | 3 | **0%** 🔴 |
+| VM Editorial Governance Monitoring | 10 | 1 | 9 | **10%** 🟡 |
+| vm-editorial-ops-nightly | 7 | 1 | 6 | **14%** 🟡 |
 | v2.1.3 Residual Risk Gate | 4 | 1 | 3 | **25%** 🟡 |
 | vm-studio-run-binding-nightly | 3 | 3 | 0 | **100%** 🟢 |
 | v38 Onboarding TTFV Gate | 1 | 1 | 0 | **100%** 🟢 |
@@ -230,3 +230,46 @@ bde0fd30 ci(smoke): fix quality-optimizer-gate-v25 - remove missing test class
 
 **Status Final:** 🟢 **ENCERRADO TOTAL** - 2026-03-04  
 **Próxima Revisão:** 7 dias (monitoramento via health report)
+
+---
+
+## 📝 Follow-up: Legacy Workflows Stabilization (2026-03-04)
+
+### Evidence
+
+Após aplicação das correções em `e64a02cd` e `2dfbc6d2`:
+
+| Workflow | Run ID | Data | headSha | Status |
+|----------|--------|------|---------|--------|
+| vm-editorial-monitoring | 22679447435 | 2026-03-04T16:46:18Z | e64a02cd | **✅ success** |
+| vm-editorial-ops-nightly | 22679448569 | 2026-03-04T16:46:19Z | e64a02cd | **✅ success** |
+
+### Taxa de Sucesso Histórica
+
+| Workflow | Período | Total | Sucessos | Taxa |
+|----------|---------|-------|----------|------|
+| vm-editorial-monitoring | Últimos 10 runs | 10 | 1 | 10% 🟡 |
+| vm-editorial-ops-nightly | Últimos 7 runs | 7 | 1 | 14% 🟡 |
+
+**Nota:** Apenas o run mais recente (e64a02cd) reflete as correções aplicadas. Acompanhamento contínuo necessário para confirmar estabilização consistente.
+
+### Comandos Executados
+
+```bash
+# Coleta de evidência
+gh run list --workflow vm-editorial-monitoring.yml --limit 10 --json databaseId,createdAt,status,conclusion,headSha
+gh run list --workflow vm-editorial-ops-nightly.yml --limit 10 --json databaseId,createdAt,status,conclusion,headSha
+
+# Relatório consolidado
+./scripts/ci_weekly_health_report.sh --limit 50
+
+# Validação de regressão
+# e64a02cd: ambos SUCCESS
+# 387ce721 (anterior): ambos FAILURE
+```
+
+### Próximos Passos
+
+- [ ] Monitorar próximos 7 dias para confirmar estabilidade
+- [ ] Meta: 3 runs consecutivos com SUCCESS
+- [ ] Se estável por 14 dias: considerar remoção da flag "legacy"

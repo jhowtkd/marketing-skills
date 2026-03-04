@@ -205,3 +205,60 @@ f4b89fea ci(legacy): harden editorial monitoring and ops-nightly failure handlin
 | editorial_ops_report.py | 1 | Fix docstring typo |
 
 **Status:** ✅ **FRENTES ENCERRADAS**
+
+---
+
+## ✅ Review Final Legado (2026-03-04)
+
+### Comandos Executados
+
+```bash
+# 1) Coleta de estado dos workflows
+gh run list --workflow vm-editorial-monitoring.yml --limit 10 --json databaseId,createdAt,status,conclusion,headSha
+gh run list --workflow vm-editorial-ops-nightly.yml --limit 10 --json databaseId,createdAt,status,conclusion,headSha
+
+# 2) Relatório consolidado
+./scripts/ci_weekly_health_report.sh --limit 50
+
+# 3) Métricas objetivas geradas
+```
+
+### Resultados Reais
+
+#### Taxa de Sucesso
+| Workflow | Taxa | Evidência |
+|----------|------|-----------|
+| vm-editorial-monitoring | 10% (1/10) | Último run SUCCESS em e64a02cd |
+| vm-editorial-ops-nightly | 14% (1/7) | Último run SUCCESS em e64a02cd |
+
+#### Últimos 3 Run IDs
+
+**vm-editorial-monitoring:**
+- 22679447435 (2026-03-04T16:46:18Z) - ✅ success - headSha: e64a02cd
+- 22679089014 (2026-03-04T16:37:21Z) - ❌ failure - headSha: 387ce721
+- 22669557836 (2026-03-04T12:34:30Z) - ❌ failure - headSha: 51b39869
+
+**vm-editorial-ops-nightly:**
+- 22679448569 (2026-03-04T16:46:19Z) - ✅ success - headSha: e64a02cd
+- 22679090355 (2026-03-04T16:37:23Z) - ❌ failure - headSha: 387ce721
+- 22658212688 (2026-03-04T06:40:49Z) - ❌ failure - headSha: a3decc2b
+
+#### Regressão após e64a02cd
+- **headSha e64a02cd**: Ambos workflows ✅ SUCCESS
+- **headSha anterior (387ce721)**: Ambos workflows ❌ FAILURE
+- **Resultado**: ✅ SEM REGRESSÃO - Correções efetivas
+
+### Documentação Atualizada
+
+| Arquivo | Mudanças |
+|---------|----------|
+| docs/ci/2026-03-main-baseline.md | +30 linhas - Seção de follow-up com evidência |
+| docs/ci/gate-governance-matrix.md | +15 linhas - Status atualizado para "Estabilizando" |
+| tasks/todo.md | +45 linhas - Review final com comandos e resultados |
+
+### Próximos Passos
+
+- [ ] Monitorar próximos 7 dias (até 2026-03-11)
+- [ ] Meta: 3 runs consecutivos SUCCESS para cada workflow
+- [ ] Se meta atingida: Promover de "legacy" para "important"
+- [ ] Se regressão: Investigar e aplicar correções adicionais

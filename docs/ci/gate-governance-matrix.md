@@ -11,7 +11,7 @@
 | Gate/Workflow | Owner Técnico | Criticidade | SLA Resposta | Política de Deprecação |
 |--------------|---------------|-------------|--------------|------------------------|
 | vm-webapp-smoke | Platform Team | **critical** | 4h | Não deprecar - core gate |
-| VM Editorial Governance Monitoring | Editorial Team | important | 8h | Revisar em 90 dias |
+| VM Editorial Governance Monitoring | Editorial Team | important | 8h | 🟡 Estabilizando - revisar em 30 dias |
 | v2.1.3 Residual Risk Gate | Governance Team | important | 8h | Integrar em v2.2 |
 | vm-studio-run-binding-nightly | Studio Team | important | 24h | Manter - estável |
 | v38 Onboarding TTFV Gate | Onboarding Team | important | 8h | Evoluir para v39 |
@@ -21,7 +21,7 @@
 | v35 Onboarding Continuity CI Gate | Onboarding Team | important | 8h | Merge em v38 |
 | v36 Outcome Attribution & Hybrid ROI CI Gate | Analytics Team | important | 8h | Revisar após Q2 |
 | v37 Unified Workspace UI CI Gate | Workspace Team | important | 8h | Evoluir para v40 |
-| vm-editorial-ops-nightly | Editorial Team | legacy | 48h | **Deprecar em 60 dias** |
+| vm-editorial-ops-nightly | Editorial Team | legacy | 48h | 🟡 Estabilizando - manter observação por 30 dias |
 | Lint Scoped | Platform Team | important | 24h | Manter |
 | v2 API Testing Suite | Platform Team | **critical** | 4h | Não deprecar - core suite |
 
@@ -120,3 +120,22 @@
 | Data | Versão | Alteração | Autor |
 |------|--------|-----------|-------|
 | 2026-03-04 | 1.0 | Criação inicial | CI Hardening Initiative |
+
+---
+
+## Atualização de Status (2026-03-04)
+
+### Legacy Workflows - Estabilização em Progresso
+
+| Workflow | Status Anterior | Status Atual | Observação |
+|----------|----------------|--------------|------------|
+| vm-editorial-ops-nightly | 🔴 Crônico falha | 🟡 Estabilizando | Correções aplicadas em e64a02cd |
+| VM Editorial Governance Monitoring | 🔴 Crônico falha | 🟡 Estabilizando | Hardening de endpoint aplicado |
+
+**Evidência:**
+- vm-editorial-monitoring: Run 22679447435 - SUCCESS (e64a02cd)
+- vm-editorial-ops-nightly: Run 22679448569 - SUCCESS (e64a02cd)
+
+**Próxima Revisão:** 2026-03-11 (7 dias)
+- Se ambos estáveis (≥3 runs SUCCESS consecutivos): Atualizar para "important"
+- Se regressão: Reverter para "legacy" com deprecação acelerada
