@@ -1227,3 +1227,51 @@ PYTHONPATH=09-tools python tests/simulations/v45_rollout_integration.py  # ✅ r
 🟢 **PRONTO PARA PR** - Auto-rollout policy completa, 158 testes passando, integração v44 validada
 
 ---
+
+## ✅ v46 Sprint - Rollout Dashboard + Approval UX (2026-03-05)
+
+### Objetivo
+Implementar dashboard de operação e controle manual para o Auto-Rollout do v45.
+
+### Contrato
+- docs/contracts/v46_rollout_dashboard_approval.md (Agente A)
+
+### Implementação Backend
+- 09-tools/vm_webapp/api_rollout_dashboard.py
+  - GET /api/v2/onboarding/rollout-dashboard
+  - POST /api/v2/onboarding/rollout-policy/{id}/approve
+  - POST /api/v2/onboarding/rollout-policy/{id}/reject
+  - POST /api/v2/onboarding/rollout-policy/{id}/rollback
+  - GET /api/v2/onboarding/rollout-policy/{id}/history
+- 09-tools/tests/test_vm_webapp_api_rollout_dashboard.py (40 testes)
+
+### Implementação Frontend
+- 09-tools/web/vm-ui/src/pages/RolloutDashboard.tsx
+- 09-tools/web/vm-ui/src/components/rollout/
+  - StatusBadge.tsx
+  - ApprovalActions.tsx
+  - ApprovalModal.tsx
+  - PolicyDetail.tsx
+- 09-tools/web/vm-ui/src/api/rolloutDashboard.ts
+
+### Testes E2E
+- 09-tools/tests/test_vm_webapp_rollout_dashboard_e2e.py
+- scripts/validate_v46_rollout.sh
+
+### Validação
+```bash
+# Backend
+PYTHONPATH=09-tools pytest 09-tools/tests/test_vm_webapp_api_rollout_dashboard.py -q
+# Resultado: 40 passed
+
+# Frontend
+cd 09-tools/web/vm-ui
+npm run build
+npm run test -- --run src/components/rollout/__tests__/
+# Resultado: 137 passed
+```
+
+### Status
+🟢 **PRONTO PARA PR**
+
+---
