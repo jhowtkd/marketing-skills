@@ -1046,3 +1046,83 @@ PYTHONPATH=09-tools pytest tests/simulations/test_onboarding_ttfv_simulation.py 
 🟢 **PRONTO PARA PR** - Guardrails implementados, contratos documentados, todos testes passando
 
 ---
+
+## ✅ v44 Sprint - Onboarding Experiments Pack (2026-03-05)
+
+### Objetivo
+Criar sistema de experimentação segura (A/B local + toggles) sobre base estável v38-v43.
+
+### Contratos Definidos
+
+#### Experiment Contract (docs/contracts/v44_onboarding_experiments.md)
+- **experiment_id**: formato `product_flow_name_vN`, versionado
+- **variants**: estrutura com variant_id, name, config JSON, weight
+- **assignment**: hash determinístico SHA256(user_id:experiment_id)
+- **exposure**: evento `experiment_exposed` obrigatório
+- **fallback**: sempre retorna "control" em caso de erro
+
+### Implementação
+
+#### Backend (09-tools/vm_webapp/onboarding_experiments.py)
+- `assign_variant()`: assignment determinístico por hash
+- `Variant` e `Experiment` dataclasses
+- `ExperimentRegistry`: gestão de experimentos ativos
+- Fallback seguro para "control"
+- **40 testes** em `test_vm_webapp_onboarding_experiments.py`
+
+#### Frontend
+- **Hook `useExperiment`**: atribuição e persistência de variante
+- **OnboardingWizard**: integração de 2 experimentos:
+  - *CTA Copy*: "Continuar" vs "Configurar Agora" vs "Começar Agora"
+  - *Resume Timing*: delay 0s vs 2s vs 5s
+- **Telemetry**: todos eventos incluem `experiment_id` e `variant_id`
+- **Backward compatible**: sem experimento = comportamento base
+
+#### Harness + Benchmark
+- **ExperimentBenchmarkRunner**: rodar N simulações por variante
+- **Relatório comparativo**: TTFV, completion, abandono, score
+- **Reprodutível**: mesma seed = mesmo resultado
+- **14 testes** em `test_experiment_benchmark.py`
+
+### Tabela Controle vs Variantes (Benchmark)
+
+| Rank | Experimento | Variante | Score | TTFV | Completion |
+|------|-------------|----------|-------|------|------------|
+| 1 | exp_resume_timing | delay_2s | 1.0116 | 22.56s | 100% |
+| 2 | exp_cta_copy | control | 1.0000 | 22.57s | 100% |
+| 3 | exp_resume_timing | control | 1.0000 | 23.08s | 100% |
+| 4 | exp_cta_copy | treatment | 0.9935 | 22.87s | 100% |
+
+### Arquivos Alterados
+- `09-tools/vm_webapp/onboarding_experiments.py` (novo, +180 linhas)
+- `09-tools/tests/test_vm_webapp_onboarding_experiments.py` (novo, +350 linhas)
+- `09-tools/web/vm-ui/src/hooks/useExperiment.ts` (novo, +85 linhas)
+- `09-tools/web/vm-ui/src/features/onboarding/OnboardingWizard.tsx` (+120 linhas)
+- `09-tools/web/vm-ui/src/features/onboarding/ttfvTelemetry.ts` (+65 linhas)
+- `09-tools/tests/simulations/v44_experiment_benchmark.py` (novo, +320 linhas)
+- `09-tools/tests/simulations/test_experiment_benchmark.py` (novo, +280 linhas)
+- `docs/contracts/v44_onboarding_experiments.md` (novo, +144 linhas)
+
+### Validação Final
+```bash
+# Backend
+PYTHONPATH=09-tools pytest tests/test_vm_webapp_onboarding_experiments.py -q  # ✅ 40 passed
+
+# Frontend
+npm run test -- --run OnboardingWizard.test.tsx  # ✅ 42 passed
+npm run test -- --run ttfvTelemetry.test.ts      # ✅ 45 passed
+npm run build                                     # ✅ built
+
+# Harness
+PYTHONPATH=09-tools pytest tests/simulations/test_experiment_benchmark.py -q  # ✅ 14 passed
+PYTHONPATH=09-tools python tests/simulations/v44_experiment_benchmark.py      # ✅ reports gerados
+```
+
+### Riscos Residuais
+- **Nenhum** - Sistema opt-in, sem experimento ativo = comportamento v42 intacto
+- Fallback sempre para controle garante estabilidade
+
+### Status
+🟢 **PRONTO PARA PR** - Experiments pack completo, benchmark reproduzível, 141 testes passando
+
+---

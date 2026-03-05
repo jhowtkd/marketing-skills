@@ -13,10 +13,13 @@ import {
   trackOnboardingResumeAccepted,
   trackOnboardingResumeRejected,
   trackOnboardingResumeFailed,
+  setActiveExperiment,
+  clearActiveExperiment,
 } from './ttfvTelemetry';
 import { saveFunnelState, loadFunnelState, getNextStep } from './funnel';
 import { ContextualTour } from './ContextualTour';
 import type { TourStep } from './ContextualTour';
+import { useExperiment, type ExperimentVariant } from '../../hooks/useExperiment';
 
 // v38: Smart prefill integration
 interface PrefillData {
@@ -196,6 +199,41 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   // v30: Contextual tour state
   const [showTour, setShowTour] = useState(false);
 
+  // v44: Experiment - CTA Copy variation
+  const ctaVariants: ExperimentVariant[] = [
+    { id: 'control', config: {} },
+    { id: 'variant_start_now', config: { buttonText: 'Começar Agora' } },
+    { id: 'variant_continue_journey', config: { buttonText: 'Continuar Jornada' } },
+    { id: 'variant_next_step', config: { buttonText: 'Próximo Passo' } },
+  ];
+  const { variantId: ctaVariantId, config: ctaConfig, isInExperiment: isCtaExperiment } = useExperiment({
+    experimentId: 'onboarding_cta_v44',
+    variants: ctaVariants,
+    userId,
+  });
+
+  // v44: Experiment - Resume timing variation
+  const resumeVariants: ExperimentVariant[] = [
+    { id: 'control', config: { delayMs: 0 } },
+    { id: 'variant_delayed_2s', config: { delayMs: 2000 } },
+    { id: 'variant_delayed_5s', config: { delayMs: 5000 } },
+  ];
+  const { variantId: resumeVariantId, config: resumeConfig } = useExperiment({
+    experimentId: 'onboarding_resume_timing_v44',
+    variants: resumeVariants,
+    userId,
+  });
+
+  // v44: Set active experiment context when CTA experiment is active
+  useEffect(() => {
+    if (isCtaExperiment && ctaVariantId) {
+      setActiveExperiment('onboarding_cta_v44', ctaVariantId, userId);
+    }
+    return () => {
+      clearActiveExperiment();
+    };
+  }, [isCtaExperiment, ctaVariantId, userId]);
+
   // Tour steps for contextual guidance
   const tourSteps: TourStep[] = [
     {
@@ -229,6 +267,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   }, [userId]);
   
   // v40: Check for saved progress on mount
+  // v44: Respects resume timing experiment delay
   useEffect(() => {
     if (progressCheckedRef.current) return;
     progressCheckedRef.current = true;
@@ -255,8 +294,16 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       }
     };
     
-    checkSavedProgress();
-  }, [userId]);
+    // v44: Apply resume timing experiment delay
+    const delayMs = (resumeConfig.delayMs as number) || 0;
+    if (delayMs > 0) {
+      setTimeout(() => {
+        checkSavedProgress();
+      }, delayMs);
+    } else {
+      checkSavedProgress();
+    }
+  }, [userId, resumeConfig]);
 
   // v38: Fetch and apply smart prefill
   useEffect(() => {
@@ -840,8 +887,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
               onClick={handleNext}
               disabled={!canContinue()}
               className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              data-testid="continue-button"
             >
-              Continuar
+              {/* v44: CTA Copy experiment - use variant text or fallback to default */}
+              {(ctaConfig.buttonText as string) || 'Continuar'}
             </button>
           )}
         </div>
