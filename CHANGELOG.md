@@ -12,6 +12,58 @@ All notable changes to the Vibe Marketing platform.
 ### Tests
 - Synced API/fixture/integration tests with current contracts and verified full suite stability (`1462 passed` in `09-tools/tests`).
 
+## [v46.0.0] - Rollout Dashboard + Approval UX
+
+### Added
+- **Rollout Dashboard**: Operação e controle manual do Auto-Rollout (v45)
+  - Visualização de todas as políticas de rollout ativas
+  - Timeline de eventos com histórico de decisões
+  - Status consolidado: promoted, blocked, rolled_back, pending_review, evaluating
+  - Métricas em tempo real: sample size, success rate, error rate
+- **Approval UX**: Interface de governança manual
+  - Modal de aprovação com confirmação e justificativa
+  - Ações: approve, reject, rollback manual
+  - Validação: mínimo 10 caracteres para reason, operator_id obrigatório
+  - Toast notifications para feedback imediato
+- **API v2 Endpoints**:
+  - `GET /api/v2/onboarding/rollout-dashboard` - Lista todas as políticas
+  - `POST /api/v2/onboarding/rollout-policy/{id}/approve` - Aprova promoção
+  - `POST /api/v2/onboarding/rollout-policy/{id}/reject` - Rejeita promoção
+  - `POST /api/v2/onboarding/rollout-policy/{id}/rollback` - Rollback manual
+  - `GET /api/v2/onboarding/rollout-policy/{id}/history` - Histórico de decisões
+- **Frontend Components**:
+  - `RolloutDashboard.tsx` - Página principal do dashboard
+  - `StatusBadge.tsx` - Badge de status com cores semânticas
+  - `ApprovalActions.tsx` - Botões de ação com estados
+  - `ApprovalModal.tsx` - Modal de confirmação com formulário
+  - `PolicyDetail.tsx` - Detalhes da política e métricas
+  - `rolloutDashboard.ts` - Cliente API com telemetria
+- **Observability**:
+  - `rollout_dashboard_viewed` - Visualização do dashboard
+  - `rollout_approval_submitted` - Submissão de aprovação
+  - `rollout_approval_approved` - Aprovação confirmada
+  - `rollout_approval_rejected` - Rejeição confirmada
+  - `rollout_manual_rollback_triggered` - Rollback manual executado
+
+### Tests
+- 40 backend API tests (`test_vm_webapp_api_rollout_dashboard.py`)
+- 137 frontend component tests (`components/rollout/__tests__/`)
+- E2E integration tests (`test_vm_webapp_rollout_dashboard_e2e.py`)
+
+### Files Added/Modified
+```
+09-tools/vm_webapp/api_rollout_dashboard.py                       (+480 linhas)
+09-tools/tests/test_vm_webapp_api_rollout_dashboard.py            (+890 linhas)
+09-tools/tests/test_vm_webapp_rollout_dashboard_e2e.py            (+320 linhas)
+09-tools/web/vm-ui/src/pages/RolloutDashboard.tsx                 (+580 linhas)
+09-tools/web/vm-ui/src/components/rollout/StatusBadge.tsx         (+90 linhas)
+09-tools/web/vm-ui/src/components/rollout/ApprovalActions.tsx     (+110 linhas)
+09-tools/web/vm-ui/src/components/rollout/ApprovalModal.tsx       (+240 linhas)
+09-tools/web/vm-ui/src/components/rollout/PolicyDetail.tsx        (+240 linhas)
+09-tools/web/vm-ui/src/api/rolloutDashboard.ts                    (+140 linhas)
+docs/contracts/v46_rollout_dashboard_approval.md                  (+520 linhas)
+```
+
 ## [v35.0.0] - Cross-Session Continuity Autopilot
 
 ### Added

@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import InboxPanel from "./features/inbox/InboxPanel";
 import NavigationPanel from "./features/navigation/NavigationPanel";
 import WorkspacePanel from "./features/workspace/WorkspacePanel";
+import RolloutDashboard from "./pages/RolloutDashboard";
 
 type MaybeId = string | null;
+type Page = "studio" | "rollout-dashboard";
 
 function readDevMode(): boolean {
   try {
@@ -26,13 +28,33 @@ function formatContextValue(value: MaybeId, filledLabel: string): string {
   return value ? filledLabel : "Nao definido";
 }
 
+function getInitialPage(): Page {
+  if (typeof window !== "undefined") {
+    const path = window.location.pathname;
+    if (path === "/onboarding/rollout-dashboard") {
+      return "rollout-dashboard";
+    }
+  }
+  return "studio";
+}
+
 export default function App() {
   const [activeBrandId, setActiveBrandId] = useState<MaybeId>(null);
   const [activeProjectId, setActiveProjectId] = useState<MaybeId>(null);
   const [activeThreadId, setActiveThreadId] = useState<MaybeId>(null);
   const [activeRunId, setActiveRunId] = useState<MaybeId>(null);
+  const [currentPage, setCurrentPage] = useState<Page>(getInitialPage());
 
   const [devMode, setDevMode] = useState<boolean>(readDevMode);
+
+  // Update URL when page changes
+  useEffect(() => {
+    if (currentPage === "rollout-dashboard") {
+      window.history.replaceState({}, "", "/onboarding/rollout-dashboard");
+    } else {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [currentPage]);
 
   useEffect(() => {
     writeDevMode(devMode);
@@ -73,19 +95,47 @@ export default function App() {
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/80 p-3 shadow-[0_16px_40px_rgba(22,32,51,0.08)]">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-muted)]">
-                Ferramentas
-              </p>
-              <label className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--vm-ink)]">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={devMode}
-                  onChange={(e) => setDevMode(e.target.checked)}
-                />
-                Dev mode
-              </label>
+            <div className="flex flex-col items-end gap-3">
+              <nav className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/80 p-2 shadow-[0_16px_40px_rgba(22,32,51,0.08)]">
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setCurrentPage("studio")}
+                    className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+                      currentPage === "studio"
+                        ? "bg-[var(--vm-primary)] text-white"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                    aria-current={currentPage === "studio" ? "page" : undefined}
+                  >
+                    Studio
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage("rollout-dashboard")}
+                    className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+                      currentPage === "rollout-dashboard"
+                        ? "bg-[var(--vm-primary)] text-white"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                    aria-current={currentPage === "rollout-dashboard" ? "page" : undefined}
+                  >
+                    Rollout
+                  </button>
+                </div>
+              </nav>
+              <div className="rounded-[1.5rem] border border-[color:var(--vm-line)] bg-white/80 p-3 shadow-[0_16px_40px_rgba(22,32,51,0.08)]">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-muted)]">
+                  Ferramentas
+                </p>
+                <label className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--vm-ink)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={devMode}
+                    onChange={(e) => setDevMode(e.target.checked)}
+                  />
+                  Dev mode
+                </label>
+              </div>
             </div>
           </div>
 
@@ -138,73 +188,77 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
-        <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.95fr)_minmax(0,1.6fr)_minmax(280px,0.95fr)]">
-          <section
-            role="region"
-            aria-label="Navegacao do studio"
-            className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
-          >
-            <div className="mb-4 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
-                  Navegacao
-                </p>
-                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Studio rail</h2>
+      {currentPage === "rollout-dashboard" ? (
+        <RolloutDashboard />
+      ) : (
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
+          <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.95fr)_minmax(0,1.6fr)_minmax(280px,0.95fr)]">
+            <section
+              role="region"
+              aria-label="Navegacao do studio"
+              className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
+            >
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                    Navegacao
+                  </p>
+                  <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Studio rail</h2>
+                </div>
               </div>
-            </div>
-            <NavigationPanel
-              activeBrandId={activeBrandId}
-              activeProjectId={activeProjectId}
-              activeThreadId={activeThreadId}
-              devMode={devMode}
-              onSelectBrand={handleSelectBrand}
-              onSelectProject={handleSelectProject}
-              onSelectThread={handleSelectThread}
-            />
-          </section>
+              <NavigationPanel
+                activeBrandId={activeBrandId}
+                activeProjectId={activeProjectId}
+                activeThreadId={activeThreadId}
+                devMode={devMode}
+                onSelectBrand={handleSelectBrand}
+                onSelectProject={handleSelectProject}
+                onSelectThread={handleSelectThread}
+              />
+            </section>
 
-          <section
-            role="region"
-            aria-label="Canvas do entregavel"
-            className="rounded-[2rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_20px_48px_rgba(22,32,51,0.1)] sm:p-5"
-          >
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
-                  Canvas central
+            <section
+              role="region"
+              aria-label="Canvas do entregavel"
+              className="rounded-[2rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_20px_48px_rgba(22,32,51,0.1)] sm:p-5"
+            >
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                    Canvas central
+                  </p>
+                  <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Canvas do entregavel</h2>
+                </div>
+                <p className="max-w-xs text-right text-xs uppercase tracking-[0.16em] text-[var(--vm-muted)]">
+                  A versao ativa deve dominar a leitura.
                 </p>
-                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Canvas do entregavel</h2>
               </div>
-              <p className="max-w-xs text-right text-xs uppercase tracking-[0.16em] text-[var(--vm-muted)]">
-                A versao ativa deve dominar a leitura.
-              </p>
-            </div>
-            <WorkspacePanel
-              activeThreadId={activeThreadId}
-              activeRunId={activeRunId}
-              onSelectRun={setActiveRunId}
-              devMode={devMode}
-            />
-          </section>
+              <WorkspacePanel
+                activeThreadId={activeThreadId}
+                activeRunId={activeRunId}
+                onSelectRun={setActiveRunId}
+                devMode={devMode}
+              />
+            </section>
 
-          <section
-            role="region"
-            aria-label="Action rail da versao"
-            className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
-          >
-            <div className="mb-4 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
-                  Action rail
-                </p>
-                <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Pendencias da versao</h2>
+            <section
+              role="region"
+              aria-label="Action rail da versao"
+              className="rounded-[1.75rem] border border-[color:var(--vm-line)] bg-[color:var(--vm-surface)] p-4 shadow-[0_18px_45px_rgba(22,32,51,0.08)]"
+            >
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[var(--vm-primary)]">
+                    Action rail
+                  </p>
+                  <h2 className="mt-2 font-serif text-2xl text-[var(--vm-ink)]">Pendencias da versao</h2>
+                </div>
               </div>
-            </div>
-            <InboxPanel activeThreadId={activeThreadId} activeRunId={activeRunId} devMode={devMode} />
-          </section>
-        </div>
-      </main>
+              <InboxPanel activeThreadId={activeThreadId} activeRunId={activeRunId} devMode={devMode} />
+            </section>
+          </div>
+        </main>
+      )}
     </div>
   );
 }
