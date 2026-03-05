@@ -1,3 +1,21 @@
+# GSD New Project Initialization - TODO (2026-03-05)
+
+## Plan
+
+- [x] Gate brownfield: decidir entre mapear codebase agora ou seguir sem mapa
+- [ ] Completar questioning para consolidar contexto do produto
+- [ ] Criar `.planning/PROJECT.md` e commitar
+- [ ] Definir preferências de workflow e criar `.planning/config.json` com commit
+- [ ] Executar research (4 agentes em paralelo + sintese) e commitar artefatos
+- [ ] Definir `.planning/REQUIREMENTS.md` com IDs e commitar
+- [ ] Gerar `.planning/ROADMAP.md` + `.planning/STATE.md` e atualizar traceability
+- [ ] Registrar review final nesta tarefa com evidencias e proximo comando
+
+## Review
+
+- Gate brownfield concluido: opcao escolhida foi mapear codebase primeiro.
+- Workflow roteado corretamente para `$gsd-map-codebase` antes de continuar `$gsd-new-project`.
+
 # CI Final Stabilization Sprint - TODO
 
 ## Overall Progress: 5/6 Gates Fixed, 1 Escalated
