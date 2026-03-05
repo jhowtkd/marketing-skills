@@ -1,0 +1,434 @@
+{
+  "generated_at": "2026-03-05T00:45:42.818014",
+  "version": "v45",
+  "simulation_count": 3,
+  "simulations": [
+    {
+      "simulation_id": "sim_exp_cta_copy_72ef0e69",
+      "experiment_id": "exp_cta_copy",
+      "phases": [
+        {
+          "phase": "control_baseline",
+          "experiment_id": "exp_cta_copy",
+          "variant_id": "control",
+          "metrics": {
+            "variant_id": "control",
+            "sample_size": 100,
+            "conversions": 70,
+            "total_time_to_value_ms": 2500000,
+            "avg_time_to_value_ms": 25000.0,
+            "completion_rate": 0.7,
+            "abandonment_rate": 0.3,
+            "prefill_adoption": 0.4,
+            "fast_lane_adoption": 0.3
+          },
+          "gate_checks": [
+            {
+              "gate_name": "baseline_established",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 50.0,
+              "message": "Baseline established with 100 samples"
+            }
+          ],
+          "decision": "continue",
+          "decision_reason": "Baseline established, ready for treatment evaluation",
+          "timestamp": "2026-03-05T00:45:42.817766"
+        },
+        {
+          "phase": "treatment_evaluation",
+          "experiment_id": "exp_cta_copy",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "treatment",
+            "sample_size": 100,
+            "conversions": 80,
+            "total_time_to_value_ms": 2000000,
+            "avg_time_to_value_ms": 20000.0,
+            "completion_rate": 0.8,
+            "abandonment_rate": 0.2,
+            "prefill_adoption": 0.45,
+            "fast_lane_adoption": 0.35
+          },
+          "gate_checks": [
+            {
+              "gate_name": "sample_size",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 100.0,
+              "message": "Sample size 100 meets minimum 100"
+            },
+            {
+              "gate_name": "relative_lift",
+              "passed": true,
+              "value": 0.142857142857143,
+              "threshold": 0.05,
+              "message": "Lift 14.3% meets minimum 5.0%"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Sufficient lift (14.3%) with adequate sample size (100)",
+          "timestamp": "2026-03-05T00:45:42.817784"
+        },
+        {
+          "phase": "treatment_promoted",
+          "experiment_id": "exp_cta_copy",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "treatment",
+            "sample_size": 100,
+            "conversions": 80,
+            "total_time_to_value_ms": 2000000,
+            "avg_time_to_value_ms": 20000.0,
+            "completion_rate": 0.8,
+            "abandonment_rate": 0.2,
+            "prefill_adoption": 0.45,
+            "fast_lane_adoption": 0.35
+          },
+          "gate_checks": [
+            {
+              "gate_name": "promotion_successful",
+              "passed": true,
+              "value": 1.0,
+              "threshold": 1.0,
+              "message": "Treatment treatment successfully promoted"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Treatment promoted to production",
+          "timestamp": "2026-03-05T00:45:42.817787"
+        },
+        {
+          "phase": "treatment_degraded",
+          "experiment_id": "exp_cta_copy",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "treatment",
+            "sample_size": 100,
+            "conversions": 55,
+            "total_time_to_value_ms": 2857142,
+            "avg_time_to_value_ms": 28571.428571428572,
+            "completion_rate": 0.5599999999999999,
+            "abandonment_rate": 0.44000000000000006,
+            "prefill_adoption": 0.315,
+            "fast_lane_adoption": 0.24499999999999997
+          },
+          "gate_checks": [
+            {
+              "gate_name": "completion_rate_drop",
+              "passed": true,
+              "value": 0.14,
+              "threshold": 0.15,
+              "message": "Completion rate drop 14.0% within limit 15.0%"
+            },
+            {
+              "gate_name": "ttfv_increase",
+              "passed": true,
+              "value": 1.1428571428571428,
+              "threshold": 1.3,
+              "message": "TTFV ratio 1.14x within limit 1.30x"
+            }
+          ],
+          "decision": "continue",
+          "decision_reason": "All metrics healthy",
+          "timestamp": "2026-03-05T00:45:42.817800"
+        }
+      ],
+      "final_decision": "continue",
+      "final_state": "treatment_degraded",
+      "promotion_policy": {
+        "min_sample_size": 100,
+        "min_confidence": 0.95,
+        "min_relative_lift": 0.05,
+        "max_degradation_threshold": 0.1,
+        "ttfv_efficiency_weight": 0.5,
+        "completion_rate_weight": 0.35,
+        "abandonment_rate_weight": 0.15
+      },
+      "rollback_policy": {
+        "max_completion_rate_drop": 0.15,
+        "max_ttfv_increase_ratio": 1.3,
+        "min_sample_size_for_rollback": 50,
+        "consecutive_failures_threshold": 3
+      },
+      "started_at": "2026-03-05T00:45:42.817647",
+      "completed_at": "2026-03-05T00:45:42.817802",
+      "duration_seconds": 0.000155
+    },
+    {
+      "simulation_id": "sim_exp_resume_timing_f5bde287",
+      "experiment_id": "exp_resume_timing",
+      "phases": [
+        {
+          "phase": "control_baseline",
+          "experiment_id": "exp_resume_timing",
+          "variant_id": "control",
+          "metrics": {
+            "variant_id": "control",
+            "sample_size": 100,
+            "conversions": 68,
+            "total_time_to_value_ms": 2600000,
+            "avg_time_to_value_ms": 26000.0,
+            "completion_rate": 0.68,
+            "abandonment_rate": 0.32,
+            "prefill_adoption": 0.38,
+            "fast_lane_adoption": 0.28
+          },
+          "gate_checks": [
+            {
+              "gate_name": "baseline_established",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 50.0,
+              "message": "Baseline established with 100 samples"
+            }
+          ],
+          "decision": "continue",
+          "decision_reason": "Baseline established, ready for treatment evaluation",
+          "timestamp": "2026-03-05T00:45:42.817828"
+        },
+        {
+          "phase": "treatment_evaluation",
+          "experiment_id": "exp_resume_timing",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "delay_2s",
+            "sample_size": 100,
+            "conversions": 75,
+            "total_time_to_value_ms": 2200000,
+            "avg_time_to_value_ms": 22000.0,
+            "completion_rate": 0.75,
+            "abandonment_rate": 0.25,
+            "prefill_adoption": 0.42,
+            "fast_lane_adoption": 0.32
+          },
+          "gate_checks": [
+            {
+              "gate_name": "sample_size",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 100.0,
+              "message": "Sample size 100 meets minimum 100"
+            },
+            {
+              "gate_name": "relative_lift",
+              "passed": true,
+              "value": 0.10294117647058816,
+              "threshold": 0.05,
+              "message": "Lift 10.3% meets minimum 5.0%"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Sufficient lift (10.3%) with adequate sample size (100)",
+          "timestamp": "2026-03-05T00:45:42.817837"
+        },
+        {
+          "phase": "treatment_promoted",
+          "experiment_id": "exp_resume_timing",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "delay_2s",
+            "sample_size": 100,
+            "conversions": 75,
+            "total_time_to_value_ms": 2200000,
+            "avg_time_to_value_ms": 22000.0,
+            "completion_rate": 0.75,
+            "abandonment_rate": 0.25,
+            "prefill_adoption": 0.42,
+            "fast_lane_adoption": 0.32
+          },
+          "gate_checks": [
+            {
+              "gate_name": "promotion_successful",
+              "passed": true,
+              "value": 1.0,
+              "threshold": 1.0,
+              "message": "Treatment treatment successfully promoted"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Treatment promoted to production",
+          "timestamp": "2026-03-05T00:45:42.817839"
+        },
+        {
+          "phase": "treatment_degraded",
+          "experiment_id": "exp_resume_timing",
+          "variant_id": "delay_2s",
+          "metrics": {
+            "variant_id": "delay_2s",
+            "sample_size": 100,
+            "conversions": 52,
+            "total_time_to_value_ms": 3142857,
+            "avg_time_to_value_ms": 31428.57142857143,
+            "completion_rate": 0.5249999999999999,
+            "abandonment_rate": 0.4750000000000001,
+            "prefill_adoption": 0.294,
+            "fast_lane_adoption": 0.22399999999999998
+          },
+          "gate_checks": [
+            {
+              "gate_name": "completion_rate_drop",
+              "passed": false,
+              "value": 0.15500000000000014,
+              "threshold": 0.15,
+              "message": "Completion rate drop 15.5% exceeds limit 15.0%"
+            },
+            {
+              "gate_name": "ttfv_increase",
+              "passed": true,
+              "value": 1.208791208791209,
+              "threshold": 1.3,
+              "message": "TTFV ratio 1.21x within limit 1.30x"
+            }
+          ],
+          "decision": "continue",
+          "decision_reason": "Degradation detected (1/3): Completion rate drop 15.5% exceeds limit 15.0%",
+          "timestamp": "2026-03-05T00:45:42.817852"
+        }
+      ],
+      "final_decision": "continue",
+      "final_state": "treatment_degraded",
+      "promotion_policy": {
+        "min_sample_size": 100,
+        "min_confidence": 0.95,
+        "min_relative_lift": 0.05,
+        "max_degradation_threshold": 0.1,
+        "ttfv_efficiency_weight": 0.5,
+        "completion_rate_weight": 0.35,
+        "abandonment_rate_weight": 0.15
+      },
+      "rollback_policy": {
+        "max_completion_rate_drop": 0.15,
+        "max_ttfv_increase_ratio": 1.3,
+        "min_sample_size_for_rollback": 50,
+        "consecutive_failures_threshold": 3
+      },
+      "started_at": "2026-03-05T00:45:42.817823",
+      "completed_at": "2026-03-05T00:45:42.817853",
+      "duration_seconds": 3e-05
+    },
+    {
+      "simulation_id": "sim_exp_success_76f5d6a5",
+      "experiment_id": "exp_success",
+      "phases": [
+        {
+          "phase": "control_baseline",
+          "experiment_id": "exp_success",
+          "variant_id": "control",
+          "metrics": {
+            "variant_id": "control",
+            "sample_size": 100,
+            "conversions": 70,
+            "total_time_to_value_ms": 2500000,
+            "avg_time_to_value_ms": 25000.0,
+            "completion_rate": 0.7,
+            "abandonment_rate": 0.3,
+            "prefill_adoption": 0.4,
+            "fast_lane_adoption": 0.3
+          },
+          "gate_checks": [
+            {
+              "gate_name": "baseline_established",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 50.0,
+              "message": "Baseline established with 100 samples"
+            }
+          ],
+          "decision": "continue",
+          "decision_reason": "Baseline established, ready for treatment evaluation",
+          "timestamp": "2026-03-05T00:45:42.817872"
+        },
+        {
+          "phase": "treatment_evaluation",
+          "experiment_id": "exp_success",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "treatment",
+            "sample_size": 100,
+            "conversions": 80,
+            "total_time_to_value_ms": 2000000,
+            "avg_time_to_value_ms": 20000.0,
+            "completion_rate": 0.8,
+            "abandonment_rate": 0.2,
+            "prefill_adoption": 0.45,
+            "fast_lane_adoption": 0.35
+          },
+          "gate_checks": [
+            {
+              "gate_name": "sample_size",
+              "passed": true,
+              "value": 100.0,
+              "threshold": 100.0,
+              "message": "Sample size 100 meets minimum 100"
+            },
+            {
+              "gate_name": "relative_lift",
+              "passed": true,
+              "value": 0.142857142857143,
+              "threshold": 0.05,
+              "message": "Lift 14.3% meets minimum 5.0%"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Sufficient lift (14.3%) with adequate sample size (100)",
+          "timestamp": "2026-03-05T00:45:42.817879"
+        },
+        {
+          "phase": "treatment_promoted",
+          "experiment_id": "exp_success",
+          "variant_id": "treatment",
+          "metrics": {
+            "variant_id": "treatment",
+            "sample_size": 100,
+            "conversions": 80,
+            "total_time_to_value_ms": 2000000,
+            "avg_time_to_value_ms": 20000.0,
+            "completion_rate": 0.8,
+            "abandonment_rate": 0.2,
+            "prefill_adoption": 0.45,
+            "fast_lane_adoption": 0.35
+          },
+          "gate_checks": [
+            {
+              "gate_name": "promotion_successful",
+              "passed": true,
+              "value": 1.0,
+              "threshold": 1.0,
+              "message": "Treatment treatment successfully promoted"
+            }
+          ],
+          "decision": "promote",
+          "decision_reason": "Treatment promoted to production",
+          "timestamp": "2026-03-05T00:45:42.817881"
+        }
+      ],
+      "final_decision": "promote",
+      "final_state": "treatment_promoted",
+      "promotion_policy": {
+        "min_sample_size": 100,
+        "min_confidence": 0.95,
+        "min_relative_lift": 0.05,
+        "max_degradation_threshold": 0.1,
+        "ttfv_efficiency_weight": 0.5,
+        "completion_rate_weight": 0.35,
+        "abandonment_rate_weight": 0.15
+      },
+      "rollback_policy": {
+        "max_completion_rate_drop": 0.15,
+        "max_ttfv_increase_ratio": 1.3,
+        "min_sample_size_for_rollback": 50,
+        "consecutive_failures_threshold": 3
+      },
+      "started_at": "2026-03-05T00:45:42.817869",
+      "completed_at": "2026-03-05T00:45:42.817881",
+      "duration_seconds": 1.2e-05
+    }
+  ],
+  "summary": {
+    "total_simulations": 3,
+    "promotions": 1,
+    "rollbacks": 0,
+    "continues": 2
+  }
+}

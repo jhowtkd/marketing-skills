@@ -1,6 +1,7 @@
 """Tests for onboarding_experiments module.
 
 Test coverage for deterministic variant assignment and experiment utilities.
+v45: Added RolloutPolicy integration tests.
 """
 
 import hashlib
@@ -17,6 +18,13 @@ from vm_webapp.onboarding_experiments import (
     assign_variant_from_experiment,
     RiskLevel,
     ExperimentStatus,
+    RolloutPolicy,
+    RolloutMode,
+    RolloutPolicyStatus,
+    RolloutPolicyManager,
+    get_variant_with_policy,
+    assign_variant_with_policy,
+    get_global_policy_manager,
 )
 
 
@@ -548,3 +556,734 @@ class TestEdgeCases:
         
         result = assign_variant("user123", "exp1", variants)
         assert result == "control"
+
+
+# =============================================================================
+# v45: RolloutPolicy Integration Tests
+# =============================================================================
+
+class TestRolloutPolicy:
+    """Tests for RolloutPolicy dataclass."""
+
+    def test_policy_creation_defaults(self):
+        """Test RolloutPolicy with default values."""
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+        )
+        assert policy.policy_id == "policy-001"
+        assert policy.experiment_id == "exp-001"
+        assert policy.active_variant == "control"
+        assert policy.mode == RolloutMode.MANUAL
+        assert policy.status == RolloutPolicyStatus.INACTIVE
+
+    def test_policy_creation_custom(self):
+        """Test RolloutPolicy with custom values."""
+        policy = RolloutPolicy(
+            policy_id="policy-002",
+            experiment_id="exp-002",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        assert policy.active_variant == "treatment"
+        assert policy.mode == RolloutMode.AUTO
+        assert policy.status == RolloutPolicyStatus.ACTIVE
+
+    def test_policy_activate(self):
+        """Test activating a policy."""
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+        )
+        policy.activate(variant_id="variant_a")
+        assert policy.status == RolloutPolicyStatus.ACTIVE
+        assert policy.active_variant == "variant_a"
+        assert policy.activated_at is not None
+
+    def test_policy_deactivate(self):
+        """Test deactivating a policy."""
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        policy.deactivate()
+        assert policy.status == RolloutPolicyStatus.INACTIVE
+
+    def test_policy_rollback(self):
+        """Test rolling back a policy."""
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        policy.rollback()
+        assert policy.status == RolloutPolicyStatus.ROLLED_BACK
+
+    def test_policy_is_active(self):
+        """Test is_active check."""
+        active_policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="e1",
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        inactive_policy = RolloutPolicy(
+            policy_id="p2",
+            experiment_id="e2",
+            status=RolloutPolicyStatus.INACTIVE,
+        )
+        assert active_policy.is_active() is True
+        assert inactive_policy.is_active() is False
+
+    def test_policy_is_auto(self):
+        """Test is_auto check."""
+        auto_policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="e1",
+            mode=RolloutMode.AUTO,
+        )
+        manual_policy = RolloutPolicy(
+            policy_id="p2",
+            experiment_id="e2",
+            mode=RolloutMode.MANUAL,
+        )
+        assert auto_policy.is_auto() is True
+        assert manual_policy.is_auto() is False
+
+    def test_policy_should_apply(self):
+        """Test should_apply_policy logic."""
+        # Auto + active + non-control = should apply
+        should_apply = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="e1",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+            active_variant="treatment",
+        )
+        assert should_apply.should_apply_policy() is True
+
+        # Control variant should not apply
+        control_policy = RolloutPolicy(
+            policy_id="p2",
+            experiment_id="e2",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+            active_variant="control",
+        )
+        assert control_policy.should_apply_policy() is False
+
+        # Manual mode should not apply
+        manual_policy = RolloutPolicy(
+            policy_id="p3",
+            experiment_id="e3",
+            mode=RolloutMode.MANUAL,
+            status=RolloutPolicyStatus.ACTIVE,
+            active_variant="treatment",
+        )
+        assert manual_policy.should_apply_policy() is False
+
+
+class TestRolloutPolicyManager:
+    """Tests for RolloutPolicyManager."""
+
+    def test_manager_register_and_get(self):
+        """Test registering and retrieving a policy."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+        )
+        manager.register_policy(policy)
+        
+        retrieved = manager.get_policy("policy-001")
+        assert retrieved.policy_id == "policy-001"
+
+    def test_manager_register_duplicate_raises(self):
+        """Test that registering duplicate policy raises error."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+        )
+        manager.register_policy(policy)
+        
+        with pytest.raises(ValueError, match="Policy already registered"):
+            manager.register_policy(policy)
+
+    def test_manager_get_nonexistent_raises(self):
+        """Test that getting nonexistent policy raises error."""
+        manager = RolloutPolicyManager()
+        with pytest.raises(ValueError, match="Policy not found"):
+            manager.get_policy("nonexistent")
+
+    def test_manager_get_policy_for_experiment(self):
+        """Test getting policy by experiment ID."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        found = manager.get_policy_for_experiment("exp-001")
+        assert found is not None
+        assert found.policy_id == "policy-001"
+
+    def test_manager_get_policy_for_experiment_inactive(self):
+        """Test that inactive policies are not returned."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+            status=RolloutPolicyStatus.INACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        found = manager.get_policy_for_experiment("exp-001")
+        assert found is None
+
+    def test_manager_get_policy_no_match(self):
+        """Test that non-matching experiment returns None."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="policy-001",
+            experiment_id="exp-001",
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        found = manager.get_policy_for_experiment("exp-999")
+        assert found is None
+
+    def test_manager_list_policies(self):
+        """Test listing all policies."""
+        manager = RolloutPolicyManager()
+        manager.register_policy(RolloutPolicy(policy_id="p1", experiment_id="e1"))
+        manager.register_policy(RolloutPolicy(policy_id="p2", experiment_id="e2"))
+        
+        policies = manager.list_policies()
+        assert len(policies) == 2
+
+    def test_manager_clear(self):
+        """Test clearing all policies."""
+        manager = RolloutPolicyManager()
+        manager.register_policy(RolloutPolicy(policy_id="p1", experiment_id="e1"))
+        manager.clear()
+        
+        assert len(manager.list_policies()) == 0
+
+
+class TestAssignVariantWithPolicy:
+    """Tests for assign_variant_with_policy function."""
+
+    def test_no_policy_uses_hash(self):
+        """Test that without policy, hash assignment is used."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants)
+        assert variant_id in ["control", "treatment"]
+        assert source == "hash"
+
+    def test_inactive_policy_uses_hash(self):
+        """Test that inactive policy falls back to hash."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.INACTIVE,
+        )
+        
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants, policy)
+        assert variant_id in ["control", "treatment"]
+        assert source == "hash"
+
+    def test_auto_policy_applies_active_variant(self):
+        """Test that auto mode applies active_variant directly."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants, policy)
+        assert variant_id == "treatment"
+        assert source == "policy_auto"
+
+    def test_manual_policy_uses_hash(self):
+        """Test that manual mode uses hash assignment."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.MANUAL,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants, policy)
+        assert variant_id in ["control", "treatment"]
+        assert source == "policy_manual"
+
+    def test_invalid_variant_fallback_to_control(self):
+        """Test that invalid active_variant falls back to control."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="nonexistent",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants, policy)
+        assert variant_id == "control"
+        assert source == "control_fallback"
+
+    def test_control_variant_no_override(self):
+        """Test that control active_variant doesn't override."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="control",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        
+        # should_apply_policy returns False for control
+        variant_id, source = assign_variant_with_policy("user123", "exp1", variants, policy)
+        # Falls through to hash because should_apply_policy is False
+        assert variant_id in ["control", "treatment"]
+        assert source == "hash"
+
+
+class TestGetVariantWithPolicy:
+    """Tests for get_variant_with_policy function."""
+
+    def test_no_policy_returns_hash(self):
+        """Test that without policy, hash assignment is returned."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, policy, source = get_variant_with_policy("user123", exp)
+        assert variant_id in ["control", "treatment"]
+        assert policy is None
+        assert source == "hash"
+
+    def test_inactive_experiment_returns_control(self):
+        """Test that inactive experiment returns control."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=False)
+        
+        variant_id, policy, source = get_variant_with_policy("user123", exp)
+        assert variant_id == "control"
+        assert policy is None
+        assert source == "control_fallback"
+
+    def test_auto_policy_returns_active_variant(self):
+        """Test that auto policy returns active_variant."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, used_policy, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "treatment"
+        assert used_policy == policy
+        assert source == "policy_auto"
+
+    def test_manual_policy_returns_hash(self):
+        """Test that manual policy returns hash assignment."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.MANUAL,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, used_policy, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id in ["control", "treatment"]
+        assert used_policy == policy
+        assert source == "policy_manual"
+
+    def test_invalid_variant_fallback(self):
+        """Test that invalid policy variant falls back to control."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="nonexistent",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, used_policy, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "control"
+        assert used_policy == policy
+        assert source == "control_fallback"
+
+    def test_global_registry_fallback(self):
+        """Test fallback to global policy registry."""
+        from vm_webapp.onboarding_experiments import _rollout_policy_registry
+        
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        _rollout_policy_registry["p1"] = policy
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, used_policy, source = get_variant_with_policy("user123", exp)
+        assert variant_id == "treatment"
+        assert used_policy == policy
+        
+        # Cleanup
+        del _rollout_policy_registry["p1"]
+
+
+class TestControlPromoteRollbackFlow:
+    """Integration tests for control -> promote -> rollback flow."""
+
+    def test_control_to_promote_flow(self):
+        """Test flow from control to promoted variant."""
+        manager = RolloutPolicyManager()
+        
+        # Start with manual policy (control)
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="control",
+            mode=RolloutMode.MANUAL,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        # Initially in manual mode, should use hash
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert source == "policy_manual"
+        
+        # Promote: activate treatment in auto mode
+        policy.activate(variant_id="treatment")
+        policy.mode = RolloutMode.AUTO
+        
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "treatment"
+        assert source == "policy_auto"
+
+    def test_promote_to_rollback_flow(self):
+        """Test flow from promoted to rolled back."""
+        manager = RolloutPolicyManager()
+        
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        # Initially auto-promoted
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "treatment"
+        assert source == "policy_auto"
+        
+        # Rollback
+        policy.rollback()
+        
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert source == "hash"  # Rolled back policy is not active
+
+    def test_multiple_users_consistent_with_policy(self):
+        """Test that all users get consistent assignment with policy."""
+        manager = RolloutPolicyManager()
+        
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        # All users should get treatment with auto policy
+        for i in range(100):
+            variant_id, _, source = get_variant_with_policy(f"user{i}", exp, manager)
+            assert variant_id == "treatment"
+            assert source == "policy_auto"
+
+
+class TestBackwardCompatibilityV44:
+    """Tests to ensure backward compatibility with v44 behavior."""
+
+    def test_v44_hash_assignment_unchanged(self):
+        """Test that v44 hash assignment behavior is preserved."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        
+        # Same user should get same variant (deterministic)
+        result1 = assign_variant("user123", "exp1", variants)
+        result2 = assign_variant("user123", "exp1", variants)
+        result3 = assign_variant("user123", "exp1", variants)
+        
+        assert result1 == result2 == result3
+
+    def test_v44_distribution_unchanged(self):
+        """Test that v44 distribution behavior is preserved."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        
+        counts = {"control": 0, "treatment": 0}
+        n = 1000
+        
+        for i in range(n):
+            result = assign_variant(f"user{i}", "exp1", variants)
+            counts[result] += 1
+        
+        # Should be roughly 50/50
+        assert 400 < counts["control"] < 600
+        assert 400 < counts["treatment"] < 600
+
+    def test_v44_registry_behavior_unchanged(self):
+        """Test that v44 registry behavior is preserved."""
+        registry = ExperimentRegistry()
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        registry.register(exp)
+        
+        # Assignment should be sticky
+        a1 = registry.get_assignment("exp1", "user123", "ws1")
+        a2 = registry.get_assignment("exp1", "user123", "ws1")
+        
+        assert a1.variant_id == a2.variant_id
+
+    def test_v44_empty_variants_returns_control(self):
+        """Test that v44 empty variants behavior is preserved."""
+        result = assign_variant("user123", "exp1", [])
+        assert result == "control"
+
+    def test_v44_inactive_experiment_returns_control(self):
+        """Test that v44 inactive experiment behavior is preserved."""
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=False)
+        
+        result = assign_variant_from_experiment("user123", exp)
+        assert result == "control"
+
+
+class TestPolicyIntegrationEdgeCases:
+    """Edge case tests for policy integration."""
+
+    def test_policy_with_single_variant(self):
+        """Test policy with single variant experiment."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="only",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="only", name="Only", weight=1.0),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "only"
+        assert source == "policy_auto"
+
+    def test_policy_with_multiple_treatment_variants(self):
+        """Test policy selecting one of multiple treatment variants."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="variant_b",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.25),
+            Variant(variant_id="variant_a", name="A", weight=0.25),
+            Variant(variant_id="variant_b", name="B", weight=0.25),
+            Variant(variant_id="variant_c", name="C", weight=0.25),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        variant_id, _, source = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "variant_b"
+        assert source == "policy_auto"
+
+    def test_policy_switching_modes(self):
+        """Test switching policy between auto and manual modes."""
+        manager = RolloutPolicyManager()
+        policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.MANUAL,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.5),
+            Variant(variant_id="treatment", name="Treatment", weight=0.5),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        # Manual mode - hash assignment
+        _, _, source1 = get_variant_with_policy("user123", exp, manager)
+        assert source1 == "policy_manual"
+        
+        # Switch to auto
+        policy.mode = RolloutMode.AUTO
+        variant_id, _, source2 = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "treatment"
+        assert source2 == "policy_auto"
+
+    def test_multiple_policies_same_experiment(self):
+        """Test that only active policy is considered."""
+        manager = RolloutPolicyManager()
+        
+        # Inactive policy (first)
+        inactive_policy = RolloutPolicy(
+            policy_id="p1",
+            experiment_id="exp1",
+            active_variant="treatment",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.INACTIVE,
+        )
+        manager.register_policy(inactive_policy)
+        
+        # Active policy (second)
+        active_policy = RolloutPolicy(
+            policy_id="p2",
+            experiment_id="exp1",
+            active_variant="variant_a",
+            mode=RolloutMode.AUTO,
+            status=RolloutPolicyStatus.ACTIVE,
+        )
+        manager.register_policy(active_policy)
+        
+        variants = [
+            Variant(variant_id="control", name="Control", weight=0.33),
+            Variant(variant_id="treatment", name="Treatment", weight=0.33),
+            Variant(variant_id="variant_a", name="A", weight=0.34),
+        ]
+        exp = Experiment(experiment_id="exp1", name="Test", variants=variants, is_active=True)
+        
+        # Should use the active policy
+        variant_id, used_policy, _ = get_variant_with_policy("user123", exp, manager)
+        assert variant_id == "variant_a"
+        assert used_policy == active_policy
+
+    def test_global_policy_manager_singleton(self):
+        """Test that global policy manager is accessible."""
+        manager = get_global_policy_manager()
+        assert manager is not None
+        
+        # Should be same instance
+        manager2 = get_global_policy_manager()
+        assert manager is manager2
