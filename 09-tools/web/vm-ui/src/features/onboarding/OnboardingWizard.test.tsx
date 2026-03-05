@@ -56,6 +56,247 @@ describe('OnboardingWizard', () => {
     vi.clearAllMocks();
   });
 
+  // ==========================================
+  // v43: CONTRACT TESTS - STEP ORDER v42
+  // ==========================================
+  // Estes testes são contratos que falham se STEP_ORDER for alterado
+  // sem atualização explícita. Template First é a ordem oficial v42.
+  describe('CONTRATO: Ordem oficial de steps v42 (Template First)', () => {
+    it('deve seguir ordem oficial de steps v42: welcome -> template_selection -> workspace_setup -> customization -> completion', async () => {
+      // Este teste é um CONTRATO - falha se a ordem for alterada inadvertidamente
+      // v42 Variant A: Template First - template_selection vem antes de workspace_setup
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      // Mock APIs: progress, prefill, fast-lane, recommend
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Step 1: WELCOME
+      await waitFor(() => {
+        expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/passo 1 de 5/i)).toBeInTheDocument();
+
+      // Avança para step 2
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      
+      // CONTRATO: Step 2 DEVE ser TEMPLATE_SELECTION (não workspace_setup)
+      // Esta é a ordem v42 Template First
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/passo 2 de 5/i)).toBeInTheDocument();
+
+      // Seleciona template e avança
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      // CONTRATO: Step 3 DEVE ser WORKSPACE_SETUP
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/passo 3 de 5/i)).toBeInTheDocument();
+
+      // Preenche workspace e avança
+      const input = screen.getByPlaceholderText(/nome do workspace/i);
+      fireEvent.change(input, { target: { value: 'Meu Workspace' } });
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      // CONTRATO: Step 4 DEVE ser CUSTOMIZATION
+      await waitFor(() => {
+        expect(screen.getByText(/personalização/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/passo 4 de 5/i)).toBeInTheDocument();
+
+      // Avança para completion
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      // CONTRATO: Step 5 DEVE ser COMPLETION
+      await waitFor(() => {
+        expect(screen.getByText(/concluída/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/passo 5 de 5/i)).toBeInTheDocument();
+
+      vi.restoreAllMocks();
+    });
+
+    it('deve permitir navegação back respeitando a ordem v42', async () => {
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Avança: welcome -> template_selection
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Avança: template_selection -> workspace_setup
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
+
+      // Volta: workspace_setup -> template_selection
+      fireEvent.click(screen.getByRole('button', { name: /voltar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Volta: template_selection -> welcome
+      fireEvent.click(screen.getByRole('button', { name: /voltar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+      });
+
+      vi.restoreAllMocks();
+    });
+
+    it('deve permitir skip em qualquer step', async () => {
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /pular/i })).toBeInTheDocument();
+      });
+
+      // Skip deve chamar onSkip
+      fireEvent.click(screen.getByRole('button', { name: /pular/i }));
+      expect(mockOnSkip).toHaveBeenCalled();
+
+      vi.restoreAllMocks();
+    });
+  });
+
   describe('rendering', () => {
     let mockFetch: ReturnType<typeof vi.fn>;
     
@@ -1947,6 +2188,217 @@ describe('OnboardingWizard', () => {
 
       // Wizard should still work normally
       expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  // ==========================================
+  // v43: FALLBACK TESTS - API Resilience
+  // ==========================================
+  // Testes garantem que o wizard continua funcionando mesmo
+  // quando APIs falham (graceful degradation)
+  describe('FALLBACK: API progress falha - wizard continua funcionando', () => {
+    it('deve continuar funcionando quando API de progresso retorna 500', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { trackOnboardingStarted } = await import('./telemetry');
+      
+      const testMockFetch = vi.fn();
+      global.fetch = testMockFetch;
+      
+      // API progress falha com 500, mas outras APIs funcionam
+      testMockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: 'Internal Server Error' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Wizard deve continuar funcionando
+      await waitFor(() => {
+        expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+      });
+
+      // Telemetry de início deve ser emitido
+      expect(trackOnboardingStarted).toHaveBeenCalledWith('user-123');
+
+      // Usuário deve conseguir avançar
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      consoleSpy.mockRestore();
+    });
+
+    it('deve continuar funcionando quando API de progresso retorna timeout', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      const testMockFetch = vi.fn();
+      global.fetch = testMockFetch;
+      
+      // API progress timeout
+      testMockFetch
+        .mockRejectedValueOnce(new Error('Timeout'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        });
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      // Wizard deve continuar funcionando mesmo com timeout
+      await waitFor(() => {
+        expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+      });
+
+      // Não deve mostrar prompt de resume
+      expect(screen.queryByTestId('resume-prompt')).not.toBeInTheDocument();
+
+      consoleSpy.mockRestore();
+    });
+
+    it('deve continuar funcionando quando auto-save falha silenciosamente', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { trackOnboardingProgressSaved } = await import('./ttfvTelemetry');
+      
+      const testMockFetch = vi.fn();
+      global.fetch = testMockFetch;
+      
+      // Setup mocks: progress, prefill, fast-lane, recommend, auto-save (falha)
+      testMockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ has_progress: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            prefill_source: 'default',
+            confidence: 'low',
+            fields: {},
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            user_id: 'user-123',
+            is_fast_lane: false,
+            skipped_steps: [],
+            remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            recommended_path: 'standard',
+            confidence: 0.5,
+            reasons: ['Standard path'],
+            skipped_steps: [],
+            estimated_time_saved_minutes: 0,
+          }),
+        })
+        .mockRejectedValueOnce(new Error('Auto-save failed')); // auto-save falha
+
+      render(
+        <OnboardingWizard
+          userId="user-123"
+          onComplete={mockOnComplete}
+          onSkip={mockOnSkip}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+      });
+
+      // Avança para template selection
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+      });
+
+      // Seleciona template
+      const templateBtn = screen.getByText(/blog post/i);
+      fireEvent.click(templateBtn);
+
+      // Avança - isso dispara auto-save que vai falhar
+      fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+      // Mesmo com falha no auto-save, deve continuar para workspace_setup
+      await waitFor(() => {
+        expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+      });
 
       consoleSpy.mockRestore();
     });

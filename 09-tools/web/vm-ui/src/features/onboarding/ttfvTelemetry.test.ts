@@ -8,6 +8,9 @@ import {
   trackOnboardingResumeAccepted,
   trackOnboardingResumeRejected,
   trackOnboardingResumeFailed,
+  trackOnboardingStarted,
+  trackFirstValueReachedLegacy,
+  TTFVEvent,
   FastLaneEvent,
   SaveResumeEvent,
   setSessionId,
@@ -399,6 +402,274 @@ describe('TTFV Fast Lane Telemetry', () => {
         'TTFV telemetry error:',
         expect.any(Error)
       );
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  // ==========================================
+  // v43: CONTRACT TESTS - Eventos Essenciais
+  // ==========================================
+  // Estes testes validam a emissão dos eventos essenciais e
+  // o shape mínimo de payload (campos obrigatórios)
+  describe('CONTRATO: Eventos essenciais de onboarding', () => {
+    it('deve emitir evento onboarding_started com shape mínimo válido', async () => {
+      await trackOnboardingStarted('user-123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v2/onboarding/events'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        event: TTFVEvent.ONBOARDING_STARTED,
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+      });
+      
+      // CONTRATO: Campos obrigatórios não podem ser vazios
+      expect(body.userId).not.toBe('');
+      expect(body.sessionId).not.toBe('');
+      expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
+    });
+
+    it('deve emitir evento onboarding_progress_saved com campos obrigatórios', async () => {
+      await trackOnboardingProgressSaved('user-123', 'workspace_setup', 'auto_save');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        event: expect.any(String),
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+        step: 'progress_save',
+        metadata: {
+          save_resume_event: SaveResumeEvent.PROGRESS_SAVED,
+          savedStep: 'workspace_setup',
+          source: 'auto_save',
+        },
+      });
+      
+      // CONTRATO: savedStep deve ser um step válido
+      expect(['welcome', 'template_selection', 'workspace_setup', 'customization', 'completion'])
+        .toContain(body.metadata.savedStep);
+      
+      // CONTRATO: source deve ser um valor válido
+      expect(['manual', 'auto_save', 'resume']).toContain(body.metadata.source);
+    });
+
+    it('deve emitir evento fast_lane_presented com todos os campos obrigatórios', async () => {
+      await trackFastLanePresented(
+        'user-123',
+        0.85,
+        'fast_lane',
+        4.5,
+        ['customization'],
+        ['Perfil de baixo risco']
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+        step: 'fast_lane_offer',
+        metadata: {
+          fast_lane_event: FastLaneEvent.FAST_LANE_PRESENTED,
+          confidence: 0.85,
+          recommendedPath: 'fast_lane',
+          timeSavedMinutes: 4.5,
+          skippedSteps: ['customization'],
+          reasons: ['Perfil de baixo risco'],
+        },
+      });
+      
+      // CONTRATO: confidence deve estar entre 0 e 1
+      expect(body.metadata.confidence).toBeGreaterThanOrEqual(0);
+      expect(body.metadata.confidence).toBeLessThanOrEqual(1);
+      
+      // CONTRATO: recommendedPath deve ser fast_lane ou standard
+      expect(['fast_lane', 'standard']).toContain(body.metadata.recommendedPath);
+      
+      // CONTRATO: skippedSteps deve ser um array
+      expect(Array.isArray(body.metadata.skippedSteps)).toBe(true);
+      
+      // CONTRATO: reasons deve ser um array
+      expect(Array.isArray(body.metadata.reasons)).toBe(true);
+    });
+
+    it('deve emitir evento fast_lane_accepted com shape válido', async () => {
+      await trackFastLaneAccepted(
+        'user-123',
+        0.92,
+        3.5,
+        ['customization', 'first_run']
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+        step: 'fast_lane_accept',
+        metadata: {
+          fast_lane_event: FastLaneEvent.FAST_LANE_ACCEPTED,
+          confidence: 0.92,
+          timeSavedMinutes: 3.5,
+          skippedSteps: ['customization', 'first_run'],
+        },
+      });
+      
+      // CONTRATO: timeSavedMinutes deve ser positivo
+      expect(body.metadata.timeSavedMinutes).toBeGreaterThan(0);
+    });
+
+    it('deve emitir evento fast_lane_rejected com shape válido', async () => {
+      await trackFastLaneRejected(
+        'user-123',
+        0.65,
+        ['Perfil médio risco', 'Poucos dados']
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+        step: 'fast_lane_reject',
+        reason: 'user_rejected_fast_lane',
+        metadata: {
+          fast_lane_event: FastLaneEvent.FAST_LANE_REJECTED,
+          confidence: 0.65,
+          reasons: ['Perfil médio risco', 'Poucos dados'],
+        },
+      });
+      
+      // CONTRATO: reason deve ser preenchido
+      expect(body.reason).not.toBe('');
+    });
+
+    it('deve emitir evento first_value_reached com shape mínimo válido', async () => {
+      await trackFirstValueReachedLegacy('user-123', 120000, 'blog-post');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      
+      // CONTRATO: Shape mínimo obrigatório
+      expect(body).toMatchObject({
+        event: TTFVEvent.FIRST_VALUE_REACHED,
+        userId: 'user-123',
+        sessionId: expect.any(String),
+        timestamp: expect.any(String),
+        ttfvMs: 120000,
+        ttfvMinutes: 2, // 120000ms = 2min
+        templateId: 'blog-post',
+      });
+      
+      // CONTRATO: ttfvMs deve ser positivo
+      expect(body.ttfvMs).toBeGreaterThan(0);
+      
+      // CONTRATO: ttfvMinutes deve ser consistente com ttfvMs
+      expect(body.ttfvMinutes).toBeCloseTo(body.ttfvMs / 60000, 1);
+    });
+  });
+
+  // ==========================================
+  // v43: FALLBACK TESTS - Telemetry Errors
+  // ==========================================
+  describe('FALLBACK: Telemetry de erro é emitida em falhas', () => {
+    it('deve logar erro silenciosamente quando telemetry falha', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      // Simula falha de rede
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await trackOnboardingStarted('user-123');
+
+      // CONTRATO: Erro deve ser logado mas não lançar exceção
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TTFV telemetry error:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('deve logar erro quando API retorna status 500', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+
+      await trackFastLanePresented(
+        'user-123',
+        0.85,
+        'fast_lane',
+        4.5,
+        ['customization'],
+        ['Low risk']
+      );
+
+      // CONTRATO: Erro HTTP deve ser logado
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TTFV telemetry error:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('deve logar erro quando API retorna 429 (rate limit)', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+      });
+
+      await trackOnboardingProgressSaved('user-123', 'workspace_setup', 'auto_save');
+
+      // CONTRATO: Rate limit deve ser logado silenciosamente
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'TTFV telemetry error:',
+        expect.any(Error)
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('deve continuar funcionando mesmo quando todas as chamadas de telemetry falham', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      // Todas as chamadas falham
+      mockFetch.mockRejectedValue(new Error('Service unavailable'));
+
+      // Nenhuma deve lançar exceção
+      await expect(trackOnboardingStarted('user-1')).resolves.not.toThrow();
+      await expect(trackFastLanePresented('user-2', 0.8, 'fast_lane', 3, [], [])).resolves.not.toThrow();
+      await expect(trackFastLaneAccepted('user-3', 0.9, 4, ['customization'])).resolves.not.toThrow();
+      await expect(trackOnboardingProgressSaved('user-4', 'workspace_setup', 'auto_save')).resolves.not.toThrow();
+
+      // Todas as falhas devem ter sido logadas
+      expect(consoleSpy).toHaveBeenCalledTimes(4);
 
       consoleSpy.mockRestore();
     });
