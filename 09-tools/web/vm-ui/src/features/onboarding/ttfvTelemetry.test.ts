@@ -10,11 +10,16 @@ import {
   trackOnboardingResumeFailed,
   trackOnboardingStarted,
   trackFirstValueReachedLegacy,
+  trackExperimentExposed,
   TTFVEvent,
   FastLaneEvent,
   SaveResumeEvent,
+  ExperimentEvent,
   setSessionId,
   getSessionId,
+  setActiveExperiment,
+  clearActiveExperiment,
+  getActiveExperiment,
 } from './ttfvTelemetry';
 
 describe('TTFV Fast Lane Telemetry', () => {
@@ -672,6 +677,212 @@ describe('TTFV Fast Lane Telemetry', () => {
       expect(consoleSpy).toHaveBeenCalledTimes(4);
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  // ==========================================
+  // v44: EXPERIMENT TESTS
+  // ==========================================
+  describe('v44: Experiment Telemetry', () => {
+    beforeEach(() => {
+      clearActiveExperiment();
+    });
+
+    afterEach(() => {
+      clearActiveExperiment();
+    });
+
+    describe('trackExperimentExposed', () => {
+      it('should emit experiment_exposed event with experiment and variant IDs', async () => {
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_a');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v2/onboarding/events'),
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body).toMatchObject({
+          userId: 'user-123',
+          sessionId: 'test-session-123',
+          step: 'experiment_exposed',
+          experimentId: 'onboarding_cta_v44',
+          variantId: 'variant_a',
+          metadata: {
+            experiment_event: ExperimentEvent.EXPERIMENT_EXPOSED,
+            exposedAt: expect.any(String),
+          },
+        });
+      });
+
+      it('should set active experiment context when tracking exposure', async () => {
+        expect(getActiveExperiment()).toBeNull();
+
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_b');
+
+        expect(getActiveExperiment()).toEqual({
+          experimentId: 'onboarding_cta_v44',
+          variantId: 'variant_b',
+          userId: 'user-123',
+        });
+      });
+
+      it('should include timestamp in ISO format', async () => {
+        await trackExperimentExposed('user-456', 'onboarding_resume_timing_v44', 'variant_delayed_2s');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.timestamp).toBe('2026-03-04T14:00:00.000Z');
+        expect(body.metadata.exposedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      });
+    });
+
+    describe('Active Experiment Context', () => {
+      it('should include experiment data in subsequent events after exposure', async () => {
+        // First, expose the experiment
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_a');
+
+        // Clear mock to check next call
+        mockFetch.mockClear();
+
+        // Track another event
+        await trackOnboardingStarted('user-123');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body).toMatchObject({
+          event: TTFVEvent.ONBOARDING_STARTED,
+          userId: 'user-123',
+          experimentId: 'onboarding_cta_v44',
+          variantId: 'variant_a',
+        });
+      });
+
+      it('should include experiment data in fast lane events', async () => {
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_start_now');
+        mockFetch.mockClear();
+
+        await trackFastLanePresented('user-123', 0.85, 'fast_lane', 4.5, ['customization'], ['Low risk']);
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.experimentId).toBe('onboarding_cta_v44');
+        expect(body.variantId).toBe('variant_start_now');
+      });
+
+      it('should include experiment data in save/resume events', async () => {
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_a');
+        mockFetch.mockClear();
+
+        await trackOnboardingProgressSaved('user-123', 'workspace_setup', 'auto_save');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.experimentId).toBe('onboarding_cta_v44');
+        expect(body.variantId).toBe('variant_a');
+      });
+
+      it('should not include experiment data before exposure', async () => {
+        // Track event without exposure
+        await trackOnboardingStarted('user-123');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.experimentId).toBeUndefined();
+        expect(body.variantId).toBeUndefined();
+      });
+
+      it('should not include experiment data after clearing context', async () => {
+        // Expose and then clear
+        await trackExperimentExposed('user-123', 'onboarding_cta_v44', 'variant_a');
+        clearActiveExperiment();
+        mockFetch.mockClear();
+
+        // Track event after clearing
+        await trackOnboardingStarted('user-123');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.experimentId).toBeUndefined();
+        expect(body.variantId).toBeUndefined();
+      });
+    });
+
+    describe('Backward Compatibility', () => {
+      it('should work without experiment data (no exposure)', async () => {
+        await trackOnboardingStarted('user-123');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body).toMatchObject({
+          event: TTFVEvent.ONBOARDING_STARTED,
+          userId: 'user-123',
+          sessionId: expect.any(String),
+          timestamp: expect.any(String),
+        });
+        // No experiment fields when not in experiment
+        expect(body.experimentId).toBeUndefined();
+        expect(body.variantId).toBeUndefined();
+      });
+
+      it('should work without experiment data for fast lane events', async () => {
+        await trackFastLanePresented('user-123', 0.85, 'fast_lane', 4.5, ['customization'], ['Low risk']);
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.metadata.fast_lane_event).toBe(FastLaneEvent.FAST_LANE_PRESENTED);
+        expect(body.experimentId).toBeUndefined();
+        expect(body.variantId).toBeUndefined();
+      });
+
+      it('should work without experiment data for save/resume events', async () => {
+        await trackOnboardingResumeAccepted('user-123', 'workspace_setup');
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.metadata.save_resume_event).toBe(SaveResumeEvent.RESUME_ACCEPTED);
+        expect(body.experimentId).toBeUndefined();
+        expect(body.variantId).toBeUndefined();
+      });
+    });
+
+    describe('setActiveExperiment / getActiveExperiment / clearActiveExperiment', () => {
+      it('should set and get active experiment', () => {
+        expect(getActiveExperiment()).toBeNull();
+
+        setActiveExperiment('exp_123', 'variant_a', 'user-456');
+
+        expect(getActiveExperiment()).toEqual({
+          experimentId: 'exp_123',
+          variantId: 'variant_a',
+          userId: 'user-456',
+        });
+      });
+
+      it('should update active experiment', () => {
+        setActiveExperiment('exp_123', 'variant_a', 'user-456');
+        setActiveExperiment('exp_123', 'variant_b', 'user-456');
+
+        expect(getActiveExperiment()?.variantId).toBe('variant_b');
+      });
+
+      it('should clear active experiment', () => {
+        setActiveExperiment('exp_123', 'variant_a', 'user-456');
+        clearActiveExperiment();
+
+        expect(getActiveExperiment()).toBeNull();
+      });
+    });
+
+    describe('Error Handling', () => {
+      it('should silently fail when experiment exposure tracking fails', async () => {
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        // Should not throw
+        await expect(trackExperimentExposed('user-123', 'exp_1', 'variant_a')).resolves.not.toThrow();
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'TTFV telemetry error:',
+          expect.any(Error)
+        );
+
+        consoleSpy.mockRestore();
+      });
     });
   });
 });

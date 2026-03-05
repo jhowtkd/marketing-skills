@@ -34,6 +34,29 @@ class FeatureUsage(str, Enum):
 
 
 @dataclass
+class VariantConfig:
+    """Configuration for experiment variants (v44)."""
+    experiment_id: Optional[str] = None
+    variant_id: Optional[str] = None
+    
+    # Copy/text variations
+    cta_copy: Optional[str] = None
+    headline_copy: Optional[str] = None
+    
+    # Timing variations
+    resume_delay_ms: int = 0
+    prefill_delay_ms: int = 0
+    
+    # Feature flags
+    show_resume_prompt: bool = True
+    prefill_enabled: bool = True
+    fast_lane_enabled: bool = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class JourneyMetrics:
     """Metrics captured during a simulated journey."""
     journey_type: str
@@ -65,6 +88,10 @@ class JourneyMetrics:
     # Timestamp
     started_at: datetime = field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
+    
+    # v44: Experiment tracking
+    experiment_id: Optional[str] = None
+    variant_id: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -107,6 +134,9 @@ class SimulationConfig:
     fast_lane_skippable: List[str] = field(default_factory=lambda: [
         "customization"
     ])
+    
+    # v44: Variant configuration for experiments
+    variant_config: Optional[VariantConfig] = None
 
 
 class OnboardingSimulator:
@@ -115,6 +145,29 @@ class OnboardingSimulator:
     def __init__(self, config: Optional[SimulationConfig] = None):
         self.config = config or SimulationConfig()
         self.telemetry_log: List[Dict[str, Any]] = []
+        self.variant_config = self.config.variant_config or VariantConfig()
+        
+    def _apply_variant_config(self, metrics: JourneyMetrics) -> None:
+        """Apply variant configuration to metrics (v44)."""
+        metrics.experiment_id = self.variant_config.experiment_id
+        metrics.variant_id = self.variant_config.variant_id
+        
+    def _should_use_prefill_with_variant(self) -> bool:
+        """Check prefill with variant config consideration (v44)."""
+        if not self.variant_config.prefill_enabled:
+            return False
+        # Apply delay if configured
+        if self.variant_config.prefill_delay_ms > 0 and not self.config.fast_test_mode:
+            time.sleep(self.variant_config.prefill_delay_ms / 1000)
+        return random.random() < self.config.prefill_probability
+    
+    def _should_show_resume_prompt(self) -> bool:
+        """Check if resume prompt should be shown (v44)."""
+        return self.variant_config.show_resume_prompt
+    
+    def _get_resume_delay_steps(self) -> int:
+        """Get resume delay in steps (v44)."""
+        return self.variant_config.resume_delay_ms // self.config.step_duration_base_ms if self.variant_config.resume_delay_ms > 0 else 0
         
     def _emit_telemetry(self, event_name: str, user_id: str, **kwargs) -> None:
         """Record telemetry event."""
@@ -178,10 +231,13 @@ class OnboardingSimulator:
             total_steps=len(self.config.steps)
         )
         
+        # Apply variant config
+        self._apply_variant_config(metrics)
+        
         start_time = time.time()
         
-        # Check for prefill
-        metrics.prefill_used = self._should_use_prefill()
+        # Check for prefill (with variant config)
+        metrics.prefill_used = self._should_use_prefill_with_variant()
         if metrics.prefill_used:
             self._emit_telemetry("prefill_applied", user_id, step="template_selection")
         
@@ -248,6 +304,9 @@ class OnboardingSimulator:
             user_id=user_id,
             total_steps=len(self.config.steps)
         )
+        
+        # Apply variant config
+        self._apply_variant_config(metrics)
         
         start_time = time.time()
         
@@ -323,6 +382,9 @@ class OnboardingSimulator:
             total_steps=len(self.config.steps)
         )
         
+        # Apply variant config
+        self._apply_variant_config(metrics)
+        
         start_time = time.time()
         
         # First session - gets interrupted
@@ -391,6 +453,9 @@ class OnboardingSimulator:
             user_id=user_id,
             total_steps=len(self.config.steps)
         )
+        
+        # Apply variant config
+        self._apply_variant_config(metrics)
         
         start_time = time.time()
         

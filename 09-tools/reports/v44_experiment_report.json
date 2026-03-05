@@ -1,0 +1,161 @@
+{
+  "generated_at": "2026-03-05T00:11:32.025445",
+  "version": "v44",
+  "methodology": {
+    "simulations_per_variant": 30,
+    "score_formula": "0.50*TTFV_efficiency + 0.35*completion + 0.15*(1-abandonment)",
+    "random_seed": 42
+  },
+  "experiments": {
+    "exp_cta_copy": {
+      "variants": {
+        "control": {
+          "sample_size": 30,
+          "ttfv_avg_ms": 22568.77,
+          "ttfv_avg_s": 22.57,
+          "ttfv_min_ms": 16808,
+          "ttfv_max_ms": 29657,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.2667,
+          "fast_lane_adoption": 0.2,
+          "score": 1.0
+        },
+        "treatment": {
+          "sample_size": 30,
+          "ttfv_avg_ms": 22866.3,
+          "ttfv_avg_s": 22.87,
+          "ttfv_min_ms": 16573,
+          "ttfv_max_ms": 29800,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.3333,
+          "fast_lane_adoption": 0.3333,
+          "score": 0.9935
+        }
+      },
+      "comparison": [
+        {
+          "rank": 1,
+          "variant_id": "control",
+          "sample_size": 30,
+          "ttfv_avg_ms": 22568.77,
+          "ttfv_avg_s": 22.57,
+          "ttfv_min_ms": 16808,
+          "ttfv_max_ms": 29657,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.2667,
+          "fast_lane_adoption": 0.2,
+          "score": 1.0
+        },
+        {
+          "rank": 2,
+          "variant_id": "treatment",
+          "sample_size": 30,
+          "ttfv_avg_ms": 22866.3,
+          "ttfv_avg_s": 22.87,
+          "ttfv_min_ms": 16573,
+          "ttfv_max_ms": 29800,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.3333,
+          "fast_lane_adoption": 0.3333,
+          "score": 0.9935
+        }
+      ]
+    },
+    "exp_resume_timing": {
+      "variants": {
+        "control": {
+          "sample_size": 30,
+          "ttfv_avg_ms": 23079.03,
+          "ttfv_avg_s": 23.08,
+          "ttfv_min_ms": 15945,
+          "ttfv_max_ms": 31191,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.3667,
+          "fast_lane_adoption": 0.2333,
+          "score": 1.0
+        },
+        "delay_2s": {
+          "sample_size": 30,
+          "ttfv_avg_ms": 22556.97,
+          "ttfv_avg_s": 22.56,
+          "ttfv_min_ms": 16262,
+          "ttfv_max_ms": 30602,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.5,
+          "fast_lane_adoption": 0.2333,
+          "score": 1.0116
+        }
+      },
+      "comparison": [
+        {
+          "rank": 1,
+          "variant_id": "delay_2s",
+          "sample_size": 30,
+          "ttfv_avg_ms": 22556.97,
+          "ttfv_avg_s": 22.56,
+          "ttfv_min_ms": 16262,
+          "ttfv_max_ms": 30602,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.5,
+          "fast_lane_adoption": 0.2333,
+          "score": 1.0116
+        },
+        {
+          "rank": 2,
+          "variant_id": "control",
+          "sample_size": 30,
+          "ttfv_avg_ms": 23079.03,
+          "ttfv_avg_s": 23.08,
+          "ttfv_min_ms": 15945,
+          "ttfv_max_ms": 31191,
+          "completion_rate": 1.0,
+          "abandonment_rate": 0.0,
+          "prefill_adoption": 0.3667,
+          "fast_lane_adoption": 0.2333,
+          "score": 1.0
+        }
+      ]
+    }
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "experiment_id": "exp_resume_timing",
+      "variant_id": "delay_2s",
+      "score": 1.0116,
+      "ttfv_avg_s": 22.56,
+      "completion_rate": 1.0
+    },
+    {
+      "rank": 2,
+      "experiment_id": "exp_cta_copy",
+      "variant_id": "control",
+      "score": 1.0,
+      "ttfv_avg_s": 22.57,
+      "completion_rate": 1.0
+    },
+    {
+      "rank": 3,
+      "experiment_id": "exp_resume_timing",
+      "variant_id": "control",
+      "score": 1.0,
+      "ttfv_avg_s": 23.08,
+      "completion_rate": 1.0
+    },
+    {
+      "rank": 4,
+      "experiment_id": "exp_cta_copy",
+      "variant_id": "treatment",
+      "score": 0.9935,
+      "ttfv_avg_s": 22.87,
+      "completion_rate": 1.0
+    }
+  ]
+}

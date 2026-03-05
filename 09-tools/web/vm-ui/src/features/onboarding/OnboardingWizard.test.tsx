@@ -27,6 +27,8 @@ vi.mock('./ttfvTelemetry', () => ({
   trackOnboardingResumeAccepted: vi.fn(),
   trackOnboardingResumeRejected: vi.fn(),
   trackOnboardingResumeFailed: vi.fn(),
+  setActiveExperiment: vi.fn(),
+  clearActiveExperiment: vi.fn(),
 }));
 
 // Mock funnel
@@ -48,12 +50,50 @@ vi.mock('./funnel', () => ({
   }),
 }));
 
+// v44: Mock useExperiment hook
+const mockUseExperimentResults: Map<string, { variantId: string; config: Record<string, unknown>; isInExperiment: boolean; isExposed: boolean }> = new Map();
+
+const mockUseExperiment = vi.fn((options: { experimentId: string; variants: unknown[]; userId: string }) => {
+  // Return stored result for this experiment or default control
+  const stored = mockUseExperimentResults.get(options.experimentId);
+  if (stored) {
+    return stored;
+  }
+  // Default: control group (backward compatible)
+  return {
+    variantId: 'control',
+    config: {},
+    isInExperiment: false,
+    isExposed: false,
+  };
+});
+
+vi.mock('../../hooks/useExperiment', () => ({
+  useExperiment: (...args: unknown[]) => mockUseExperiment(...args),
+}));
+
 describe('OnboardingWizard', () => {
   const mockOnComplete = vi.fn();
   const mockOnSkip = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseExperimentResults.clear();
+    // Mock sessionStorage
+    const storage: Record<string, string> = {};
+    Object.defineProperty(window, 'sessionStorage', {
+      value: {
+        getItem: (key: string) => storage[key] || null,
+        setItem: (key: string, value: string) => { storage[key] = value; },
+        removeItem: (key: string) => { delete storage[key]; },
+      },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mockUseExperimentResults.clear();
   });
 
   // ==========================================
@@ -2401,6 +2441,481 @@ describe('OnboardingWizard', () => {
       });
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  // ==========================================
+  // v44: EXPERIMENT TESTS
+  // ==========================================
+  describe('v44: Experiment System', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    describe('CTA Copy Experiment', () => {
+      it('should apply variant button text when in experiment', async () => {
+        // Configure mock for CTA experiment
+        mockUseExperimentResults.set('onboarding_cta_v44', {
+          variantId: 'variant_start_now',
+          config: { buttonText: 'Começar Agora' },
+          isInExperiment: true,
+          isExposed: true,
+        });
+        mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+          variantId: 'control',
+          config: { delayMs: 0 },
+          isInExperiment: false,
+          isExposed: false,
+        });
+
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ has_progress: false }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              prefill_source: 'default',
+              confidence: 'low',
+              fields: {},
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              is_fast_lane: false,
+              skipped_steps: [],
+              remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              recommended_path: 'standard',
+              confidence: 0.5,
+              reasons: ['Standard path'],
+              skipped_steps: [],
+              estimated_time_saved_minutes: 0,
+            }),
+          });
+
+        render(
+          <OnboardingWizard
+            userId="user-123"
+            onComplete={mockOnComplete}
+            onSkip={mockOnSkip}
+          />
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId('continue-button')).toBeInTheDocument();
+        });
+
+        // Should show variant text
+        expect(screen.getByTestId('continue-button')).toHaveTextContent('Começar Agora');
+      });
+
+      it('should fallback to default text when in control group', async () => {
+        // Configure mock for control group (default behavior)
+        mockUseExperimentResults.set('onboarding_cta_v44', {
+          variantId: 'control',
+          config: {},
+          isInExperiment: false,
+          isExposed: false,
+        });
+        mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+          variantId: 'control',
+          config: { delayMs: 0 },
+          isInExperiment: false,
+          isExposed: false,
+        });
+
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ has_progress: false }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              prefill_source: 'default',
+              confidence: 'low',
+              fields: {},
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              is_fast_lane: false,
+              skipped_steps: [],
+              remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              recommended_path: 'standard',
+              confidence: 0.5,
+              reasons: ['Standard path'],
+              skipped_steps: [],
+              estimated_time_saved_minutes: 0,
+            }),
+          });
+
+        render(
+          <OnboardingWizard
+            userId="user-123"
+            onComplete={mockOnComplete}
+            onSkip={mockOnSkip}
+          />
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId('continue-button')).toBeInTheDocument();
+        });
+
+        // Should show default text
+        expect(screen.getByTestId('continue-button')).toHaveTextContent('Continuar');
+      });
+
+      it('should apply different variant texts correctly', async () => {
+        const variants = [
+          { id: 'variant_start_now', text: 'Começar Agora' },
+          { id: 'variant_continue_journey', text: 'Continuar Jornada' },
+          { id: 'variant_next_step', text: 'Próximo Passo' },
+        ];
+
+        for (const variant of variants) {
+          vi.clearAllMocks();
+          mockUseExperimentResults.clear();
+          
+          // Configure mock for this variant
+          mockUseExperimentResults.set('onboarding_cta_v44', {
+            variantId: variant.id,
+            config: { buttonText: variant.text },
+            isInExperiment: true,
+            isExposed: true,
+          });
+          mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+            variantId: 'control',
+            config: { delayMs: 0 },
+            isInExperiment: false,
+            isExposed: false,
+          });
+
+          mockFetch
+            .mockResolvedValueOnce({
+              ok: true,
+              json: () => Promise.resolve({ has_progress: false }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: () => Promise.resolve({
+                user_id: 'user-123',
+                prefill_source: 'default',
+                confidence: 'low',
+                fields: {},
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: () => Promise.resolve({
+                user_id: 'user-123',
+                is_fast_lane: false,
+                skipped_steps: [],
+                remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+                estimated_time_saved_minutes: 0,
+              }),
+            })
+            .mockResolvedValueOnce({
+              ok: true,
+              json: () => Promise.resolve({
+                recommended_path: 'standard',
+                confidence: 0.5,
+                reasons: ['Standard path'],
+                skipped_steps: [],
+                estimated_time_saved_minutes: 0,
+              }),
+            });
+
+          const { unmount } = render(
+            <OnboardingWizard
+              userId="user-123"
+              onComplete={mockOnComplete}
+              onSkip={mockOnSkip}
+            />
+          );
+
+          await waitFor(() => {
+            expect(screen.getByTestId('continue-button')).toBeInTheDocument();
+          });
+
+          expect(screen.getByTestId('continue-button')).toHaveTextContent(variant.text);
+          
+          unmount();
+        }
+      });
+    });
+
+    describe('Resume Timing Experiment', () => {
+      it('should call useExperiment with correct resume timing config', async () => {
+        // Configure mocks for experiments
+        mockUseExperimentResults.set('onboarding_cta_v44', {
+          variantId: 'control',
+          config: {},
+          isInExperiment: false,
+          isExposed: false,
+        });
+        mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+          variantId: 'variant_delayed_2s',
+          config: { delayMs: 2000 },
+          isInExperiment: true,
+          isExposed: true,
+        });
+
+        // Mock all necessary API calls (for prefill, fast-lane, etc.)
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: vi.fn().mockResolvedValue({ has_progress: false }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: vi.fn().mockResolvedValue({
+              user_id: 'user-123',
+              prefill_source: 'default',
+              confidence: 'low',
+              fields: {},
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: vi.fn().mockResolvedValue({
+              user_id: 'user-123',
+              is_fast_lane: false,
+              skipped_steps: [],
+              remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: vi.fn().mockResolvedValue({
+              recommended_path: 'standard',
+              confidence: 0.5,
+              reasons: ['Standard path'],
+              skipped_steps: [],
+              estimated_time_saved_minutes: 0,
+            }),
+          });
+
+        render(
+          <OnboardingWizard
+            userId="user-123"
+            onComplete={mockOnComplete}
+            onSkip={mockOnSkip}
+          />
+        );
+
+        await waitFor(() => {
+          expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+        });
+
+        // Verify useExperiment was called with resume timing experiment config
+        const calls = mockUseExperiment.mock.calls;
+        const resumeTimingCall = calls.find((call: [{ experimentId: string }]) => 
+          call[0].experimentId === 'onboarding_resume_timing_v44'
+        );
+        
+        expect(resumeTimingCall).toBeDefined();
+        expect(resumeTimingCall[0]).toMatchObject({
+          experimentId: 'onboarding_resume_timing_v44',
+          userId: 'user-123',
+        });
+        expect(resumeTimingCall[0].variants).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 'control', config: { delayMs: 0 } }),
+            expect.objectContaining({ id: 'variant_delayed_2s', config: { delayMs: 2000 } }),
+            expect.objectContaining({ id: 'variant_delayed_5s', config: { delayMs: 5000 } }),
+          ])
+        );
+      });
+
+      it('should show resume prompt immediately in control group', async () => {
+        const { trackOnboardingResumePresented } = await import('./ttfvTelemetry');
+
+        // Configure mocks for control group (no delay)
+        mockUseExperimentResults.set('onboarding_cta_v44', {
+          variantId: 'control',
+          config: {},
+          isInExperiment: false,
+          isExposed: false,
+        });
+        mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+          variantId: 'control',
+          config: { delayMs: 0 },
+          isInExperiment: false,
+          isExposed: false,
+        });
+
+        // Mock all necessary API calls
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              has_progress: true,
+              current_step: 'workspace_setup',
+              updated_at: '2026-03-04T10:30:00Z',
+              step_data: { workspaceName: 'Meu Workspace' },
+              completed_steps: ['welcome'],
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              prefill_source: 'default',
+              confidence: 'low',
+              fields: {},
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              is_fast_lane: false,
+              skipped_steps: [],
+              remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              recommended_path: 'standard',
+              confidence: 0.5,
+              reasons: ['Standard path'],
+              skipped_steps: [],
+              estimated_time_saved_minutes: 0,
+            }),
+          });
+
+        render(
+          <OnboardingWizard
+            userId="user-123"
+            onComplete={mockOnComplete}
+            onSkip={mockOnSkip}
+          />
+        );
+
+        // Should show prompt immediately (no delay)
+        await waitFor(() => {
+          expect(screen.getByTestId('resume-prompt')).toBeInTheDocument();
+        });
+
+        expect(trackOnboardingResumePresented).toHaveBeenCalledWith('user-123', 'workspace_setup');
+      }, 10000);
+    });
+
+    describe('Experiment Integration', () => {
+      it('should maintain v42 flow compatibility with experiments', async () => {
+        // Configure mocks for experiments
+        mockUseExperimentResults.set('onboarding_cta_v44', {
+          variantId: 'variant_start_now',
+          config: { buttonText: 'Começar Agora' },
+          isInExperiment: true,
+          isExposed: true,
+        });
+        mockUseExperimentResults.set('onboarding_resume_timing_v44', {
+          variantId: 'control',
+          config: { delayMs: 0 },
+          isInExperiment: false,
+          isExposed: false,
+        });
+
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({ has_progress: false }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              prefill_source: 'default',
+              confidence: 'low',
+              fields: {},
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              user_id: 'user-123',
+              is_fast_lane: false,
+              skipped_steps: [],
+              remaining_steps: ['welcome', 'workspace_setup', 'template_selection', 'customization', 'completion'],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve({
+              recommended_path: 'standard',
+              confidence: 0.5,
+              reasons: ['Standard path'],
+              skipped_steps: [],
+              estimated_time_saved_minutes: 0,
+            }),
+          })
+          .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+
+        render(
+          <OnboardingWizard
+            userId="user-123"
+            onComplete={mockOnComplete}
+            onSkip={mockOnSkip}
+          />
+        );
+
+        // Step 1: WELCOME
+        await waitFor(() => {
+          expect(screen.getByText(/bem-vindo/i)).toBeInTheDocument();
+        });
+
+        // Button should have variant text
+        expect(screen.getByTestId('continue-button')).toHaveTextContent('Começar Agora');
+
+        // Navigate through v42 flow
+        fireEvent.click(screen.getByTestId('continue-button'));
+        
+        // CONTRATO: Step 2 DEVE ser TEMPLATE_SELECTION
+        await waitFor(() => {
+          expect(screen.getByText(/Escolha um Template/i)).toBeInTheDocument();
+        });
+
+        // Complete flow
+        const templateBtn = screen.getByText(/blog post/i);
+        fireEvent.click(templateBtn);
+        fireEvent.click(screen.getByTestId('continue-button'));
+
+        await waitFor(() => {
+          expect(screen.getByText(/configurar workspace/i)).toBeInTheDocument();
+        });
+      }, 10000);
     });
   });
 });

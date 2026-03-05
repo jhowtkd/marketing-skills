@@ -29,6 +29,48 @@ export interface TTFVTelemetryPayload {
   templateId?: string;
   reason?: string;
   metadata?: Record<string, unknown>;
+  // v44: Experiment tracking
+  experimentId?: string;
+  variantId?: string;
+}
+
+// v44: Experiment context - armazena experimento ativo para incluir em todos os eventos
+interface ExperimentContext {
+  experimentId: string;
+  variantId: string;
+  userId: string;
+}
+
+let activeExperiment: ExperimentContext | null = null;
+
+/**
+ * Set active experiment context - all subsequent events will include experiment data
+ * @param experimentId - Experiment identifier
+ * @param variantId - Assigned variant
+ * @param userId - User identifier
+ */
+export function setActiveExperiment(experimentId: string, variantId: string, userId: string): void {
+  activeExperiment = { experimentId, variantId, userId };
+}
+
+/**
+ * Clear active experiment context
+ */
+export function clearActiveExperiment(): void {
+  activeExperiment = null;
+}
+
+/**
+ * Get active experiment context
+ */
+export function getActiveExperiment(): ExperimentContext | null {
+  return activeExperiment;
+}
+
+// v44: Experiment event enum
+export enum ExperimentEvent {
+  EXPERIMENT_EXPOSED = 'experiment_exposed',
+  EXPERIMENT_CONVERSION = 'experiment_conversion',
 }
 
 export interface TTFVCohortEvent {
@@ -73,10 +115,19 @@ export function setSessionId(id: string): void {
 
 async function sendTTFVTelemetry(payload: TTFVTelemetryPayload): Promise<void> {
   try {
+    // v44: Include active experiment data in all events
+    const enrichedPayload = activeExperiment 
+      ? { 
+          ...payload, 
+          experimentId: activeExperiment.experimentId,
+          variantId: activeExperiment.variantId,
+        }
+      : payload;
+
     const response = await fetch(`${API_BASE}/onboarding/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(enrichedPayload),
     });
 
     if (!response.ok) {
@@ -86,6 +137,46 @@ async function sendTTFVTelemetry(payload: TTFVTelemetryPayload): Promise<void> {
     // Silently fail - telemetry should not block user flow
     console.warn('TTFV telemetry error:', error);
   }
+}
+
+// v44: Track experiment exposure
+export interface ExperimentExposedPayload {
+  event: ExperimentEvent;
+  userId: string;
+  timestamp: string;
+  sessionId: string;
+  experimentId: string;
+  variantId: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Track when user is exposed to an experiment variant (v44 spec compliant)
+ * @param userId - User identifier
+ * @param experimentId - Experiment identifier
+ * @param variantId - Assigned variant identifier
+ */
+export async function trackExperimentExposed(
+  userId: string,
+  experimentId: string,
+  variantId: string
+): Promise<void> {
+  // Set active experiment context so subsequent events include experiment data
+  setActiveExperiment(experimentId, variantId, userId);
+
+  await sendTTFVTelemetry({
+    event: TTFVEvent.STEP_VIEWED, // Base event type
+    userId,
+    timestamp: new Date().toISOString(),
+    sessionId: getSessionId(),
+    step: 'experiment_exposed',
+    experimentId,
+    variantId,
+    metadata: {
+      experiment_event: ExperimentEvent.EXPERIMENT_EXPOSED,
+      exposedAt: new Date().toISOString(),
+    },
+  });
 }
 
 /**
