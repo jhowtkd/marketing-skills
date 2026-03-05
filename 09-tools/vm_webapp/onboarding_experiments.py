@@ -2,6 +2,8 @@
 
 This module provides the core infrastructure for running A/B experiments
 in the onboarding flow with deterministic, sticky variant assignment.
+
+v45: Integrated RolloutPolicy support for policy-driven assignment.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,68 @@ class ExperimentStatus(str, Enum):
     PAUSED = "paused"
     COMPLETED = "completed"
     ROLLED_BACK = "rolled_back"
+
+
+class RolloutMode(str, Enum):
+    """Mode for rollout policy."""
+    AUTO = "auto"  # Automatically apply active_variant
+    MANUAL = "manual"  # Use hash-based assignment
+
+
+class RolloutPolicyStatus(str, Enum):
+    """Status of a rollout policy."""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ROLLED_BACK = "rolled_back"
+
+
+@dataclass
+class RolloutPolicy:
+    """Policy for rolling out an experiment variant.
+    
+    Attributes:
+        policy_id: Unique identifier for the policy
+        experiment_id: The experiment this policy applies to
+        active_variant: The variant to serve when policy is active
+        mode: 'auto' to force active_variant, 'manual' for hash assignment
+        status: Current status of the policy
+        created_at: When the policy was created
+        activated_at: When the policy was activated
+    """
+    policy_id: str
+    experiment_id: str
+    active_variant: str = "control"
+    mode: RolloutMode = RolloutMode.MANUAL
+    status: RolloutPolicyStatus = RolloutPolicyStatus.INACTIVE
+    created_at: str = field(default_factory=_now_iso)
+    activated_at: Optional[str] = field(default=None)
+    
+    def activate(self, variant_id: Optional[str] = None) -> None:
+        """Activate the policy with optional variant override."""
+        self.status = RolloutPolicyStatus.ACTIVE
+        if variant_id:
+            self.active_variant = variant_id
+        self.activated_at = _now_iso()
+    
+    def deactivate(self) -> None:
+        """Deactivate the policy."""
+        self.status = RolloutPolicyStatus.INACTIVE
+    
+    def rollback(self) -> None:
+        """Roll back the policy."""
+        self.status = RolloutPolicyStatus.ROLLED_BACK
+    
+    def is_active(self) -> bool:
+        """Check if policy is active."""
+        return self.status == RolloutPolicyStatus.ACTIVE
+    
+    def is_auto(self) -> bool:
+        """Check if policy is in auto mode."""
+        return self.mode == RolloutMode.AUTO
+    
+    def should_apply_policy(self) -> bool:
+        """Check if policy should override assignment."""
+        return self.is_active() and self.is_auto() and self.active_variant != "control"
 
 
 @dataclass
@@ -305,3 +369,181 @@ def assign_variant_from_experiment(user_id: str, experiment: Experiment) -> str:
     
     variants = getattr(experiment, 'variants', [])
     return assign_variant(user_id, experiment.experiment_id, variants)
+
+
+# Global rollout policy registry (singleton)
+_rollout_policy_registry: dict[str, RolloutPolicy] = {}
+
+
+class RolloutPolicyManager:
+    """Manager for rollout policies linked to experiments."""
+    
+    def __init__(self):
+        self._policies: dict[str, RolloutPolicy] = {}
+    
+    def register_policy(self, policy: RolloutPolicy) -> None:
+        """Register a rollout policy."""
+        if policy.policy_id in self._policies:
+            raise ValueError(f"Policy already registered: {policy.policy_id}")
+        self._policies[policy.policy_id] = policy
+    
+    def get_policy(self, policy_id: str) -> RolloutPolicy:
+        """Get a policy by ID."""
+        if policy_id not in self._policies:
+            raise ValueError(f"Policy not found: {policy_id}")
+        return self._policies[policy_id]
+    
+    def get_policy_for_experiment(self, experiment_id: str) -> Optional[RolloutPolicy]:
+        """Get the active policy for an experiment."""
+        for policy in self._policies.values():
+            if policy.experiment_id == experiment_id and policy.is_active():
+                return policy
+        return None
+    
+    def list_policies(self) -> list[RolloutPolicy]:
+        """List all registered policies."""
+        return list(self._policies.values())
+    
+    def clear(self) -> None:
+        """Clear all policies (for testing)."""
+        self._policies.clear()
+
+
+def get_variant_with_policy(
+    user_id: str,
+    experiment: Experiment,
+    policy_manager: Optional[RolloutPolicyManager] = None,
+) -> tuple[str, Optional[RolloutPolicy], str]:
+    """Get variant assignment considering rollout policy.
+    
+    This is the v45 integrated assignment function that considers
+    both hash-based assignment and policy overrides.
+    
+    Args:
+        user_id: Unique identifier for the user
+        experiment: Experiment object containing variants
+        policy_manager: Optional policy manager to check for active policies
+        
+    Returns:
+        Tuple of (variant_id, policy_or_none, decision_source)
+        - variant_id: The assigned variant
+        - policy_or_none: The policy used (if any)
+        - decision_source: 'policy_auto', 'policy_manual', 'hash', 'control_fallback'
+    """
+    experiment_id = experiment.experiment_id
+    variants = getattr(experiment, 'variants', [])
+    
+    # Check experiment is active
+    is_active = getattr(experiment, 'is_active', True)
+    status = getattr(experiment, 'status', None)
+    if not is_active or (status is not None and status != ExperimentStatus.RUNNING):
+        logger.debug(f"[get_variant_with_policy] Experiment {experiment_id} not active")
+        return ("control", None, "control_fallback")
+    
+    # Check for active rollout policy
+    policy = None
+    if policy_manager is not None:
+        policy = policy_manager.get_policy_for_experiment(experiment_id)
+    else:
+        # Try global registry fallback
+        for p in _rollout_policy_registry.values():
+            if p.experiment_id == experiment_id and p.is_active():
+                policy = p
+                break
+    
+    if policy is not None:
+        # Validate policy is consistent with experiment
+        valid_variants = {getattr(v, 'variant_id', None) for v in variants}
+        valid_variants.add('control')  # Always valid
+        
+        if policy.active_variant not in valid_variants:
+            logger.warning(
+                f"[get_variant_with_policy] Policy variant {policy.active_variant} "
+                f"not in experiment variants for {experiment_id}, falling back to control"
+            )
+            return ("control", policy, "control_fallback")
+        
+        # Policy is active and valid
+        if policy.should_apply_policy():
+            # Auto mode: apply active_variant directly
+            logger.debug(
+                f"[get_variant_with_policy] Policy auto-apply: {policy.active_variant} "
+                f"for user {user_id} in {experiment_id}"
+            )
+            return (policy.active_variant, policy, "policy_auto")
+        elif policy.mode == RolloutMode.MANUAL:
+            # Manual mode: use hash assignment
+            variant_id = assign_variant(user_id, experiment_id, variants)
+            logger.debug(
+                f"[get_variant_with_policy] Policy manual mode, hash assignment: "
+                f"{variant_id} for user {user_id} in {experiment_id}"
+            )
+            return (variant_id, policy, "policy_manual")
+    
+    # No active policy: use v44 hash assignment (backward compatible)
+    variant_id = assign_variant(user_id, experiment_id, variants)
+    logger.debug(
+        f"[get_variant_with_policy] No policy, hash assignment: "
+        f"{variant_id} for user {user_id} in {experiment_id}"
+    )
+    return (variant_id, None, "hash")
+
+
+# Global policy manager instance
+_global_policy_manager = RolloutPolicyManager()
+
+
+def get_global_policy_manager() -> RolloutPolicyManager:
+    """Get the global rollout policy manager."""
+    return _global_policy_manager
+
+
+def assign_variant_with_policy(
+    user_id: str,
+    experiment_id: str,
+    variants: list[Variant],
+    policy: Optional[RolloutPolicy] = None,
+) -> tuple[str, str]:
+    """Assign variant with optional policy override.
+    
+    v45: Extended version of assign_variant that considers rollout policy.
+    Maintains backward compatibility with v44 hash assignment.
+    
+    Args:
+        user_id: Unique identifier for the user
+        experiment_id: Unique identifier for the experiment
+        variants: List of Variant objects with weights
+        policy: Optional rollout policy to consider
+        
+    Returns:
+        Tuple of (variant_id, decision_source)
+        - variant_id: The assigned variant
+        - decision_source: 'policy_auto', 'policy_manual', 'hash', 'control_fallback'
+    """
+    # Validate inputs
+    if not variants:
+        logger.debug(f"[assign_variant_with_policy] No variants for {experiment_id}")
+        return ("control", "control_fallback")
+    
+    # Check policy
+    if policy is not None and policy.is_active():
+        # Validate variant exists
+        valid_variants = {v.variant_id for v in variants if hasattr(v, 'variant_id')}
+        valid_variants.add('control')
+        
+        if policy.active_variant not in valid_variants:
+            logger.warning(
+                f"[assign_variant_with_policy] Invalid policy variant "
+                f"{policy.active_variant}, falling back to control"
+            )
+            return ("control", "control_fallback")
+        
+        if policy.should_apply_policy():
+            return (policy.active_variant, "policy_auto")
+        elif policy.mode == RolloutMode.MANUAL:
+            variant_id = assign_variant(user_id, experiment_id, variants)
+            return (variant_id, "policy_manual")
+    
+    # No policy or inactive: use v44 hash assignment
+    variant_id = assign_variant(user_id, experiment_id, variants)
+    return (variant_id, "hash")

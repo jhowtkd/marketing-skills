@@ -6,12 +6,22 @@ export interface ExperimentVariant {
   config: Record<string, unknown>;
 }
 
+export interface RolloutPolicy {
+  policy_id: string;
+  experiment_id: string;
+  active_variant: string;
+  mode: 'auto' | 'manual';
+  status: 'active' | 'inactive' | 'rolled_back';
+}
+
 export interface UseExperimentOptions {
   experimentId: string;
   variants: ExperimentVariant[];
   userId: string;
   /** Para testes: forçar uma variante específica */
   forceVariant?: string;
+  /** Carregar policy do servidor */
+  loadPolicy?: boolean;
 }
 
 export interface UseExperimentReturn {
@@ -23,6 +33,12 @@ export interface UseExperimentReturn {
   isInExperiment: boolean;
   /** Se a exposição foi registrada */
   isExposed: boolean;
+  /** Source da decisão de atribuição */
+  decisionSource: 'policy_auto' | 'policy_manual' | 'hash' | 'control_fallback' | null;
+  /** Policy ativa (se houver) */
+  activePolicy: RolloutPolicy | null;
+  /** Se está carregando */
+  isLoading: boolean;
 }
 
 // Storage key para persistir atribuição entre sessões
@@ -45,17 +61,93 @@ function hashUserToVariant(userId: string, experimentId: string, variantCount: n
 }
 
 /**
+ * Fetch active rollout policy from server
+ */
+async function fetchRolloutPolicy(
+  experimentId: string,
+  userId: string
+): Promise<RolloutPolicy | null> {
+  try {
+    // Try to fetch policy from API
+    const response = await fetch(
+      `/api/v2/experiments/${experimentId}/rollout-policy?user_id=${userId}`,
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+    );
+    
+    if (!response.ok) {
+      // API may not be available or no policy exists
+      return null;
+    }
+    
+    const data = await response.json();
+    if (data.policy && data.policy.status === 'active') {
+      return data.policy as RolloutPolicy;
+    }
+    return null;
+  } catch {
+    // Silently fail - policy fetch shouldn't block assignment
+    return null;
+  }
+}
+
+/**
+ * Determine variant with policy consideration
+ * v45: Integrated policy + hash assignment
+ */
+function determineVariant(
+  userId: string,
+  experimentId: string,
+  variants: ExperimentVariant[],
+  policy: RolloutPolicy | null,
+  storedVariant: string | null
+): { variantId: string; source: 'policy_auto' | 'policy_manual' | 'hash' | 'control_fallback' } {
+  // If we have a stored assignment, use it (sticky assignment)
+  if (storedVariant && variants.some(v => v.id === storedVariant)) {
+    return { variantId: storedVariant, source: 'hash' };
+  }
+  
+  // Check policy
+  if (policy && policy.status === 'active') {
+    // Validate variant exists in experiment
+    const validVariant = variants.some(v => v.id === policy.active_variant);
+    
+    if (!validVariant && policy.active_variant !== 'control') {
+      // Policy points to invalid variant, fallback to control
+      return { variantId: 'control', source: 'control_fallback' };
+    }
+    
+    // Policy auto mode: apply active_variant directly
+    if (policy.mode === 'auto' && policy.active_variant !== 'control') {
+      return { variantId: policy.active_variant, source: 'policy_auto' };
+    }
+    
+    // Policy manual mode: use hash assignment
+    if (policy.mode === 'manual') {
+      const assignedIndex = hashUserToVariant(userId, experimentId, variants.length);
+      return { variantId: variants[assignedIndex].id, source: 'policy_manual' };
+    }
+  }
+  
+  // No active policy or inactive: use v44 hash assignment
+  const assignedIndex = hashUserToVariant(userId, experimentId, variants.length);
+  return { variantId: variants[assignedIndex].id, source: 'hash' };
+}
+
+/**
  * Hook para gerenciar experimentos A/B/n no onboarding
+ * 
+ * v45: Integrado com sistema de RolloutPolicy
  * 
  * @example
  * ```tsx
  * const { variantId, config, isInExperiment } = useExperiment({
- *   experimentId: 'onboarding_cta_v44',
+ *   experimentId: 'onboarding_cta_v45',
  *   variants: [
  *     { id: 'control', config: {} },
  *     { id: 'variant_a', config: { buttonText: 'Começar Agora' } },
  *   ],
  *   userId: currentUser.id,
+ *   loadPolicy: true,
  * });
  * 
  * // Usar no JSX
@@ -67,15 +159,21 @@ export function useExperiment({
   variants,
   userId,
   forceVariant,
+  loadPolicy = true,
 }: UseExperimentOptions): UseExperimentReturn {
   const [variantId, setVariantId] = useState<string | null>(null);
   const [isExposed, setIsExposed] = useState(false);
+  const [decisionSource, setDecisionSource] = useState<UseExperimentReturn['decisionSource']>(null);
+  const [activePolicy, setActivePolicy] = useState<RolloutPolicy | null>(null);
+  const [isLoading, setIsLoading] = useState(loadPolicy);
 
   // Determinar variante na montagem
   useEffect(() => {
     // Se não há variantes ou só há controle, não é um experimento
     if (!variants || variants.length === 0) {
       setVariantId(null);
+      setIsLoading(false);
+      setDecisionSource('control_fallback');
       return;
     }
 
@@ -84,6 +182,8 @@ export function useExperiment({
       const forced = variants.find(v => v.id === forceVariant);
       if (forced) {
         setVariantId(forced.id);
+        setDecisionSource('policy_manual');
+        setIsLoading(false);
         return;
       }
     }
@@ -91,32 +191,66 @@ export function useExperiment({
     // Verificar storage para consistência entre sessões
     const storageKey = getStorageKey(experimentId, userId);
     const stored = sessionStorage.getItem(storageKey);
+    let storedVariant: string | null = null;
     
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         if (parsed.variantId && variants.some(v => v.id === parsed.variantId)) {
-          setVariantId(parsed.variantId);
-          return;
+          storedVariant = parsed.variantId;
         }
       } catch {
         // Ignorar erro de parse, continuar com atribuição nova
       }
     }
 
-    // Atribuir baseado em hash determinístico
-    // Control group (índice 0) é o fallback padrão
-    const assignedIndex = hashUserToVariant(userId, experimentId, variants.length);
-    const assigned = variants[assignedIndex];
-    
-    setVariantId(assigned.id);
+    // Load policy and determine variant
+    const loadAndAssign = async () => {
+      let policy: RolloutPolicy | null = null;
+      
+      if (loadPolicy) {
+        policy = await fetchRolloutPolicy(experimentId, userId);
+        setActivePolicy(policy);
+      }
+      
+      const result = determineVariant(userId, experimentId, variants, policy, storedVariant);
+      
+      setVariantId(result.variantId);
+      setDecisionSource(result.source);
+      
+      // Telemetry for policy decisions
+      if (result.source === 'policy_auto' && policy) {
+        try {
+          await fetch('/api/v2/telemetry/policy_decision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: userId,
+              experiment_id: experimentId,
+              policy_id: policy.policy_id,
+              variant_id: result.variantId,
+              decision: 'policy_auto_applied',
+              timestamp: new Date().toISOString(),
+            }),
+          });
+        } catch {
+          // Silently fail - telemetry shouldn't block UI
+        }
+      }
+      
+      // Persistir atribuição
+      sessionStorage.setItem(storageKey, JSON.stringify({ 
+        variantId: result.variantId, 
+        assignedAt: new Date().toISOString(),
+        source: result.source,
+        policyId: policy?.policy_id,
+      }));
+      
+      setIsLoading(false);
+    };
 
-    // Persistir atribuição
-    sessionStorage.setItem(storageKey, JSON.stringify({ 
-      variantId: assigned.id, 
-      assignedAt: new Date().toISOString() 
-    }));
-  }, [experimentId, variants, userId, forceVariant]);
+    loadAndAssign();
+  }, [experimentId, variants, userId, forceVariant, loadPolicy]);
 
   // Registrar exposição quando variante é determinada
   useEffect(() => {
@@ -142,6 +276,9 @@ export function useExperiment({
     config,
     isInExperiment,
     isExposed,
+    decisionSource,
+    activePolicy,
+    isLoading,
   };
 }
 
@@ -152,7 +289,7 @@ export function useExperiment({
  * @example
  * ```tsx
  * const buttonText = useExperimentValue({
- *   experimentId: 'onboarding_cta_v44',
+ *   experimentId: 'onboarding_cta_v45',
  *   variants: [
  *     { id: 'control', config: { text: 'Continuar' } },
  *     { id: 'variant_a', config: { text: 'Começar Agora' } },
@@ -170,6 +307,7 @@ export function useExperimentValue<T>({
   key,
   defaultValue,
   forceVariant,
+  loadPolicy = true,
 }: {
   experimentId: string;
   variants: ExperimentVariant[];
@@ -177,12 +315,14 @@ export function useExperimentValue<T>({
   key: string;
   defaultValue: T;
   forceVariant?: string;
+  loadPolicy?: boolean;
 }): T {
   const { config } = useExperiment({
     experimentId,
     variants,
     userId,
     forceVariant,
+    loadPolicy,
   });
 
   return (config[key] as T) ?? defaultValue;

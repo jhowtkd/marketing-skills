@@ -1126,3 +1126,104 @@ PYTHONPATH=09-tools python tests/simulations/v44_experiment_benchmark.py      # 
 🟢 **PRONTO PARA PR** - Experiments pack completo, benchmark reproduzível, 141 testes passando
 
 ---
+
+---
+
+## ✅ v45 Sprint - Auto-Rollout Policy (2026-03-05)
+
+### Objetivo
+Implementar política de promoção automática segura para variantes vencedoras do v44, com rollback automático em caso de degradação.
+
+### Contratos Definidos
+
+#### Policy Contract (docs/contracts/v45_auto_rollout_policy.md)
+- **Estrutura de policy**: experiment_id, active_variant, rollout_mode (auto/manual), last_evaluation, decision_reason, rollback_target
+- **Persistência**: JSON local em `09-tools/config/rollout_policies/`
+- **Versionamento**: SemVer para evolução segura
+
+#### Promotion Gates (Critérios de Segurança)
+| Gate | Critério | Threshold |
+|------|----------|-----------|
+| Ganho | Score > control * 1.005 | > 0.5% lift |
+| Estabilidade | Sample size ≥ 30 | N ≥ 30 |
+| Risco | Completion ≥ control * 0.95 | ≥ 95% |
+| Abandono | Abandonment ≤ control * 1.10 | ≤ 110% |
+| Regressão | TTFV ≤ control * 1.10 | ≤ 10% increase |
+
+#### Rollback Conditions
+- Score caiu > 10% vs baseline
+- Completion caiu > 15%
+- Abandonment subiu > 20%
+- TTFV subiu > 25%
+
+### Implementação
+
+#### Backend (09-tools/vm_webapp/onboarding_rollout_policy.py)
+- **PromotionEngine**: `evaluate_promotion()` com 5 gates
+- **RollbackEngine**: `evaluate_rollback()` com detecção de degradação
+- **PolicyPersistence**: JSON local com atomic writes
+- **Telemetry**: `experiment_promoted`, `experiment_promotion_blocked`, `experiment_rolled_back`
+- **62 testes** em `test_vm_webapp_onboarding_rollout.py`
+
+#### Integração v44 (09-tools/vm_webapp/onboarding_experiments.py)
+- `assign_variant_with_policy()`: integra policy ao assignment
+- `RolloutPolicyManager`: gestão centralizada de políticas
+- Modos: AUTO (promoção automática), MANUAL (assignment por hash)
+- **81 testes** em `test_vm_webapp_onboarding_experiments.py`
+
+#### Frontend (09-tools/web/vm-ui/src/hooks/useExperiment.ts)
+- Carrega policy ativa do servidor
+- Aplica `active_variant` quando policy em modo AUTO
+- Telemetry de `policy_decision`
+- Backward compatible com v44
+
+#### Simulação End-to-End (09-tools/tests/simulations/v45_rollout_integration.py)
+- **5 Fases**: Control → Evaluate → Promote → Degrade → Rollback
+- **15 testes** de integração
+- Relatórios em JSON + Markdown
+- Determinístico (seed=42)
+
+### Tabela de Decisões
+
+| Cenário | Decisão | Motivo |
+|---------|---------|--------|
+| Todos gates passam | PROMOTE | Lift seguro, métricas estáveis |
+| Gate de ganho falha | BLOCK | Lift < 0.5% |
+| Gate de estabilidade falha | BLOCK | Sample insuficiente |
+| Gate de risco falha | BLOCK | Regressão em completion |
+| Degradação detectada | ROLLBACK | Métricas pioraram vs baseline |
+
+### Arquivos Alterados
+- `09-tools/vm_webapp/onboarding_rollout_policy.py` (novo, +705 linhas)
+- `09-tools/tests/test_vm_webapp_onboarding_rollout.py` (novo, +1154 linhas)
+- `09-tools/tests/simulations/rollout_engines.py` (novo, +505 linhas)
+- `09-tools/tests/simulations/simulation_models.py` (novo, +245 linhas)
+- `09-tools/tests/simulations/v45_rollout_integration.py` (novo, +709 linhas)
+- `09-tools/tests/simulations/test_rollout_integration.py` (novo, +575 linhas)
+- `09-tools/vm_webapp/onboarding_experiments.py` (+180 linhas - integração)
+- `docs/contracts/v45_auto_rollout_policy.md` (novo, +1086 linhas)
+
+### Validação Final
+```bash
+# Policy Engine
+PYTHONPATH=09-tools pytest tests/test_vm_webapp_onboarding_rollout.py -q  # ✅ 62 passed
+
+# Experiments Integration
+PYTHONPATH=09-tools pytest tests/test_vm_webapp_onboarding_experiments.py -q  # ✅ 81 passed
+
+# Rollout Integration
+PYTHONPATH=09-tools pytest tests/simulations/test_rollout_integration.py -q  # ✅ 15 passed
+
+# Simulação E2E
+PYTHONPATH=09-tools python tests/simulations/v45_rollout_integration.py  # ✅ reports gerados
+```
+
+### Riscos Residuais
+- **Nenhum** - Default seguro é sempre "control"
+- Rollback automático protege contra degradação
+- Modo MANUAL disponível para controle total
+
+### Status
+🟢 **PRONTO PARA PR** - Auto-rollout policy completa, 158 testes passando, integração v44 validada
+
+---

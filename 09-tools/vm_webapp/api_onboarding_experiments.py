@@ -408,6 +408,197 @@ def rollback_onboarding_experiment(
 
 
 # =============================================================================
+# v45: Rollout Policy Integration
+# =============================================================================
+
+from vm_webapp.onboarding_experiments import (
+    RolloutPolicy,
+    RolloutPolicyManager,
+    RolloutMode,
+    RolloutPolicyStatus,
+    get_global_policy_manager,
+)
+
+# Global rollout policy manager
+_rollout_policy_manager = RolloutPolicyManager()
+
+
+class RolloutPolicyCreateRequest(BaseModel):
+    policy_id: str
+    experiment_id: str
+    active_variant: str = "control"
+    mode: str = "manual"  # 'auto' or 'manual'
+
+
+class RolloutPolicyResponse(BaseModel):
+    policy_id: str
+    experiment_id: str
+    active_variant: str
+    mode: str
+    status: str
+    created_at: str
+
+
+class RolloutPolicyActivateRequest(BaseModel):
+    variant_id: Optional[str] = None
+
+
+class RolloutPolicyAssignRequest(BaseModel):
+    user_id: str
+
+
+class RolloutPolicyAssignResponse(BaseModel):
+    user_id: str
+    experiment_id: str
+    variant_id: str
+    decision_source: str
+    policy_id: Optional[str] = None
+
+
+@router.get("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/rollout-policy")
+def get_rollout_policy(
+    brand_id: str,
+    experiment_id: str,
+) -> Optional[RolloutPolicyResponse]:
+    """Get the active rollout policy for an experiment."""
+    policy = _rollout_policy_manager.get_policy_for_experiment(experiment_id)
+    if policy is None:
+        return None
+    
+    return RolloutPolicyResponse(
+        policy_id=policy.policy_id,
+        experiment_id=policy.experiment_id,
+        active_variant=policy.active_variant,
+        mode=policy.mode.value,
+        status=policy.status.value,
+        created_at=policy.created_at,
+    )
+
+
+@router.post("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/rollout-policy")
+def create_rollout_policy(
+    brand_id: str,
+    experiment_id: str,
+    request: RolloutPolicyCreateRequest,
+) -> RolloutPolicyResponse:
+    """Create a new rollout policy for an experiment."""
+    mode = RolloutMode.AUTO if request.mode == "auto" else RolloutMode.MANUAL
+    
+    policy = RolloutPolicy(
+        policy_id=request.policy_id,
+        experiment_id=experiment_id,
+        active_variant=request.active_variant,
+        mode=mode,
+        status=RolloutPolicyStatus.INACTIVE,
+    )
+    
+    _rollout_policy_manager.register_policy(policy)
+    
+    return RolloutPolicyResponse(
+        policy_id=policy.policy_id,
+        experiment_id=policy.experiment_id,
+        active_variant=policy.active_variant,
+        mode=policy.mode.value,
+        status=policy.status.value,
+        created_at=policy.created_at,
+    )
+
+
+@router.post("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/rollout-policy/activate")
+def activate_rollout_policy(
+    brand_id: str,
+    experiment_id: str,
+    request: RolloutPolicyActivateRequest,
+) -> RolloutPolicyResponse:
+    """Activate the rollout policy for an experiment."""
+    policy = _rollout_policy_manager.get_policy_for_experiment(experiment_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Rollout policy not found")
+    
+    policy.activate(variant_id=request.variant_id)
+    
+    return RolloutPolicyResponse(
+        policy_id=policy.policy_id,
+        experiment_id=policy.experiment_id,
+        active_variant=policy.active_variant,
+        mode=policy.mode.value,
+        status=policy.status.value,
+        created_at=policy.created_at,
+    )
+
+
+@router.post("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/rollout-policy/deactivate")
+def deactivate_rollout_policy(
+    brand_id: str,
+    experiment_id: str,
+) -> RolloutPolicyResponse:
+    """Deactivate the rollout policy for an experiment."""
+    policy = _rollout_policy_manager.get_policy_for_experiment(experiment_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Rollout policy not found")
+    
+    policy.deactivate()
+    
+    return RolloutPolicyResponse(
+        policy_id=policy.policy_id,
+        experiment_id=policy.experiment_id,
+        active_variant=policy.active_variant,
+        mode=policy.mode.value,
+        status=policy.status.value,
+        created_at=policy.created_at,
+    )
+
+
+@router.post("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/rollout-policy/rollback")
+def rollback_rollout_policy(
+    brand_id: str,
+    experiment_id: str,
+) -> RolloutPolicyResponse:
+    """Roll back the rollout policy for an experiment."""
+    policy = _rollout_policy_manager.get_policy_for_experiment(experiment_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Rollout policy not found")
+    
+    policy.rollback()
+    
+    return RolloutPolicyResponse(
+        policy_id=policy.policy_id,
+        experiment_id=policy.experiment_id,
+        active_variant=policy.active_variant,
+        mode=policy.mode.value,
+        status=policy.status.value,
+        created_at=policy.created_at,
+    )
+
+
+@router.post("/api/v2/brands/{brand_id}/onboarding-experiments/{experiment_id}/assign")
+def assign_user_with_policy(
+    brand_id: str,
+    experiment_id: str,
+    request: RolloutPolicyAssignRequest,
+) -> RolloutPolicyAssignResponse:
+    """Assign a user to a variant considering rollout policy."""
+    try:
+        experiment = _experiment_registry.get_experiment(experiment_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    from vm_webapp.onboarding_experiments import get_variant_with_policy
+    
+    variant_id, policy, source = get_variant_with_policy(
+        request.user_id, experiment, _rollout_policy_manager
+    )
+    
+    return RolloutPolicyAssignResponse(
+        user_id=request.user_id,
+        experiment_id=experiment_id,
+        variant_id=variant_id,
+        decision_source=source,
+        policy_id=policy.policy_id if policy else None,
+    )
+
+
+# =============================================================================
 # Public API for other modules
 # =============================================================================
 
@@ -419,3 +610,8 @@ def get_experiment_registry() -> ExperimentRegistry:
 def get_experiment_metrics() -> dict[str, int]:
     """Get current experiment metrics."""
     return _experiment_metrics.copy()
+
+
+def get_rollout_policy_manager() -> RolloutPolicyManager:
+    """Get the global rollout policy manager (v45)."""
+    return _rollout_policy_manager

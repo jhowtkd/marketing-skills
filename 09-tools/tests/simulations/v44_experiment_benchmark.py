@@ -481,5 +481,166 @@ def main():
     return results, report_paths
 
 
+
+# =============================================================================
+# V45 PROMOTION ENGINE INTEGRATION
+# =============================================================================
+
+def export_for_promotion_engine(
+    results: Dict[str, Dict[str, ExperimentResult]],
+) -> Dict[str, Any]:
+    """Export benchmark results in format expected by v45 PromotionEngine.
+    
+    This function transforms v44 benchmark results into the format required
+    by the v45 rollout simulation and promotion engine.
+    
+    Args:
+        results: Benchmark results from ExperimentBenchmarkRunner
+        
+    Returns:
+        Dict with experiment metrics formatted for PromotionEngine
+    """
+    from tests.simulations.simulation_models import (
+        ExperimentMetrics,
+        VariantMetrics,
+    )
+    
+    exported_experiments = {}
+    
+    for experiment_id, variant_results in results.items():
+        variant_metrics = {}
+        control_variant_id = "control"
+        
+        for variant_id, result in variant_results.items():
+            stats = result.stats
+            
+            # Calculate conversions from completion rate
+            conversions = int(stats["completion_rate"] * stats["sample_size"])
+            
+            variant_metrics[variant_id] = VariantMetrics(
+                variant_id=variant_id,
+                sample_size=stats["sample_size"],
+                conversions=conversions,
+                total_time_to_value_ms=int(stats["avg_ttfv_ms"] * stats["sample_size"]),
+                avg_time_to_value_ms=stats["avg_ttfv_ms"],
+                completion_rate=stats["completion_rate"],
+                abandonment_rate=1.0 - stats["completion_rate"],
+                prefill_adoption=stats["prefill_adoption"],
+                fast_lane_adoption=stats["fast_lane_adoption"],
+            )
+        
+        # Determine control variant (usually "control" or first variant)
+        if "control" in variant_metrics:
+            control_variant_id = "control"
+        elif "baseline" in variant_metrics:
+            control_variant_id = "baseline"
+        else:
+            control_variant_id = list(variant_metrics.keys())[0]
+        
+        experiment_metrics = ExperimentMetrics(
+            experiment_id=experiment_id,
+            variant_metrics=variant_metrics,
+            control_variant_id=control_variant_id,
+        )
+        
+        exported_experiments[experiment_id] = experiment_metrics
+    
+    return exported_experiments
+
+
+def create_promotion_policy_input(
+    experiment_result: ExperimentResult,
+    min_lift: float = 0.05,
+    min_confidence: float = 0.95,
+) -> Dict[str, Any]:
+    """Create input for promotion policy from a single experiment result.
+    
+    Args:
+        experiment_result: Single experiment result
+        min_lift: Minimum relative lift required
+        min_confidence: Minimum confidence level required
+        
+    Returns:
+        Dict formatted for promotion policy evaluation
+    """
+    stats = experiment_result.stats
+    
+    return {
+        "experiment_id": experiment_result.experiment_id,
+        "variant_id": experiment_result.variant_id,
+        "sample_size": stats["sample_size"],
+        "metrics": {
+            "completion_rate": stats["completion_rate"],
+            "avg_ttfv_ms": stats["avg_ttfv_ms"],
+            "prefill_adoption": stats["prefill_adoption"],
+            "fast_lane_adoption": stats["fast_lane_adoption"],
+        },
+        "policy_requirements": {
+            "min_relative_lift": min_lift,
+            "min_confidence": min_confidence,
+            "min_sample_size": 100,
+        },
+    }
+
+
+def run_benchmark_and_export_for_v45(
+    simulations_per_variant: int = 30,
+    random_seed: int = 42,
+) -> Tuple[Dict[str, Dict[str, ExperimentResult]], Dict[str, Any]]:
+    """Run v44 benchmark and export results for v45 promotion engine.
+    
+    This is a convenience function that runs the full benchmark and
+    immediately exports results in v45 format.
+    
+    Args:
+        simulations_per_variant: Number of simulations per variant
+        random_seed: Random seed for reproducibility
+        
+    Returns:
+        Tuple of (raw_results, v45_formatted_results)
+    """
+    # Run benchmark
+    config = BenchmarkConfig(
+        simulations_per_variant=simulations_per_variant,
+        fast_test_mode=True,
+        random_seed=random_seed,
+    )
+    
+    runner = ExperimentBenchmarkRunner(config)
+    results = runner.run_all_experiments()
+    
+    # Export for v45
+    v45_results = export_for_promotion_engine(results)
+    
+    # Save v45 export
+    output_path = Path("reports")
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    v45_export_data = {
+        "generated_at": datetime.utcnow().isoformat(),
+        "source": "v44_experiment_benchmark",
+        "version": "v45",
+        "experiments": {
+            exp_id: {
+                "experiment_id": metrics.experiment_id,
+                "control_variant_id": metrics.control_variant_id,
+                "variants": {
+                    v_id: v_metrics.to_dict()
+                    for v_id, v_metrics in metrics.variant_metrics.items()
+                },
+            }
+            for exp_id, metrics in v45_results.items()
+        },
+    }
+    
+    v45_file = output_path / "v44_to_v45_export.json"
+    with open(v45_file, "w") as f:
+        json.dump(v45_export_data, f, indent=2)
+    
+    print(f"\n📤 Exported v45 format: {v45_file}")
+    
+    return results, v45_results
+
+
 if __name__ == "__main__":
     main()
