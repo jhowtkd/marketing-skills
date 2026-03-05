@@ -2,7 +2,7 @@
  * Tests for ApprovalModal component
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ApprovalModal, type ApprovalAction } from "../ApprovalModal";
 
@@ -140,9 +140,9 @@ describe("ApprovalModal", () => {
     it("shows character count for reason field", () => {
       render(<ApprovalModal {...defaultProps} />);
 
-      fireEvent.change(screen.getByLabelText(/Reason/), {
-        target: { value: "test" },
-      });
+      const reasonInput = screen.getByLabelText(/Reason/);
+      fireEvent.change(reasonInput, { target: { value: "test" } });
+      fireEvent.blur(reasonInput); // Trigger touched state
 
       expect(screen.getByText("4/10")).toBeInTheDocument();
     });
@@ -150,9 +150,9 @@ describe("ApprovalModal", () => {
     it("shows validation message when reason is too short", () => {
       render(<ApprovalModal {...defaultProps} />);
 
-      fireEvent.change(screen.getByLabelText(/Reason/), {
-        target: { value: "short" },
-      });
+      const reasonInput = screen.getByLabelText(/Reason/);
+      fireEvent.change(reasonInput, { target: { value: "short" } });
+      fireEvent.blur(reasonInput); // Trigger touched state
 
       expect(screen.getByText("Minimum 10 characters required")).toBeInTheDocument();
     });
@@ -160,9 +160,9 @@ describe("ApprovalModal", () => {
     it("shows success message when reason meets requirements", () => {
       render(<ApprovalModal {...defaultProps} />);
 
-      fireEvent.change(screen.getByLabelText(/Reason/), {
-        target: { value: "This is a valid reason" },
-      });
+      const reasonInput = screen.getByLabelText(/Reason/);
+      fireEvent.change(reasonInput, { target: { value: "This is a valid reason" } });
+      fireEvent.blur(reasonInput); // Trigger touched state
 
       expect(screen.getByText("Reason meets requirements")).toBeInTheDocument();
     });
@@ -173,6 +173,7 @@ describe("ApprovalModal", () => {
       const operatorInput = screen.getByLabelText(/Operator ID/);
       fireEvent.change(operatorInput, { target: { value: "test" } });
       fireEvent.change(operatorInput, { target: { value: "" } });
+      fireEvent.blur(operatorInput); // Trigger touched state
 
       expect(screen.getByText("Operator ID is required")).toBeInTheDocument();
     });
@@ -405,6 +406,7 @@ describe("ApprovalModal", () => {
       const operatorInput = screen.getByLabelText(/Operator ID/);
       fireEvent.change(operatorInput, { target: { value: "test" } });
       fireEvent.change(operatorInput, { target: { value: "" } });
+      fireEvent.blur(operatorInput); // Trigger touched state
 
       expect(operatorInput).toHaveAttribute("aria-invalid", "true");
     });

@@ -205,12 +205,20 @@ describe("RolloutDashboard", () => {
         expect(screen.getByText("exp-001")).toBeInTheDocument();
       });
 
-      expect(screen.getByText("variant-A")).toBeInTheDocument();
-      expect(screen.getByText("SUPERVISED")).toBeInTheDocument();
-      expect(screen.getByText("Pending Review")).toBeInTheDocument();
+      // Get the specific row for exp-001 and check within it
+      const row = screen.getByText("exp-001").closest("tr");
+      expect(row).toBeTruthy();
+      expect(within(row!).getByText("variant-A")).toBeInTheDocument();
+      expect(within(row!).getByText("SUPERVISED")).toBeInTheDocument();
+      expect(within(row!).getByText("Pending Review")).toBeInTheDocument();
     });
 
     it("displays null variant as em dash", async () => {
+      // Mock with null variant for exp-003
+      mockFetchRolloutDashboard.mockResolvedValue([
+        buildMockPolicy({ experiment_id: "exp-003", active_variant: null, mode: "SHADOW", status: "evaluating" }),
+      ]);
+      
       render(<RolloutDashboard />);
 
       await waitFor(() => {

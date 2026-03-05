@@ -15,13 +15,10 @@ describe("StatusBadge", () => {
       ["rolled_back", "Rolled Back"],
       ["pending_review", "Pending Review"],
       ["evaluating", "Evaluating"],
-    ] as [RolloutStatus, string][]){
-      ("renders %s status with label '%s'", (status, expectedLabel) => {
-        render(<StatusBadge status={status} />);
-
-        expect(screen.getByText(expectedLabel)).toBeInTheDocument();
-      });
-    }
+    ] as [RolloutStatus, string][])('renders %s status with label "%s"', (status, expectedLabel) => {
+      render(<StatusBadge status={status} />);
+      expect(screen.getByText(expectedLabel)).toBeInTheDocument();
+    });
 
     it("renders unknown status with the status value as label", () => {
       render(<StatusBadge status={"unknown_status" as RolloutStatus} />);
@@ -125,13 +122,10 @@ describe("StatusBadge", () => {
       ["rolled_back", "Status: Rolled back to previous version"],
       ["pending_review", "Status: Pending manual review"],
       ["evaluating", "Status: Currently evaluating"],
-    ] as [RolloutStatus, string][]){
-      ("has correct aria-label for %s status", (status, expectedLabel) => {
-        render(<StatusBadge status={status} />);
-
-        expect(screen.getByRole("status")).toHaveAttribute("aria-label", expectedLabel);
-      });
-    }
+    ] as [RolloutStatus, string][])('has correct aria-label for %s status', (status, expectedLabel) => {
+      render(<StatusBadge status={status} />);
+      expect(screen.getByRole("status")).toHaveAttribute("aria-label", expectedLabel);
+    });
 
     it("has aria-label for unknown status", () => {
       render(<StatusBadge status={"unknown" as RolloutStatus} />);

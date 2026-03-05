@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { PolicyDetail } from "../PolicyDetail";
 import type { RolloutPolicy } from "../../../api/rolloutDashboard";
 
@@ -101,8 +101,11 @@ describe("PolicyDetail", () => {
       const policy = buildMockPolicy({ last_evaluation_at: "2026-03-04T10:00:00Z" });
       render(<PolicyDetail policy={policy} isExpanded={true} />);
 
-      // Date format may vary by locale, but should contain some recognizable part
-      expect(screen.getByText(/Mar|2026|10:00/)).toBeInTheDocument();
+      // Look for "Last Evaluation" label and check its associated value
+      const lastEvalSection = screen.getByText("Last Evaluation").closest("div");
+      expect(lastEvalSection).toBeTruthy();
+      // The date should be within the same section
+      expect(within(lastEvalSection!).getByText(/2026|Mar|Apr/)).toBeInTheDocument();
     });
 
     it("displays 'Never' when last_evaluation_at is null", () => {
