@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -93,14 +95,17 @@ class PolicyOpsEngine:
     for promote/hold/rollback actions based on configured gates.
     """
     
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None, use_synthetic: bool = False):
         """Initialize the policy ops engine.
         
         Args:
             config_path: Path to configuration file (optional)
+            use_synthetic: If True, use synthetic metrics when real ones unavailable
+                          If False, raises exception when metrics unavailable (production mode)
         """
         self.config_path = config_path
         self._config = self._load_config()
+        self._use_synthetic = use_synthetic
     
     def _load_config(self) -> dict[str, Any]:
         """Load engine configuration."""
@@ -207,8 +212,8 @@ class PolicyOpsEngine:
         
         # Set expiry
         expiry_hours = self._config.get("default_expiry_hours", 24)
-        expiry = datetime.now(timezone.utc)
-        expiry = expiry.replace(hour=expiry.hour + expiry_hours)
+        from datetime import timedelta
+        expiry = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
         recommendation.expires_at = expiry.isoformat()
         
         # Persist recommendation (unless dry_run)
@@ -230,14 +235,42 @@ class PolicyOpsEngine:
     ) -> tuple[Optional[BenchmarkMetrics], Optional[BenchmarkMetrics]]:
         """Fetch metrics for an experiment.
         
-        In production, this would query actual metrics from analytics.
-        For now, returns placeholder data.
+        In production (use_synthetic=False), queries actual metrics from analytics.
+        If metrics unavailable in production mode, raises explicit exception.
+        
+        In test mode (use_synthetic=True), returns synthetic data when real unavailable.
+        
+        Args:
+            experiment_id: ID of the experiment
+            
+        Returns:
+            Tuple of (control_metrics, variant_metrics)
+            
+        Raises:
+            RuntimeError: If use_synthetic=False and metrics unavailable
         """
         # TODO: Integrate with actual metrics system
-        # This is a placeholder implementation
-        import random
+        # For now, implement fail-safe behavior
+        
+        # Try to fetch real metrics (placeholder for actual implementation)
+        real_metrics_available = False  # Will be True when integrated
+        
+        if real_metrics_available:
+            # Return real metrics from analytics system
+            # This will be implemented when metrics system is integrated
+            pass
+        
+        # No real metrics available
+        if not self._use_synthetic:
+            raise RuntimeError(
+                f"Metrics not available for experiment '{experiment_id}'. "
+                f"Real metrics system not integrated and use_synthetic=False. "
+                f"Set use_synthetic=True only for testing."
+            )
         
         # Generate synthetic metrics for testing
+        import random
+        
         control = BenchmarkMetrics(
             ttfv=25.0 + random.uniform(-2, 2),
             completion_rate=0.85 + random.uniform(-0.05, 0.05),
@@ -317,9 +350,12 @@ class PolicyOpsEngine:
         if len(gates_failed) == 0:
             # All gates passed
             if policy.rollout_mode == RolloutMode.SUPERVISED:
-                rationale = (
+                # SUPERVISED mode: never promote automatically
+                return (
+                    RecommendationAction.HOLD,
+                    confidence,
                     f"All {len(gates_passed)} promotion gates passed. "
-                    f"SUPERVISED mode: awaiting manual approval before promotion."
+                    f"SUPERVISED mode: requires manual approval"
                 )
             else:
                 rationale = (
@@ -380,13 +416,63 @@ class PolicyOpsEngine:
         
         return round(confidence, 3)
     
-    def _save_recommendation(self, recommendation: PolicyRecommendation) -> None:
-        """Save recommendation to persistence layer."""
-        # Use JSON storage in config directory (v45 pattern)
+    def _get_config_dir(self) -> Path:
+        """Get the configuration directory for policy ops."""
         config_dir = Path("09-tools/config/policy_ops")
         config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir
+
+    def _check_existing_recommendation(self, experiment_id: str, evaluated_at: Optional[str]) -> bool:
+        """Check if a recommendation already exists for this experiment today.
         
+        Args:
+            experiment_id: ID of the experiment
+            evaluated_at: Timestamp of evaluation
+            
+        Returns:
+            True if recommendation already exists for today
+        """
+        config_dir = self._get_config_dir()
+        filepath = config_dir / f"{experiment_id}_recommendation.json"
+        
+        if not filepath.exists():
+            return False
+        
+        try:
+            with open(filepath) as f:
+                existing = json.load(f)
+            
+            # Parse dates to compare just the date part (YYYY-MM-DD)
+            if evaluated_at and existing.get("evaluated_at"):
+                new_date = evaluated_at[:10]  # First 10 chars: YYYY-MM-DD
+                existing_date = existing["evaluated_at"][:10]
+                return new_date == existing_date
+            
+            return False
+        except (json.JSONDecodeError, KeyError):
+            return False
+
+    def _save_recommendation(self, recommendation: PolicyRecommendation) -> None:
+        """Save recommendation to persistence layer with idempotency and atomic write.
+        
+        Uses atomic write pattern (tempfile + rename) to prevent corruption.
+        Checks for existing recommendation on the same day to avoid duplicates.
+        
+        Args:
+            recommendation: The recommendation to save
+        """
+        config_dir = self._get_config_dir()
         filepath = config_dir / f"{recommendation.experiment_id}_recommendation.json"
+        
+        # Check if already exists for today (idempotency)
+        if self._check_existing_recommendation(
+            recommendation.experiment_id, 
+            recommendation.evaluated_at
+        ):
+            logger.debug(
+                f"Recommendation for {recommendation.experiment_id} already exists for today, "
+                f"updating with new data"
+            )
         
         data = {
             "experiment_id": recommendation.experiment_id,
@@ -401,10 +487,43 @@ class PolicyOpsEngine:
             "metrics_snapshot": recommendation.metrics_snapshot,
         }
         
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
-        
-        logger.debug(f"Saved recommendation to {filepath}")
+        # Atomic write using tempfile + rename
+        # This ensures we never have a partially written file
+        temp_fd = None
+        temp_path = None
+        try:
+            # Create tempfile in same directory for atomic rename
+            temp_fd, temp_path = tempfile.mkstemp(
+                dir=config_dir,
+                prefix=f".tmp_{recommendation.experiment_id}_",
+                suffix=".json"
+            )
+            
+            with os.fdopen(temp_fd, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Atomic rename (guaranteed to be atomic on POSIX systems)
+            os.rename(temp_path, filepath)
+            temp_path = None  # Prevent cleanup in finally block
+            
+            logger.debug(f"Saved recommendation to {filepath} (atomic)")
+            
+        except Exception as e:
+            logger.error(f"Failed to save recommendation: {e}")
+            raise
+        finally:
+            # Cleanup temp file if something went wrong
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+            # Ensure fd is closed if still open
+            if temp_fd is not None:
+                try:
+                    os.close(temp_fd)
+                except OSError:
+                    pass
 
 
 def get_pending_recommendations() -> list[PolicyRecommendation]:
