@@ -18,7 +18,6 @@ from onboard_report import render_summary
 
 
 SUPPORTED_IDES = ("codex", "cursor", "kimi", "antigravity")
-PREMIUM_KEYS = ("PERPLEXITY_API_KEY", "FIRECRAWL_API_KEY")
 
 
 def _adapter_module_name(ide: str) -> str:
