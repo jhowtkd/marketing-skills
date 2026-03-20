@@ -4,7 +4,7 @@
  * Studio panel for managing onboarding recovery cases.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useOnboardingRecovery, RecoveryCase, RecoveryProposal } from '../hooks/useOnboardingRecovery';
 
 interface OnboardingRecoveryPanelProps {

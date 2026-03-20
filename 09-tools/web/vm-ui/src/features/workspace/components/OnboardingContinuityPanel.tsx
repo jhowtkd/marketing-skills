@@ -4,7 +4,7 @@
  * Studio panel for managing cross-session onboarding continuity.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useOnboardingContinuity, HandoffBundle } from '../hooks/useOnboardingContinuity';
 
 interface OnboardingContinuityPanelProps {

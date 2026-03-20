@@ -4,7 +4,7 @@
  * Studio panel for managing outcome attribution and hybrid ROI operations.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useOutcomeRoi, Proposal } from '../hooks/useOutcomeRoi';
 
 interface OutcomeRoiPanelProps {
